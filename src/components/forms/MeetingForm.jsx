@@ -29,6 +29,65 @@ export const MeetingForm = ({ isOpen, open, onClose, initial = null, defaultDate
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
+  const getDynamicDateTime = (baseDate = null, addMinutes = 0) => {
+    const now = new Date();
+    const target = baseDate ? new Date(baseDate) : new Date();
+    if (isNaN(target.getTime())) return '';
+
+    // If no specific time was set or baseDate was just a day, apply current dynamic time
+    let hours = now.getHours();
+    let minutes = Math.ceil(now.getMinutes() / 15) * 15;
+    if (minutes >= 60) {
+      hours = (hours + 1) % 24;
+      minutes = 0;
+    }
+    
+    target.setHours(hours, minutes + addMinutes, 0, 0);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}T${pad(target.getHours())}:${pad(target.getMinutes())}`;
+  };
+
+  const applyTimeOffset = (addMinutes) => {
+    const current = form.dateTime ? new Date(form.dateTime) : new Date();
+    if (isNaN(current.getTime())) return;
+    current.setMinutes(current.getMinutes() + addMinutes);
+    const pad = (n) => String(n).padStart(2, '0');
+    setForm(prev => ({
+      ...prev,
+      dateTime: `${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}T${pad(current.getHours())}:${pad(current.getMinutes())}`
+    }));
+  };
+
+  const setTimePreset = (type) => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    let target = form.dateTime ? new Date(form.dateTime) : new Date();
+    if (isNaN(target.getTime())) target = new Date();
+
+    if (type === 'now') {
+      target = new Date();
+    } else if (type === 'next_slot') {
+      target = new Date();
+      let mins = Math.ceil((target.getMinutes() + 1) / 15) * 15;
+      if (mins >= 60) {
+        target.setHours(target.getHours() + 1);
+        mins = 0;
+      }
+      target.setMinutes(mins);
+    } else if (type === 'plus_30') {
+      target.setMinutes(target.getMinutes() + 30);
+    } else if (type === 'plus_60') {
+      target.setHours(target.getHours() + 1);
+    } else if (type === 'tomorrow') {
+      target.setDate(target.getDate() + 1);
+    }
+
+    setForm(prev => ({
+      ...prev,
+      dateTime: `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}T${pad(target.getHours())}:${pad(target.getMinutes())}`
+    }));
+  };
+
   useEffect(() => {
     if (initial) {
       let initialAttendeeIds = [];
@@ -46,10 +105,11 @@ export const MeetingForm = ({ isOpen, open, onClose, initial = null, defaultDate
         url: initial.url || ''
       });
     } else {
+      const dynamicDefault = defaultDate ? toLocalDatetime(defaultDate) : getDynamicDateTime();
       setForm({
         name: '',
         attendeeIds: defaultAttendeeId ? [defaultAttendeeId] : [],
-        dateTime: defaultDate ? toLocalDatetime(defaultDate) : '',
+        dateTime: dynamicDefault,
         status: 'Not started',
         url: ''
       });
@@ -160,8 +220,59 @@ export const MeetingForm = ({ isOpen, open, onClose, initial = null, defaultDate
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-semibold text-gray-600">Date & time</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-xs font-semibold text-gray-600">Date & time</label>
+            <span className="text-[11px] text-indigo-600 font-medium">Dynamic local time</span>
+          </div>
           <input type="datetime-local" className="input-field" value={form.dateTime} onChange={set('dateTime')} required />
+          
+          {/* Quick Dynamic Time Shortcuts */}
+          <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setTimePreset('now')}
+              className="text-[11px] px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-medium transition"
+              title="Set to current exact time"
+            >
+              ⚡ Now
+            </button>
+            <button
+              type="button"
+              onClick={() => setTimePreset('next_slot')}
+              className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium transition"
+              title="Next clean 15-minute slot"
+            >
+              Next slot
+            </button>
+            <button
+              type="button"
+              onClick={() => applyTimeOffset(15)}
+              className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium transition"
+            >
+              +15m
+            </button>
+            <button
+              type="button"
+              onClick={() => applyTimeOffset(30)}
+              className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium transition"
+            >
+              +30m
+            </button>
+            <button
+              type="button"
+              onClick={() => applyTimeOffset(60)}
+              className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium transition"
+            >
+              +1h
+            </button>
+            <button
+              type="button"
+              onClick={() => setTimePreset('tomorrow')}
+              className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium transition"
+            >
+              Tomorrow
+            </button>
+          </div>
         </div>
 
         <div>

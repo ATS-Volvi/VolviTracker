@@ -48,9 +48,16 @@ export const MeetingCalendar = ({ meetings: meetingsProp = null }) => {
 
   const handleAddOnDate = (d) => {
     const dt = new Date(d);
-    dt.setHours(10, 0, 0, 0);
+    const now = new Date();
+    let hours = now.getHours();
+    let minutes = Math.ceil((now.getMinutes() + 1) / 15) * 15;
+    if (minutes >= 60) {
+      hours = (hours + 1) % 24;
+      minutes = 0;
+    }
+    dt.setHours(hours, minutes, 0, 0);
     const pad = (n) => String(n).padStart(2, '0');
-    const dateStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T10:00`;
+    const dateStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(hours)}:${pad(minutes)}`;
     setEditing(null);
     setDefaultDate(dateStr);
     setOpen(true);
