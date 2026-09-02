@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import logo from '../assets/volvitech-logo.png';
 
 const Login = () => {
   const { login } = useAuth();
@@ -31,6 +32,9 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-slate-100 p-4">
       <div className="card p-8 w-full max-w-md">
+        <div className="mb-6 flex items-center justify-start">
+          <img src={logo} alt="Volvitech" className="h-9 w-auto object-contain" />
+        </div>
         <h1 className="text-2xl font-bold text-gray-900 mb-1">Welcome back</h1>
         <p className="text-sm text-gray-500 mb-6">Sign in to your workspace</p>
 

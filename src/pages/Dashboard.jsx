@@ -5,77 +5,70 @@ import ProjectsTable from '../components/projects/ProjectsTable';
 import TasksTab from '../components/tasks/TasksTab';
 import MeetingCalendar from '../components/meetings/MeetingCalendar';
 import EmployeesGrid from '../components/employees/EmployeesGrid';
-import FilterControls from '../components/widgets/FilterControls';
+import StatusPieChart from '../components/widgets/StatusPieChart';
 import { exportToCsv, exportToJson } from '../utils/export';
 
 export const Dashboard = () => {
   const { projects: allProjects, tasks: allTasks, meetings: allMeetings, employees: allEmployees } = useData();
   const { addToast } = useToast();
 
-  const [filters, setFilters] = useState({ projectStatus: '', taskPriority: '', employeeRole: '' });
-  const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [exportType, setExportType] = useState(null);
   const [quickFilter, setQuickFilter] = useState('all');
 
-  // Filter functions
-  const isWithinRange = (dateStr, range) => {
-    if (!dateStr) return true;
-    if (!range.start && !range.end) return true;
-    const d = new Date(dateStr);
-    const start = range.start ? new Date(range.start) : null;
-    const end = range.end ? new Date(range.end) : null;
-    if (start && d < start) return false;
-    if (end && d > end) return false;
-    return true;
-  };
-
-  // Apply all filters
-  let filteredProjects = allProjects.filter(p =>
-    (!filters.projectStatus || p.status === filters.projectStatus)
-  );
-
+  // Filter projects by quick filter pill
+  let filteredProjects = allProjects;
   if (quickFilter === 'active') {
-    filteredProjects = filteredProjects.filter(p => p.status === 'In progress');
+    filteredProjects = allProjects.filter(p => p.status === 'In progress');
   } else if (quickFilter === 'done') {
-    filteredProjects = filteredProjects.filter(p => p.status === 'Done');
+    filteredProjects = allProjects.filter(p => p.status === 'Done');
   }
-
-  const filteredTasks = allTasks.filter(t =>
-    (!filters.taskPriority || t.priority === filters.taskPriority) &&
-    isWithinRange(t.dueDate, dateRange)
-  );
-  const filteredMeetings = allMeetings.filter(m =>
-    isWithinRange(m.dateTime, dateRange)
-  );
-  const filteredEmployees = allEmployees.filter(e =>
-    (!filters.employeeRole || (e.role || '') === filters.employeeRole)
-  );
 
   // Stats
   const completedProjectsCount = allProjects.filter(p => p.status === 'Done').length;
   const inProgressProjectsCount = allProjects.filter(p => p.status === 'In progress').length;
+  const notStartedProjectsCount = allProjects.filter(p => p.status === 'Not started').length;
   const overallProjectCompletion = allProjects.length > 0
     ? Math.round((completedProjectsCount / allProjects.length) * 100)
     : 0;
 
   const completedTasksCount = allTasks.filter(t => t.status === 'Done').length;
+  const inProgressTasksCount = allTasks.filter(t => t.status === 'In progress').length;
+  const notStartedTasksCount = allTasks.filter(t => t.status === 'Not started').length;
   const taskCompletionRate = allTasks.length > 0
     ? Math.round((completedTasksCount / allTasks.length) * 100)
     : 0;
 
-  const upcomingMeetings = [...allMeetings].sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime));
-  const nextMeeting = upcomingMeetings[0];
-
-  const handleFilterChange = (newFilters) => {
-    setFilters(prev => ({ ...prev, ...newFilters }));
+  const now = new Date();
+  const isSameDay = (dateStr, targetDate) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    return (
+      d.getFullYear() === targetDate.getFullYear() &&
+      d.getMonth() === targetDate.getMonth() &&
+      d.getDate() === targetDate.getDate()
+    );
   };
+
+  // Filter meetings occurring today
+  const todayMeetings = allMeetings
+    .filter(m => isSameDay(m.dateTime, now))
+    .sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime));
+
+  // Determine current day's active/upcoming meeting or next future meeting
+  const upcomingTodayMeeting = todayMeetings.find(m => new Date(m.dateTime) >= now) || todayMeetings[0];
+  const nextFutureMeeting = allMeetings
+    .filter(m => new Date(m.dateTime) >= now)
+    .sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime))[0];
+
+  const nextMeeting = upcomingTodayMeeting || nextFutureMeeting || null;
+  const isMeetingToday = nextMeeting ? isSameDay(nextMeeting.dateTime, now) : false;
 
   const handleExport = (type) => {
     const data = [
       ...filteredProjects,
-      ...filteredTasks,
-      ...filteredMeetings,
-      ...filteredEmployees
+      ...allTasks,
+      ...allMeetings,
+      ...allEmployees
     ].map(item => ({ ...item, type: item.constructor?.name || 'Item' }));
     if (type === 'csv') {
       exportToCsv(data, `tracker-export-${Date.now()}.csv`);
@@ -165,68 +158,212 @@ export const Dashboard = () => {
       </div>
 
       {/* Dynamic Live KPI Stat Cards - Full Width */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full">
-        {/* Card 1: Projects Completed */}
-        <div className="bg-white p-4 rounded-2xl border border-gray-200/80 shadow-sm hover:shadow-md transition-all">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 w-full">
+        {/* Card 1: Projects Status Pie Chart */}
+        <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-200/80 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[190px]">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Projects</span>
-            <span className="text-xs font-bold bg-sky-50 text-sky-600 px-2 py-0.5 rounded-full">{inProgressProjectsCount} active</span>
+            <span className="text-xs font-bold bg-sky-50 text-sky-600 px-2.5 py-1 rounded-full">{inProgressProjectsCount} active</span>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold text-gray-900">{allProjects.length}</span>
-            <span className="text-xs text-gray-500">total projects</span>
-          </div>
-          <div className="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-blue-500 rounded-full transition-all duration-700" style={{ width: `${overallProjectCompletion}%` }} />
+
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <div className="w-[50%] flex justify-center items-center py-1">
+              <StatusPieChart
+                notStarted={notStartedProjectsCount}
+                inProgress={inProgressProjectsCount}
+                done={completedProjectsCount}
+                size={110}
+                strokeWidth={9.5}
+              />
+            </div>
+            <div className="w-[50%] min-w-0 space-y-2 pl-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-2 truncate text-gray-600">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
+                  <span className="text-xs truncate font-medium">Done</span>
+                </span>
+                <span className="font-bold text-gray-900 text-sm">{completedProjectsCount}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-2 truncate text-gray-600">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0"></span>
+                  <span className="text-xs truncate font-medium">In progress</span>
+                </span>
+                <span className="font-bold text-gray-900 text-sm">{inProgressProjectsCount}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-2 truncate text-gray-600">
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-300 shrink-0"></span>
+                  <span className="text-xs truncate font-medium">Not started</span>
+                </span>
+                <span className="font-bold text-gray-900 text-sm">{notStartedProjectsCount}</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Card 2: Task Completion */}
-        <div className="bg-white p-4 rounded-2xl border border-gray-200/80 shadow-sm hover:shadow-md transition-all">
+        {/* Card 2: Tasks Status Pie Chart */}
+        <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-200/80 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[190px]">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Tasks</span>
-            <span className="text-xs font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">{taskCompletionRate}% done</span>
+            <span className="text-xs font-bold bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full">{taskCompletionRate}% done</span>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold text-gray-900">{completedTasksCount}/{allTasks.length}</span>
-            <span className="text-xs text-gray-500">completed</span>
-          </div>
-          <div className="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-500 rounded-full transition-all duration-700" style={{ width: `${taskCompletionRate}%` }} />
+
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <div className="w-[50%] flex justify-center items-center py-1">
+              <StatusPieChart
+                notStarted={notStartedTasksCount}
+                inProgress={inProgressTasksCount}
+                done={completedTasksCount}
+                size={110}
+                strokeWidth={9.5}
+              />
+            </div>
+            <div className="w-[50%] min-w-0 space-y-2 pl-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-2 truncate text-gray-600">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
+                  <span className="text-xs truncate font-medium">Done</span>
+                </span>
+                <span className="font-bold text-gray-900 text-sm">{completedTasksCount}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-2 truncate text-gray-600">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0"></span>
+                  <span className="text-xs truncate font-medium">In progress</span>
+                </span>
+                <span className="font-bold text-gray-900 text-sm">{inProgressTasksCount}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-2 truncate text-gray-600">
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-300 shrink-0"></span>
+                  <span className="text-xs truncate font-medium">Not started</span>
+                </span>
+                <span className="font-bold text-gray-900 text-sm">{notStartedTasksCount}</span>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Card 3: Upcoming Meeting */}
-        <div className="bg-white p-4 rounded-2xl border border-gray-200/80 shadow-sm hover:shadow-md transition-all">
+        <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-200/80 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[190px]">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Next Sync</span>
-            <span className="text-xs font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">Today</span>
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+              isMeetingToday
+                ? 'bg-indigo-50 text-indigo-600'
+                : nextMeeting
+                ? 'bg-slate-100 text-slate-700'
+                : 'bg-gray-100 text-gray-500'
+            }`}>
+              {isMeetingToday
+                ? (todayMeetings.length > 1 ? `${todayMeetings.length} Today` : 'Today')
+                : nextMeeting
+                ? new Date(nextMeeting.dateTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                : 'All clear'}
+            </span>
           </div>
-          <div className="mt-2 truncate font-bold text-sm text-gray-800">
-            {nextMeeting ? nextMeeting.name : 'No meetings'}
+
+          {/* Scrollable Meeting Syncs Container */}
+          <div className="my-2.5 max-h-[96px] overflow-y-auto pr-1.5 space-y-2.5 divide-y divide-gray-100/90 custom-scrollbar">
+            {todayMeetings.length > 0 ? (
+              todayMeetings.map((m, idx) => {
+                const meetingUrl = m.url ? (m.url.startsWith('http://') || m.url.startsWith('https://') ? m.url : `https://${m.url}`) : null;
+                return (
+                  <div key={m.id || idx} className={idx > 0 ? 'pt-2' : ''}>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="truncate font-bold text-sm text-gray-900 flex-1" title={m.name}>
+                        {m.name}
+                      </span>
+                      {meetingUrl && (
+                        <a
+                          href={meetingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-500 hover:text-indigo-800 p-0.5 rounded-md hover:bg-indigo-50 transition shrink-0"
+                          title="Open meeting link in new tab"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                        </a>
+                      )}
+                    </div>
+                    <div className="mt-0.5 text-xs text-gray-500 font-medium truncate flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                      <span>{new Date(m.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                    </div>
+                  </div>
+                );
+              })
+            ) : nextMeeting ? (
+              <div>
+                <div className="flex items-center justify-between gap-1">
+                  <span className="truncate font-bold text-sm text-gray-900 flex-1" title={nextMeeting.name}>
+                    {nextMeeting.name}
+                  </span>
+                  {nextMeeting.url && (
+                    <a
+                      href={nextMeeting.url.startsWith('http://') || nextMeeting.url.startsWith('https://') ? nextMeeting.url : `https://${nextMeeting.url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-500 hover:text-indigo-800 p-0.5 rounded-md hover:bg-indigo-50 transition shrink-0"
+                      title="Open meeting link in new tab"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  )}
+                </div>
+                <div className="mt-0.5 text-xs text-gray-500 font-medium truncate flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></span>
+                  <span>
+                    {new Date(nextMeeting.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} ({new Date(nextMeeting.dateTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="py-2 text-xs text-gray-500 font-medium">
+                No meetings scheduled today. All clear!
+              </div>
+            )}
           </div>
-          <div className="mt-1 text-[11px] text-gray-500 truncate">
-            {nextMeeting?.dateTime ? new Date(nextMeeting.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'All clear'}
-          </div>
+
+          <button
+            onClick={() => {
+              const el = document.getElementById('meetings-calendar-section');
+              if (el) {
+                const yOffset = -80;
+                const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+                window.scrollTo({ top: y, behavior: 'smooth' });
+              }
+            }}
+            className="text-[11px] text-indigo-600 font-semibold hover:underline text-left pt-1"
+          >
+            {todayMeetings.length > 0 || nextMeeting ? 'View in calendar →' : 'View calendar →'}
+          </button>
         </div>
 
         {/* Card 4: Team Members */}
-        <div className="bg-white p-4 rounded-2xl border border-gray-200/80 shadow-sm hover:shadow-md transition-all">
+        <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-200/80 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[190px]">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Team Capacity</span>
-            <span className="text-xs font-bold bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">{allEmployees.length} online</span>
+            <span className="text-xs font-bold bg-purple-50 text-purple-600 px-2.5 py-1 rounded-full">{allEmployees.length} online</span>
           </div>
-          <div className="mt-2 flex items-center -space-x-1.5 overflow-hidden pt-1">
-            {allEmployees.slice(0, 4).map(e => (
-              <img
-                key={e.id}
-                src={e.avatar}
-                alt={e.fullName}
-                className="inline-block h-7 w-7 rounded-full ring-2 ring-white object-cover"
-              />
-            ))}
+          <div className="my-auto py-2">
+            <div className="flex items-center -space-x-2 overflow-hidden">
+              {allEmployees.slice(0, 5).map(e => (
+                <img
+                  key={e.id}
+                  src={e.avatar}
+                  alt={e.fullName}
+                  className="inline-block h-9 w-9 rounded-full ring-2 ring-white object-cover shadow-2xs"
+                />
+              ))}
+            </div>
           </div>
-          <div className="mt-2 text-[11px] text-gray-500">100% capacity available</div>
+          <div className="text-xs text-gray-500 font-medium">100% capacity available</div>
         </div>
       </div>
 
@@ -237,26 +374,21 @@ export const Dashboard = () => {
 
       {/* Secondary Dashboard Modules (Tasks, Meetings, Employees) */}
       <div className="pt-6 border-t border-gray-200/70 space-y-6 w-full">
-        {/* Filter Controls */}
-        <FilterControls
-          onFilterChange={handleFilterChange}
-          dateRange={dateRange}
-          setDateRange={setDateRange}
-        />
-
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 w-full">
-          <TasksTab tasks={filteredTasks} heading="Tasks Tracker" />
-          <MeetingCalendar meetings={filteredMeetings} />
+          <TasksTab tasks={allTasks} heading="Tasks Tracker" />
+          <div id="meetings-calendar-section" className="scroll-mt-24">
+            <MeetingCalendar meetings={allMeetings} />
+          </div>
         </div>
 
-        <div className="w-full">
-          <EmployeesGrid employees={filteredEmployees} />
+        <div className="pt-6 border-t border-gray-200/70 w-full">
+          <EmployeesGrid employees={allEmployees} />
         </div>
       </div>
 
       {/* Footer / Summary Stats */}
       <div className="pt-4 pb-8 text-center text-xs text-gray-400">
-        {filteredProjects.length} projects · {filteredTasks.length} tasks · {filteredMeetings.length} meetings · {filteredEmployees.length} employees
+        {filteredProjects.length} projects · {allTasks.length} tasks · {allMeetings.length} meetings · {allEmployees.length} employees
       </div>
     </div>
   );

@@ -39,7 +39,10 @@ export const Employee = () => {
     return p.assigneeId === id;
   });
   const myTasks = tasks.filter(t => t.assigneeId === id);
-  const myMeetings = meetings.filter(m => m.attendeeId === id);
+  const myMeetings = meetings.filter(m => {
+    if (Array.isArray(m.attendeeIds)) return m.attendeeIds.includes(id);
+    return m.attendeeId === id;
+  });
 
   const addProperty = () => {
     const v = window.prompt('Add a property (e.g. Department: Engineering)');
@@ -106,7 +109,7 @@ export const Employee = () => {
         )}
 
         <TasksTab tasks={myTasks} heading="My Tasks" />
-        <MeetingList meetings={myMeetings} />
+        <MeetingList meetings={myMeetings} defaultAttendeeId={id} />
       </main>
     </div>
   );

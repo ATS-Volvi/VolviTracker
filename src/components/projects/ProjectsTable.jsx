@@ -1166,13 +1166,44 @@ export const ProjectsTable = ({ projects = [] }) => {
                         </div>
                       )}
                     </div>
-                    <div className="flex-1 grid grid-cols-12 gap-1 relative h-9 bg-gray-50/70 rounded-lg p-1 items-center">
+                    <div className="flex-1 grid grid-cols-12 gap-1 relative h-10 bg-gray-50/70 rounded-lg p-1 items-center">
                       <div
                         style={{ gridColumnStart: startM + 1, gridColumnEnd: `span ${colSpan}` }}
-                        className="h-7 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-md shadow-sm p-1.5 text-white flex items-center justify-between text-[11px] font-bold overflow-hidden"
+                        onClick={() => { setEditingProject(p); setModalOpen(true); }}
+                        className="h-8 bg-gray-100 border border-gray-200/90 rounded-lg shadow-xs relative overflow-hidden flex items-center cursor-pointer transition-all group/bar hover:border-blue-400 hover:shadow-sm"
+                        title={`${p.name}: ${pct}% completed (${p.startDate ? p.startDate.slice(0, 10) : '—'} to ${p.endDate ? p.endDate.slice(0, 10) : '—'})`}
                       >
-                        <span className="truncate">{p.name}</span>
-                        <span className="bg-white/20 px-1.5 py-0.5 rounded text-[9px]">{pct}%</span>
+                        {/* Dynamic Progress Fill / Loading Bar */}
+                        <div
+                          className={`h-full absolute left-0 top-0 transition-all duration-700 ${
+                            pct === 100
+                              ? 'bg-gradient-to-r from-emerald-500 to-teal-500'
+                              : pct > 0
+                              ? 'bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-600'
+                              : 'bg-transparent'
+                          } ${pct === 100 ? 'rounded-lg' : 'rounded-l-lg'}`}
+                          style={{ width: `${pct}%` }}
+                        >
+                          {pct > 0 && pct < 100 && (
+                            <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                          )}
+                        </div>
+
+                        {/* Foreground Label & Progress Percentage */}
+                        <div className="relative z-10 w-full px-2.5 flex items-center justify-between select-none">
+                          <span className={`text-[11px] font-bold truncate max-w-[65%] ${
+                            pct >= 40 ? 'text-white drop-shadow-xs' : 'text-gray-800'
+                          }`}>
+                            {p.name}
+                          </span>
+                          <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded shadow-2xs tabular-nums ${
+                            pct >= 85
+                              ? 'bg-white/25 text-white'
+                              : 'bg-white text-gray-800 border border-gray-200/80 shadow-xs'
+                          }`}>
+                            {pct}%
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>

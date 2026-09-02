@@ -8,16 +8,25 @@ const PRIORITIES = ['Low', 'Medium', 'High'];
 
 export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
   const isModalOpen = isOpen !== undefined ? isOpen : open;
-  const { employees, addTask, updateTask } = useData();
+  const { employees, projects = [], addTask, updateTask, removeTask } = useData();
   const { addToast } = useToast();
   const [form, setForm] = useState({
-    name: '', assigneeId: '', status: 'Not started', dueDate: '', priority: 'Medium', description: ''
+    name: '', projectId: '', assigneeId: '', status: 'Not started', dueDate: '', priority: 'Medium', description: ''
   });
+
+  const handleDelete = () => {
+    if (initial && window.confirm(`Delete task "${form.name}"?`)) {
+      removeTask(initial.id);
+      addToast(`Deleted task "${form.name}"`, 'info');
+      onClose();
+    }
+  };
 
   useEffect(() => {
     if (initial) {
       setForm({
         name: initial.name || '',
+        projectId: initial.projectId || '',
         assigneeId: initial.assigneeId || '',
         status: initial.status || 'Not started',
         dueDate: initial.dueDate ? initial.dueDate.slice(0, 10) : '',
@@ -25,7 +34,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
         description: initial.description || ''
       });
     } else {
-      setForm({ name: '', assigneeId: '', status: 'Not started', dueDate: '', priority: 'Medium', description: '' });
+      setForm({ name: '', projectId: '', assigneeId: '', status: 'Not started', dueDate: '', priority: 'Medium', description: '' });
     }
   }, [initial, isModalOpen]);
 
@@ -49,6 +58,17 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-500">Name</label>
           <input className="input-field" value={form.name} onChange={set('name')} required />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Project</label>
+          <select className="input-field" value={form.projectId} onChange={set('projectId')}>
+            <option value="">Select project (Optional)</option>
+            {projects.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-500">Assignee</label>
@@ -79,9 +99,22 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
           <label className="mb-1 block text-xs font-medium text-gray-500">Description</label>
           <textarea className="input-field" rows="3" value={form.description} onChange={set('description')} />
         </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn-primary">{initial ? 'Save' : 'Create'}</button>
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+          {initial ? (
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg transition"
+            >
+              Delete task
+            </button>
+          ) : (
+            <div />
+          )}
+          <div className="flex items-center gap-2">
+            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn-primary">{initial ? 'Save' : 'Create'}</button>
+          </div>
         </div>
       </form>
     </Modal>
