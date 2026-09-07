@@ -9,8 +9,8 @@ export const seedEmployees = [
 ];
 
 export const seedProjects = [
-  { id: 'p1', name: 'Public launch of iOS app', assigneeId: '1', status: 'In progress', startDate: '2025-04-09', endDate: '2025-04-30', startValue: 50, endValue: 100, progress: 0.5 },
-  { id: 'p2', name: 'Revamp new hire onboarding', assigneeId: '', status: 'Done', startDate: '2025-01-20', endDate: '2025-02-04', startValue: 100, endValue: 100, progress: 1.0 },
+  { id: 'p1', name: 'Public launch of iOS app', assigneeId: '1', status: 'In progress', startDate: '2025-04-09', endDate: '2025-04-30', startValue: 0, endValue: 100, progress: 0.5 },
+  { id: 'p2', name: 'Revamp new hire onboarding', assigneeId: '', status: 'Done', startDate: '2025-01-20', endDate: '2025-02-04', startValue: 0, endValue: 100, progress: 1.0 },
   { id: 'p3', name: 'Quarterly sales planning', assigneeId: '', status: 'Not started', startDate: '2025-03-24', endDate: '2025-03-28', startValue: 0, endValue: 100, progress: 0 }
 ];
 

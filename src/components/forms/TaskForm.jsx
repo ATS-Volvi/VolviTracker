@@ -21,8 +21,10 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
     description: ''
   });
 
+  const isEditing = Boolean(initial && initial.id);
+
   const handleDelete = () => {
-    if (initial && window.confirm(`Delete task "${form.name}"?`)) {
+    if (isEditing && window.confirm(`Delete task "${form.name}"?`)) {
       removeTask(initial.id);
       addToast(`Deleted task "${form.name}"`, 'info');
       onClose();
@@ -82,7 +84,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
       assigneeId: form.assigneeIds[0] || form.assigneeId || ''
     };
 
-    if (initial) {
+    if (isEditing) {
       updateTask(initial.id, payload);
       addToast(`Updated task "${form.name}"`, 'success');
     } else {
@@ -96,7 +98,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
     <Modal
       isOpen={isModalOpen}
       onClose={onClose}
-      title={initial ? 'Edit Task' : 'New Task'}
+      title={isEditing ? 'Edit Task' : 'New Task'}
       maxWidth="max-w-xl"
     >
       <form onSubmit={submit} className="space-y-4">
@@ -209,7 +211,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
         </div>
 
         <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-          {initial ? (
+          {isEditing ? (
             <button
               type="button"
               onClick={handleDelete}
@@ -222,7 +224,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
           )}
           <div className="flex items-center gap-2">
             <button type="button" className="btn-ghost text-xs px-4 py-2" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn-primary text-xs font-bold px-4 py-2">{initial ? 'Save Changes' : 'Create Task'}</button>
+            <button type="submit" className="btn-primary text-xs font-bold px-4 py-2">{isEditing ? 'Save Changes' : 'Create Task'}</button>
           </div>
         </div>
       </form>

@@ -77,6 +77,11 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       let prog = initial.progress || 0;
       if (prog <= 1 && prog > 0) prog = Math.round(prog * 100);
 
+      let initialStatus = initial.status || 'Not started';
+      if (prog === 0) initialStatus = 'Not started';
+      else if (prog === 100) initialStatus = 'Done';
+      else if (initialStatus === 'Not started' && prog > 0) initialStatus = 'In progress';
+
       const existingTasks = getProjectTasks(initial.id) || [];
       // Normalize task assigneeIds
       const normalizedTasks = existingTasks.map(t => {
@@ -98,11 +103,11 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       setForm({
         name: initial.name || '',
         assigneeIds: initialAssigneeIds,
-        status: initial.status || 'Not started',
+        status: initialStatus,
         startDate: start,
         endDate: end,
-        startValue: initial.startValue !== undefined ? initial.startValue : 0,
-        endValue: initial.endValue !== undefined ? initial.endValue : 100,
+        startValue: 0,
+        endValue: 100,
         progress: prog
       });
 
@@ -145,9 +150,9 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   useEffect(() => {
     if (hasTasks) {
       setForm(prev => {
-        let nextStatus = prev.status;
+        let nextStatus = 'In progress';
         if (autoProgress === 100) nextStatus = 'Done';
-        else if (autoProgress > 0 && prev.status === 'Not started') nextStatus = 'In progress';
+        else if (autoProgress === 0) nextStatus = 'Not started';
         return { ...prev, progress: autoProgress, status: nextStatus };
       });
     }
@@ -282,16 +287,21 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
 
   const submit = (e) => {
     e.preventDefault();
-    const effectiveProgress = hasTasks ? autoProgress / 100 : (Number(form.progress) || 0) / 100;
+    const progVal = Number(form.progress) || 0;
+    const effectiveProgress = progVal / 100;
+    let finalStatus = form.status;
+    if (progVal === 0) finalStatus = 'Not started';
+    else if (progVal === 100) finalStatus = 'Done';
+    else if (finalStatus === 'Not started' && progVal > 0) finalStatus = 'In progress';
 
     const payload = {
       ...form,
       assigneeIds: form.assigneeIds,
       assigneeId: form.assigneeIds[0] || '', // legacy compatibility
-      startValue: Number(form.startValue) || 0,
-      endValue: Number(form.endValue) || 0,
+      startValue: 0,
+      endValue: 100,
       progress: effectiveProgress,
-      status: effectiveProgress === 1 && hasTasks ? 'Done' : form.status
+      status: finalStatus
     };
 
     // Ensure each task in projectTasks has both assigneeIds and assigneeId
@@ -339,23 +349,56 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-gray-700">Status</label>
-                <select className="input-field text-sm bg-white" value={form.status} onChange={set('status')}>
+                <select
+                  className="input-field text-sm bg-white"
+                  value={form.status}
+                  onChange={(e) => {
+                    const newStatus = e.target.value;
+                    let nextProg = form.progress;
+                    if (newStatus === 'Not started') {
+                      nextProg = 0;
+                    } else if (newStatus === 'Done') {
+                      nextProg = 100;
+                    } else if (newStatus === 'In progress') {
+                      if (form.progress === 0) nextProg = 25;
+                      else if (form.progress === 100) nextProg = 50;
+                    }
+                    setForm(prev => ({ ...prev, status: newStatus, progress: nextProg }));
+                  }}
+                >
                   {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-gray-700">Calculated Progress</label>
-                <div className="flex items-center gap-2 h-[38px] px-3 bg-gray-50 border border-gray-200 rounded-lg">
-                  <div className="flex-1 bg-gray-200 h-2 rounded-full overflow-hidden">
-                    <div
-                      className="bg-emerald-500 h-full rounded-full transition-all duration-300"
-                      style={{ width: `${hasTasks ? autoProgress : form.progress}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-bold text-emerald-700 min-w-[32px] text-right">
-                    {hasTasks ? autoProgress : form.progress}%
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-gray-700">
+                    Progress
+                    {hasTasks && (
+                      <span className="ml-1 text-[11px] font-normal text-gray-400">
+                        ({completedTasks}/{totalTasks} tasks)
+                      </span>
+                    )}
+                  </label>
+                  <span className="text-xs font-bold text-emerald-600 tabular-nums">
+                    {form.progress}%
                   </span>
+                </div>
+                <div className="flex items-center gap-2 h-[38px] px-3 bg-white border border-gray-200 rounded-lg shadow-xs hover:border-gray-300 transition">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={form.progress}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      let nextStatus = 'In progress';
+                      if (val === 0) nextStatus = 'Not started';
+                      else if (val === 100) nextStatus = 'Done';
+                      setForm(prev => ({ ...prev, progress: val, status: nextStatus }));
+                    }}
+                    className="w-full accent-emerald-500 cursor-pointer"
+                  />
                 </div>
               </div>
             </div>
@@ -382,38 +425,6 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                 />
               </div>
             </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-gray-700">Start Value</label>
-                <input type="number" className="input-field text-sm" value={form.startValue} onChange={set('startValue')} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-gray-700">End Value</label>
-                <input type="number" className="input-field text-sm" value={form.endValue} onChange={set('endValue')} />
-              </div>
-            </div>
-
-            {/* Manual progress slider when no tasks */}
-            {!hasTasks && (
-              <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl">
-                <div className="flex items-center justify-between mb-1 text-xs">
-                  <span className="font-semibold text-amber-800">Manual Progress Slider</span>
-                  <span className="font-bold text-amber-900">{form.progress}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={form.progress}
-                  onChange={set('progress')}
-                  className="w-full accent-amber-500 cursor-pointer"
-                />
-                <p className="text-[10px] text-amber-700 mt-1">
-                  Tip: Add tasks below to automatically drive project progress based on completed items!
-                </p>
-              </div>
-            )}
           </div>
 
           {/* Right Column: Assigned Team Members */}

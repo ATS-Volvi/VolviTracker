@@ -182,8 +182,14 @@ export const ProjectsTable = ({ projects = [] }) => {
   const handleStatusChange = (projectId, newStatus) => {
     const proj = projects.find(p => p.id === projectId);
     const updates = { status: newStatus };
-    if (newStatus === 'Done' && proj && getProgressPercentage(proj) < 100) {
+    if (newStatus === 'Not started') {
+      updates.progress = 0;
+    } else if (newStatus === 'Done') {
       updates.progress = 1;
+    } else if (newStatus === 'In progress') {
+      const curPct = proj ? getProgressPercentage(proj) : 0;
+      if (curPct === 0) updates.progress = 0.25;
+      else if (curPct === 100) updates.progress = 0.5;
     }
     updateProject(projectId, updates);
     setStatusDropdownId(null);
@@ -233,13 +239,11 @@ export const ProjectsTable = ({ projects = [] }) => {
 
   const handleProgressChange = (projectId, pct) => {
     const decimal = pct / 100;
-    const updates = { progress: decimal };
-    if (pct === 100) updates.status = 'Done';
-    else if (pct > 0) {
-      const proj = projects.find(p => p.id === projectId);
-      if (proj && proj.status === 'Not started') updates.status = 'In progress';
-    }
-    updateProject(projectId, updates);
+    let newStatus = 'In progress';
+    if (pct === 0) newStatus = 'Not started';
+    else if (pct === 100) newStatus = 'Done';
+
+    updateProject(projectId, { progress: decimal, status: newStatus });
     addToast(`Progress set to ${pct}%`, 'success');
   };
 
@@ -486,13 +490,13 @@ export const ProjectsTable = ({ projects = [] }) => {
           <table className="w-full text-xs text-left border-collapse table-auto">
             <thead>
               <tr className="border-b border-gray-200 bg-white text-gray-500 select-none">
-                <th className="py-2.5 px-4 font-normal w-[26%] min-w-[200px] border-r border-gray-100">
+                <th className="py-2.5 px-4 font-normal w-[28%] min-w-[200px] border-r border-gray-100">
                   <div className="flex items-center gap-1.5 text-gray-500 font-medium">
                     <span className="text-[11px] font-serif font-bold text-gray-400">Aa</span>
                     <span>Project name</span>
                   </div>
                 </th>
-                <th className="py-2.5 px-4 font-normal w-[18%] min-w-[170px] border-r border-gray-100">
+                <th className="py-2.5 px-4 font-normal w-[20%] min-w-[170px] border-r border-gray-100">
                   <div className="flex items-center gap-1.5 text-gray-500 font-medium">
                     <svg className="w-3.5 h-3.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -503,13 +507,13 @@ export const ProjectsTable = ({ projects = [] }) => {
                     <span className="text-[11px] text-gray-400 font-normal cursor-help" title="Click cell to select multiple assignees">ⓘ</span>
                   </div>
                 </th>
-                <th className="py-2.5 px-4 font-normal w-[12%] min-w-[120px] border-r border-gray-100">
+                <th className="py-2.5 px-4 font-normal w-[14%] min-w-[120px] border-r border-gray-100">
                   <div className="flex items-center gap-1.5 text-gray-500 font-medium">
                     <span className="text-gray-400 text-xs">✳️</span>
                     <span>Status</span>
                   </div>
                 </th>
-                <th className="py-2.5 px-4 font-normal w-[10%] min-w-[100px] border-r border-gray-100">
+                <th className="py-2.5 px-4 font-normal w-[11%] min-w-[100px] border-r border-gray-100">
                   <div className="flex items-center gap-1.5 text-gray-500 font-medium">
                     <svg className="w-3.5 h-3.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
@@ -518,25 +522,13 @@ export const ProjectsTable = ({ projects = [] }) => {
                     <span>Start date</span>
                   </div>
                 </th>
-                <th className="py-2.5 px-4 font-normal w-[10%] min-w-[100px] border-r border-gray-100">
+                <th className="py-2.5 px-4 font-normal w-[11%] min-w-[100px] border-r border-gray-100">
                   <div className="flex items-center gap-1.5 text-gray-500 font-medium">
                     <svg className="w-3.5 h-3.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                       <line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line>
                     </svg>
                     <span>End date</span>
-                  </div>
-                </th>
-                <th className="py-2.5 px-4 font-normal w-[6%] min-w-[70px] border-r border-gray-100 text-right">
-                  <div className="flex items-center justify-end gap-1 text-gray-500 font-medium">
-                    <span className="text-gray-400 font-bold text-xs">#</span>
-                    <span>Start</span>
-                  </div>
-                </th>
-                <th className="py-2.5 px-4 font-normal w-[6%] min-w-[70px] border-r border-gray-100 text-right">
-                  <div className="flex items-center justify-end gap-1 text-gray-500 font-medium">
-                    <span className="text-gray-400 font-bold text-xs">#</span>
-                    <span>End</span>
                   </div>
                 </th>
                 <th className="py-2.5 px-4 font-normal w-[16%] min-w-[150px] border-r border-gray-100">
@@ -809,26 +801,6 @@ export const ProjectsTable = ({ projects = [] }) => {
                       />
                     </td>
 
-                    {/* Start Value */}
-                    <td className="py-2.5 px-4 text-right text-gray-700 tabular-nums border-r border-gray-100">
-                      <input
-                        type="number"
-                        value={p.startValue !== undefined ? p.startValue : 0}
-                        onChange={(e) => updateProject(p.id, { startValue: Number(e.target.value) })}
-                        className="w-full text-right bg-transparent text-gray-700 text-xs outline-none hover:bg-gray-100/80 px-1 py-0.5 rounded"
-                      />
-                    </td>
-
-                    {/* End Value */}
-                    <td className="py-2.5 px-4 text-right text-gray-700 tabular-nums border-r border-gray-100">
-                      <input
-                        type="number"
-                        value={p.endValue !== undefined ? p.endValue : 100}
-                        onChange={(e) => updateProject(p.id, { endValue: Number(e.target.value) })}
-                        className="w-full text-right bg-transparent text-gray-700 text-xs outline-none hover:bg-gray-100/80 px-1 py-0.5 rounded"
-                      />
-                    </td>
-
                     {/* Progress Column */}
                     <td className="py-2 px-4 border-r border-gray-100 relative">
                       <div
@@ -921,8 +893,6 @@ export const ProjectsTable = ({ projects = [] }) => {
                     <span>Not started</span>
                   </span>
                 </td>
-                <td className="py-2 px-4 border-r border-gray-100"></td>
-                <td className="py-2 px-4 border-r border-gray-100"></td>
                 <td className="py-2 px-4 border-r border-gray-100"></td>
                 <td className="py-2 px-4 border-r border-gray-100"></td>
                 <td className="py-2 px-4 border-r border-gray-100">

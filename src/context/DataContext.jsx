@@ -39,6 +39,20 @@ export const DataProvider = ({ children }) => {
               needsResave = true;
               mod = { ...mod, id: generateId() };
             }
+            if (key === 'projects') {
+              if (mod.startValue !== 0 || mod.endValue !== 100) {
+                needsResave = true;
+                mod = { ...mod, startValue: 0, endValue: 100 };
+              }
+              const pProg = Number(mod.progress) || 0;
+              if (pProg === 0 && mod.status !== 'Not started') {
+                needsResave = true;
+                mod = { ...mod, status: 'Not started', progress: 0 };
+              } else if (pProg === 1 && mod.status !== 'Done') {
+                needsResave = true;
+                mod = { ...mod, status: 'Done', progress: 1 };
+              }
+            }
             if (key === 'employees') {
               if (!mod.passwordHash) {
                 needsResave = true;
@@ -77,12 +91,13 @@ export const DataProvider = ({ children }) => {
         if (pTasks.length > 0) {
           const completed = pTasks.filter(t => t.status === 'Done').length;
           const calculatedProgress = completed / pTasks.length;
-          if (p.progress !== calculatedProgress) {
+          const expectedStatus = calculatedProgress === 1 ? 'Done' : (calculatedProgress === 0 ? 'Not started' : 'In progress');
+          if (p.progress !== calculatedProgress || p.status !== expectedStatus) {
             needsProjectResave = true;
             return {
               ...p,
               progress: calculatedProgress,
-              status: calculatedProgress === 1 ? 'Done' : (calculatedProgress > 0 && p.status === 'Not started' ? 'In progress' : p.status)
+              status: expectedStatus
             };
           }
         }
@@ -101,6 +116,13 @@ export const DataProvider = ({ children }) => {
   const save = useCallback((key, value) => {
     localStorage.setItem(key, JSON.stringify(value));
     setData(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const saveMultiple = useCallback((updates) => {
+    Object.entries(updates).forEach(([key, val]) => {
+      localStorage.setItem(key, JSON.stringify(val));
+    });
+    setData(prev => ({ ...prev, ...updates }));
   }, []);
 
   // Employee CRUD
@@ -127,13 +149,11 @@ export const DataProvider = ({ children }) => {
 
     const completed = projectTasks.filter(t => t.status === 'Done').length;
     const progress = completed / projectTasks.length;
-    const status = progress === 1 ? 'Done' : (progress > 0 ? 'In progress' : undefined);
+    const status = progress === 1 ? 'Done' : (progress === 0 ? 'Not started' : 'In progress');
 
     return currentProjects.map(p => {
       if (p.id === projectId) {
-        const updates = { progress };
-        if (status) updates.status = status;
-        return { ...p, ...updates };
+        return { ...p, progress, status };
       }
       return p;
     });
@@ -141,13 +161,37 @@ export const DataProvider = ({ children }) => {
 
   // Project CRUD
   const addProject = (proj) => {
-    const item = { ...proj, id: proj.id || generateId() };
+    let finalStatus = proj.status || 'Not started';
+    let finalProg = proj.progress !== undefined ? proj.progress : 0;
+    if (finalProg === 0) finalStatus = 'Not started';
+    else if (finalProg === 1) finalStatus = 'Done';
+    else if (finalStatus === 'Not started' && finalProg > 0) finalStatus = 'In progress';
+
+    const item = { ...proj, id: proj.id || generateId(), progress: finalProg, status: finalStatus, startValue: 0, endValue: 100 };
     save('projects', [...data.projects, item]);
     return item;
   };
   const updateProject = (id, updates) => {
     if (!id) return;
-    const updated = data.projects.map(p => p.id === id ? { ...p, ...updates } : p);
+    const updated = data.projects.map(p => {
+      if (p.id === id) {
+        const merged = { ...p, ...updates };
+        if (updates.progress !== undefined) {
+          const pVal = Number(updates.progress);
+          if (pVal === 0) merged.status = 'Not started';
+          else if (pVal === 1) merged.status = 'Done';
+          else if (merged.status === 'Not started' && pVal > 0) merged.status = 'In progress';
+        } else if (updates.status !== undefined) {
+          if (updates.status === 'Not started') merged.progress = 0;
+          else if (updates.status === 'Done') merged.progress = 1;
+          else if (updates.status === 'In progress' && (merged.progress === 0 || merged.progress === 1)) {
+            merged.progress = 0.25;
+          }
+        }
+        return merged;
+      }
+      return p;
+    });
     save('projects', updated);
   };
   const removeProject = (id) => {
@@ -164,17 +208,19 @@ export const DataProvider = ({ children }) => {
   const addProjectWithTasks = (proj, projectTasks = []) => {
     const projectId = proj.id || generateId();
     const completedCount = projectTasks.filter(t => t.status === 'Done').length;
-    const computedProgress = projectTasks.length > 0
-      ? (completedCount / projectTasks.length)
-      : (proj.progress !== undefined ? proj.progress : 0);
+    const computedProgress = proj.progress !== undefined
+      ? proj.progress
+      : (projectTasks.length > 0 ? (completedCount / projectTasks.length) : 0);
 
     const projectItem = {
       ...proj,
       id: projectId,
       progress: computedProgress,
-      status: computedProgress === 1 && projectTasks.length > 0
-        ? 'Done'
-        : (computedProgress > 0 && proj.status === 'Not started' ? 'In progress' : (proj.status || 'Not started'))
+      status: computedProgress === 0
+        ? 'Not started'
+        : (computedProgress === 1 ? 'Done' : (proj.status === 'Not started' ? 'In progress' : (proj.status || 'In progress'))),
+      startValue: 0,
+      endValue: 100
     };
 
     const newTasks = [
@@ -195,19 +241,22 @@ export const DataProvider = ({ children }) => {
   const updateProjectWithTasks = (projectId, projUpdates, projectTasks = []) => {
     if (!projectId) return;
     const completedCount = projectTasks.filter(t => t.status === 'Done').length;
-    const computedProgress = projectTasks.length > 0
-      ? (completedCount / projectTasks.length)
-      : (projUpdates.progress !== undefined ? projUpdates.progress : 0);
+    const computedProgress = projUpdates.progress !== undefined
+      ? projUpdates.progress
+      : (projectTasks.length > 0 ? (completedCount / projectTasks.length) : 0);
 
     const updatedProjects = data.projects.map(p => {
       if (p.id === projectId) {
+        const finalStatus = computedProgress === 0
+          ? 'Not started'
+          : (computedProgress === 1 ? 'Done' : (projUpdates.status === 'Not started' ? 'In progress' : (projUpdates.status || p.status || 'In progress')));
         return {
           ...p,
           ...projUpdates,
           progress: computedProgress,
-          status: computedProgress === 1 && projectTasks.length > 0
-            ? 'Done'
-            : (computedProgress > 0 && (projUpdates.status || p.status) === 'Not started' ? 'In progress' : (projUpdates.status || p.status))
+          status: finalStatus,
+          startValue: 0,
+          endValue: 100
         };
       }
       return p;
@@ -228,12 +277,12 @@ export const DataProvider = ({ children }) => {
   const addTask = (task) => {
     const item = { ...task, id: task.id || generateId() };
     const nextTasks = [...data.tasks, item];
-    save('tasks', nextTasks);
 
+    let updatedProjects = data.projects;
     if (item.projectId) {
-      const updatedProjects = syncProjectProgress(item.projectId, nextTasks, data.projects);
-      save('projects', updatedProjects);
+      updatedProjects = syncProjectProgress(item.projectId, nextTasks, updatedProjects);
     }
+    saveMultiple({ tasks: nextTasks, projects: updatedProjects });
     return item;
   };
 
@@ -241,25 +290,32 @@ export const DataProvider = ({ children }) => {
     if (!id) return;
     const oldTask = data.tasks.find(t => t.id === id);
     const nextTasks = data.tasks.map(t => t.id === id ? { ...t, ...updates } : t);
-    save('tasks', nextTasks);
 
     const targetProjectId = updates.projectId || oldTask?.projectId;
+    const prevProjectId = (oldTask?.projectId && updates.projectId && oldTask.projectId !== updates.projectId)
+      ? oldTask.projectId
+      : null;
+
+    let updatedProjects = data.projects;
     if (targetProjectId) {
-      const updatedProjects = syncProjectProgress(targetProjectId, nextTasks, data.projects);
-      save('projects', updatedProjects);
+      updatedProjects = syncProjectProgress(targetProjectId, nextTasks, updatedProjects);
     }
+    if (prevProjectId) {
+      updatedProjects = syncProjectProgress(prevProjectId, nextTasks, updatedProjects);
+    }
+    saveMultiple({ tasks: nextTasks, projects: updatedProjects });
   };
 
   const removeTask = (id) => {
     if (!id) return;
     const targetTask = data.tasks.find(t => t.id === id);
     const nextTasks = data.tasks.filter(t => t.id !== id);
-    save('tasks', nextTasks);
 
+    let updatedProjects = data.projects;
     if (targetTask?.projectId) {
-      const updatedProjects = syncProjectProgress(targetTask.projectId, nextTasks, data.projects);
-      save('projects', updatedProjects);
+      updatedProjects = syncProjectProgress(targetTask.projectId, nextTasks, updatedProjects);
     }
+    saveMultiple({ tasks: nextTasks, projects: updatedProjects });
   };
 
   // Meeting CRUD

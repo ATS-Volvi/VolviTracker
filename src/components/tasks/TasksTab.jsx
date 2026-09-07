@@ -25,7 +25,7 @@ export const TasksTab = ({ tasks: tasksProp, heading = 'Tasks Tracker' }) => {
   const getProject = (pId) => projects.find(p => p.id === pId);
 
   // Available project tabs
-  const relevantProjects = projects.filter(p => tasks.some(t => t.projectId === p.id) || !tasksProp);
+  const relevantProjects = projects;
   const unassignedCount = tasks.filter(t => !t.projectId || !projects.some(p => p.id === t.projectId)).length;
 
   // Tasks segregated by active project tab
@@ -116,14 +116,22 @@ export const TasksTab = ({ tasks: tasksProp, heading = 'Tasks Tracker' }) => {
         <div>
           <h2 className="text-lg font-bold text-gray-900">{heading}</h2>
           {activeProjectObj && (
-            <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-2">
-              <span>Project: <strong className="text-gray-800 font-semibold">{activeProjectObj.name}</strong></span>
-              {activeProjectObj.status && (
-                <span className="badge bg-slate-100 text-slate-700 text-[10px] font-medium">
-                  {activeProjectObj.status}
-                </span>
-              )}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-gray-500">
+                Project: <strong className="text-gray-800 font-semibold">{activeProjectObj.name}</strong>
+              </span>
+              <span className={`badge text-[10px] font-semibold ${
+                activeProjectObj.status === 'Done' ? 'bg-emerald-100 text-emerald-800' :
+                activeProjectObj.status === 'In progress' ? 'bg-blue-100 text-blue-800' :
+                'bg-gray-100 text-gray-700'
+              }`}>
+                {activeProjectObj.status || 'Not started'}
+              </span>
+              <span className="badge bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                {Math.round((activeProjectObj.progress <= 1 && activeProjectObj.progress > 0 ? activeProjectObj.progress * 100 : (activeProjectObj.progress || 0)))}% Progress
+                {currentProjectTasks.length > 0 && ` (${completedCount}/${currentProjectTasks.length} tasks)`}
+              </span>
+            </div>
           )}
         </div>
         <button
@@ -157,6 +165,7 @@ export const TasksTab = ({ tasks: tasksProp, heading = 'Tasks Tracker' }) => {
         {relevantProjects.map(p => {
           const count = tasks.filter(t => t.projectId === p.id).length;
           const isActive = activeProjectTab === p.id;
+          const pPct = Math.round((p.progress <= 1 && p.progress > 0 ? p.progress * 100 : (p.progress || 0)));
           return (
             <button
               key={p.id}
@@ -173,6 +182,11 @@ export const TasksTab = ({ tasks: tasksProp, heading = 'Tasks Tracker' }) => {
               }`}>
                 {count}
               </span>
+              {count > 0 && (
+                <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50/80 px-1.5 py-0.5 rounded border border-emerald-100">
+                  {pPct}%
+                </span>
+              )}
             </button>
           );
         })}

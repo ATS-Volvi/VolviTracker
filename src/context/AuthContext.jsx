@@ -238,8 +238,14 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     if (user && employees && employees.length > 0) {
       const activeEmp = employees.find(e => e.id === user.id || e.email?.toLowerCase() === user.email?.toLowerCase());
-      if (activeEmp && activeEmp.role && activeEmp.role !== user.role) {
-        setUser(prev => ({ ...prev, role: activeEmp.role }));
+      if (activeEmp) {
+        if ((activeEmp.role && activeEmp.role !== user.role) || (activeEmp.avatar && activeEmp.avatar !== user.avatar)) {
+          setUser(prev => ({
+            ...prev,
+            role: activeEmp.role || prev.role,
+            avatar: activeEmp.avatar || prev.avatar
+          }));
+        }
       }
     }
   }, [employees, user?.id, user?.email]);

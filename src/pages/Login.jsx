@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -61,6 +61,79 @@ const Login = () => {
   const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState(PRESET_AVATARS[0].url);
+  const [customAvatar, setCustomAvatar] = useState('');
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [avatarUrlInput, setAvatarUrlInput] = useState('');
+  const fileInputRef = useRef(null);
+
+  const handleCustomImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      addToast('Please select an image file (PNG, JPG, WEBP, etc.)', 'error');
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      addToast('Image is too large. Please select an image under 15MB.', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        // Resize to 256x256 max using canvas to keep localStorage light & fast
+        const canvas = document.createElement('canvas');
+        const MAX_SIZE = 256;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = Math.round((width * MAX_SIZE) / height);
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+        setCustomAvatar(dataUrl);
+        setSelectedAvatar(dataUrl);
+        addToast('Custom image loaded successfully!', 'success', 2000);
+      };
+      img.onerror = () => {
+        addToast('Could not load image file.', 'error');
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleApplyUrlAvatar = (e) => {
+    if (e) e.preventDefault();
+    const cleanUrl = avatarUrlInput.trim();
+    if (!cleanUrl) return;
+    if (!/^https?:\/\//i.test(cleanUrl)) {
+      addToast('Please enter a valid URL starting with http:// or https://', 'error');
+      return;
+    }
+    setCustomAvatar(cleanUrl);
+    setSelectedAvatar(cleanUrl);
+    setShowUrlInput(false);
+    setAvatarUrlInput('');
+    addToast('Custom image URL applied!', 'success', 2000);
+  };
 
   // Status & Modals
   const [loading, setLoading] = useState(false);
@@ -414,23 +487,107 @@ const Login = () => {
 
             {/* Avatar picker */}
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                Select Profile Avatar
-              </label>
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-gray-700">
+                  Select Profile Avatar
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowUrlInput(!showUrlInput)}
+                  className="text-[11px] text-blue-600 hover:text-blue-700 font-medium hover:underline"
+                >
+                  {showUrlInput ? 'Cancel URL' : 'Or image URL'}
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                {/* Preset Avatars */}
                 {PRESET_AVATARS.map((av, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => setSelectedAvatar(av.url)}
                     className={`relative rounded-full p-0.5 transition ${
-                      selectedAvatar === av.url ? 'ring-2 ring-blue-600 ring-offset-2' : 'opacity-70 hover:opacity-100'
+                      selectedAvatar === av.url ? 'ring-2 ring-blue-600 ring-offset-2 scale-105' : 'opacity-70 hover:opacity-100'
                     }`}
+                    title={av.label}
                   >
-                    <img src={av.url} alt={av.label} className="w-8 h-8 rounded-full object-cover" />
+                    <img src={av.url} alt={av.label} className="w-8 h-8 rounded-full object-cover shadow-xs" />
                   </button>
                 ))}
+
+                {/* Custom Uploaded Avatar */}
+                {customAvatar && (
+                  <div className="relative group">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAvatar(customAvatar)}
+                      className={`relative rounded-full p-0.5 transition ${
+                        selectedAvatar === customAvatar ? 'ring-2 ring-blue-600 ring-offset-2 scale-105' : 'opacity-70 hover:opacity-100'
+                      }`}
+                      title="Custom uploaded avatar"
+                    >
+                      <img src={customAvatar} alt="Custom" className="w-8 h-8 rounded-full object-cover shadow-xs" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCustomAvatar('');
+                        if (selectedAvatar === customAvatar) {
+                          setSelectedAvatar(PRESET_AVATARS[0].url);
+                        }
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      className="absolute -top-1 -right-1 bg-rose-500 hover:bg-rose-600 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center text-[9px] shadow transition"
+                      title="Remove custom avatar"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
+                {/* Upload Custom Image Button */}
+                <label
+                  className={`w-8 h-8 rounded-full border-2 border-dashed flex items-center justify-center cursor-pointer transition shadow-2xs group ${
+                    selectedAvatar === customAvatar && customAvatar
+                      ? 'border-blue-500 bg-blue-50/50 text-blue-600 ring-2 ring-blue-600 ring-offset-2'
+                      : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50/40 text-gray-400 hover:text-blue-600'
+                  }`}
+                  title="Upload custom image from file"
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleCustomImageUpload}
+                  />
+                  <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                  </svg>
+                </label>
               </div>
+
+              {/* Optional URL input drawer */}
+              {showUrlInput && (
+                <div className="mt-2.5 flex items-center gap-1.5 animate-slide-up">
+                  <input
+                    type="url"
+                    placeholder="Paste image URL (https://...)"
+                    value={avatarUrlInput}
+                    onChange={(e) => setAvatarUrlInput(e.target.value)}
+                    className="input-field text-xs py-1.5"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplyUrlAvatar}
+                    className="btn-primary text-xs py-1.5 px-3 shrink-0"
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
             </div>
 
             <button
