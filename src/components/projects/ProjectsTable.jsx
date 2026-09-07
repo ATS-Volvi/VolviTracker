@@ -64,7 +64,6 @@ export const ProjectsTable = ({ projects = [] }) => {
   const [sortOrder, setSortOrder] = useState('asc');
   const [statusFilter, setStatusFilter] = useState(null);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
-  const [showNewMenu, setShowNewMenu] = useState(false);
 
   // Inline Interactive States
   const [activeProgressPopoverId, setActiveProgressPopoverId] = useState(null);
@@ -423,44 +422,14 @@ export const ProjectsTable = ({ projects = [] }) => {
               </svg>
             </button>
 
-            {/* New Split Button */}
-            <div className="relative ml-1">
-              <div className="inline-flex rounded-lg shadow-sm overflow-hidden">
-                <button
-                  onClick={() => { setEditingProject(null); setModalOpen(true); }}
-                  className="bg-[#0070F3] hover:bg-blue-600 text-white font-semibold text-xs px-3.5 py-1.5 flex items-center gap-1.5 transition active:scale-95 shadow-sm"
-                >
-                  <span>+</span> New
-                </button>
-                <button
-                  onClick={() => setShowNewMenu(!showNewMenu)}
-                  className="bg-[#0070F3] hover:bg-blue-600 text-white text-xs px-1.5 py-1.5 border-l border-blue-400 transition"
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                  </svg>
-                </button>
-              </div>
-              {showNewMenu && (
-                <div className="absolute right-0 mt-1.5 w-48 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 z-30 text-xs animate-slide-up">
-                  <button
-                    onClick={() => { setEditingProject(null); setModalOpen(true); setShowNewMenu(false); }}
-                    className="w-full text-left px-3.5 py-2 hover:bg-gray-50 text-gray-800 font-medium flex items-center gap-2"
-                  >
-                    <span>📝</span> New Project Modal
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleInlineSubmit();
-                      setShowNewMenu(false);
-                    }}
-                    className="w-full text-left px-3.5 py-2 hover:bg-gray-50 text-gray-800 flex items-center gap-2"
-                  >
-                    <span>⚡</span> Quick Add Default Project
-                  </button>
-                </div>
-              )}
-            </div>
+            {/* New Project Button */}
+            <button
+              onClick={() => { setEditingProject(null); setModalOpen(true); }}
+              className="bg-[#0070F3] hover:bg-blue-600 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-1.5 transition active:scale-95 shadow-sm ml-1.5"
+            >
+              <span className="text-base font-bold leading-none">+</span>
+              <span>New</span>
+            </button>
           </div>
         </div>
 
