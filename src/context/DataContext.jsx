@@ -440,6 +440,13 @@ export const DataProvider = ({ children }) => {
     apiUpdateEmployee(id, updates).catch(e => console.error('[Neon Error] updateEmployee:', e));
   };
 
+  const removeEmployee = (id) => {
+    if (!id) return;
+    const nextEmployees = data.employees.filter(e => e.id !== id);
+    setData(prev => ({ ...prev, employees: nextEmployees }));
+    saveLocal('employees', nextEmployees);
+  };
+
   const updateEmployeeCredentials = (email, newPasswordHash) => {
     if (!email) return;
     const updated = data.employees.map(e =>
