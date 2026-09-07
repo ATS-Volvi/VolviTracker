@@ -65,11 +65,42 @@ export const DataProvider = ({ children }) => {
     try {
       const cloudData = await fetchInitialData();
       if (cloudData && typeof cloudData === 'object') {
+        let remoteProjects = Array.isArray(cloudData.projects) ? [...cloudData.projects] : [];
+        let remoteTasks = Array.isArray(cloudData.tasks) ? [...cloudData.tasks] : [];
+        let remoteMeetings = Array.isArray(cloudData.meetings) ? [...cloudData.meetings] : [];
+        let remoteEmployees = Array.isArray(cloudData.employees) ? [...cloudData.employees] : [];
+
+        // Automatic Local-to-Cloud Sync:
+        // If the device has custom user projects (e.g. "CRM for FACE co", "ATS")
+        // that are not yet in Neon DB, push them to Neon DB so all devices share them!
+        if (isInitial) {
+          const localProjects = dataRef.current.projects || [];
+          const localTasks = dataRef.current.tasks || [];
+
+          for (const lp of localProjects) {
+            const exists = remoteProjects.some(rp => rp.id === lp.id || rp.name?.toLowerCase().trim() === lp.name?.toLowerCase().trim());
+            const isDemo = ['Public launch of iOS app', 'Revamp new hire onboarding', 'Quarterly sales planning'].includes(lp.name);
+            if (!exists && !isDemo && lp.name) {
+              console.log('[Cloud Sync] Uploading active user project to Neon DB:', lp.name);
+              const relatedTasks = localTasks.filter(t => t.projectId === lp.id);
+              try {
+                const created = await apiCreateProject(lp, relatedTasks);
+                if (created) {
+                  remoteProjects.push(created);
+                  remoteTasks.push(...relatedTasks);
+                }
+              } catch (e) {
+                console.error('[Cloud Sync] Failed to upload local project:', e);
+              }
+            }
+          }
+        }
+
         const nextData = {
-          employees: Array.isArray(cloudData.employees) ? cloudData.employees : (seedData.employees || []),
-          projects: Array.isArray(cloudData.projects) ? cloudData.projects : (seedData.projects || []),
-          tasks: Array.isArray(cloudData.tasks) ? cloudData.tasks : (seedData.tasks || []),
-          meetings: Array.isArray(cloudData.meetings) ? cloudData.meetings : (seedData.meetings || [])
+          employees: remoteEmployees.length > 0 ? remoteEmployees : (seedData.employees || []),
+          projects: remoteProjects,
+          tasks: remoteTasks,
+          meetings: remoteMeetings.length > 0 ? remoteMeetings : (seedData.meetings || [])
         };
 
         // Standardize projects to 0-100 & progress 0 = Not started

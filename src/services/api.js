@@ -1,11 +1,26 @@
 // Client-side API Service for Cloud Sync with Neon PostgreSQL
+import {
+  directGetBootstrapData,
+  directCreateProject,
+  directUpdateProject,
+  directDeleteProject,
+  directCreateTask,
+  directUpdateTask,
+  directDeleteTask,
+  directCreateMeeting,
+  directUpdateMeeting,
+  directDeleteMeeting,
+  directCreateEmployee,
+  directUpdateEmployee,
+  directUpdatePassword
+} from './neonDirect';
 
 const API_BASE = '/api';
 
 /**
  * Determines whether cloud database sync should be enabled.
  * - Localhost / local development: DISABLED (local data stays strictly in browser localStorage).
- * - Deployed on Vercel or production: ENABLED (connects to Neon PostgreSQL database).
+ * - Deployed on Render/Vercel or production: ENABLED (connects to Neon PostgreSQL database).
  * - Can be manually overridden locally by setting VITE_ENABLE_LOCAL_DB=true in .env if needed.
  */
 export function isCloudSyncEnabled() {
@@ -22,7 +37,7 @@ export function isCloudSyncEnabled() {
     return false;
   }
 
-  // Active on Vercel deployment (e.g. *.vercel.app or custom domain)
+  // Active on any deployed domain (e.g. volvitracker.onrender.com, *.vercel.app, custom domains)
   return true;
 }
 
@@ -40,106 +55,166 @@ async function request(endpoint, options = {}) {
     }
   };
 
-  try {
-    const res = await fetch(url, config);
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.error || `Request failed with status ${res.status}`);
-    }
-    return await res.json();
-  } catch (err) {
-    console.warn(`[Cloud Sync] API request to ${url} failed:`, err.message);
-    throw err;
+  const res = await fetch(url, config);
+  const contentType = res.headers.get('content-type') || '';
+  if (!res.ok || !contentType.includes('application/json')) {
+    throw new Error(`Endpoint ${endpoint} returned status ${res.status} (${contentType})`);
   }
+  return await res.json();
 }
 
 // 1. Data Bootstrap
 export async function fetchInitialData() {
   if (!isCloudSyncEnabled()) return null;
-  return request('/data');
+  try {
+    return await request('/data');
+  } catch (err) {
+    // Seamless fallback to direct Neon PostgreSQL query (e.g. on Render Static Site)
+    return await directGetBootstrapData();
+  }
 }
 
 // 2. Projects
 export async function apiCreateProject(project, tasks = []) {
-  return request('/projects', {
-    method: 'POST',
-    body: JSON.stringify({ project, tasks })
-  });
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request('/projects', {
+      method: 'POST',
+      body: JSON.stringify({ project, tasks })
+    });
+  } catch {
+    return await directCreateProject(project, tasks);
+  }
 }
 
 export async function apiUpdateProject(id, updates) {
-  return request(`/projects/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    body: JSON.stringify(updates)
-  });
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request(`/projects/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
+  } catch {
+    return await directUpdateProject(id, updates);
+  }
 }
 
 export async function apiDeleteProject(id) {
-  return request(`/projects/${encodeURIComponent(id)}`, {
-    method: 'DELETE'
-  });
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request(`/projects/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+  } catch {
+    return await directDeleteProject(id);
+  }
 }
 
 // 3. Tasks
 export async function apiCreateTask(task) {
-  return request('/tasks', {
-    method: 'POST',
-    body: JSON.stringify(task)
-  });
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request('/tasks', {
+      method: 'POST',
+      body: JSON.stringify(task)
+    });
+  } catch {
+    return await directCreateTask(task);
+  }
 }
 
 export async function apiUpdateTask(id, updates) {
-  return request(`/tasks/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    body: JSON.stringify(updates)
-  });
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request(`/tasks/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
+  } catch {
+    return await directUpdateTask(id, updates);
+  }
 }
 
 export async function apiDeleteTask(id) {
-  return request(`/tasks/${encodeURIComponent(id)}`, {
-    method: 'DELETE'
-  });
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request(`/tasks/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+  } catch {
+    return await directDeleteTask(id);
+  }
 }
 
 // 4. Meetings
 export async function apiCreateMeeting(meeting) {
-  return request('/meetings', {
-    method: 'POST',
-    body: JSON.stringify(meeting)
-  });
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request('/meetings', {
+      method: 'POST',
+      body: JSON.stringify(meeting)
+    });
+  } catch {
+    return await directCreateMeeting(meeting);
+  }
 }
 
 export async function apiUpdateMeeting(id, updates) {
-  return request(`/meetings/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    body: JSON.stringify(updates)
-  });
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request(`/meetings/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
+  } catch {
+    return await directUpdateMeeting(id, updates);
+  }
 }
 
 export async function apiDeleteMeeting(id) {
-  return request(`/meetings/${encodeURIComponent(id)}`, {
-    method: 'DELETE'
-  });
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request(`/meetings/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+  } catch {
+    return await directDeleteMeeting(id);
+  }
 }
 
 // 5. Employees & Auth
 export async function apiCreateEmployee(employee) {
-  return request('/employees', {
-    method: 'POST',
-    body: JSON.stringify(employee)
-  });
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request('/employees', {
+      method: 'POST',
+      body: JSON.stringify(employee)
+    });
+  } catch {
+    return await directCreateEmployee(employee);
+  }
 }
 
 export async function apiUpdateEmployee(id, updates) {
-  return request(`/employees/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    body: JSON.stringify(updates)
-  });
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request(`/employees/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
+  } catch {
+    return await directUpdateEmployee(id, updates);
+  }
 }
 
 export async function apiUpdatePassword(email, passwordHash) {
-  return request('/employees/password', {
-    method: 'POST',
-    body: JSON.stringify({ email, passwordHash })
-  });
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request('/employees/password', {
+      method: 'POST',
+      body: JSON.stringify({ email, passwordHash })
+    });
+  } catch {
+    return await directUpdatePassword(email, passwordHash);
+  }
 }
