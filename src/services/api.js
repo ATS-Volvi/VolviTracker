@@ -2,7 +2,35 @@
 
 const API_BASE = '/api';
 
+/**
+ * Determines whether cloud database sync should be enabled.
+ * - Localhost / local development: DISABLED (local data stays strictly in browser localStorage).
+ * - Deployed on Vercel or production: ENABLED (connects to Neon PostgreSQL database).
+ * - Can be manually overridden locally by setting VITE_ENABLE_LOCAL_DB=true in .env if needed.
+ */
+export function isCloudSyncEnabled() {
+  if (typeof window === 'undefined') return false;
+
+  // Manual local opt-in if explicitly requested
+  if (import.meta.env.VITE_ENABLE_LOCAL_DB === 'true') {
+    return true;
+  }
+
+  const hostname = window.location.hostname;
+  // Strictly disable cloud database calls when running locally
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0' || hostname === '') {
+    return false;
+  }
+
+  // Active on Vercel deployment (e.g. *.vercel.app or custom domain)
+  return true;
+}
+
 async function request(endpoint, options = {}) {
+  if (!isCloudSyncEnabled()) {
+    return null;
+  }
+
   const url = `${API_BASE}${endpoint}`;
   const config = {
     ...options,
@@ -27,6 +55,7 @@ async function request(endpoint, options = {}) {
 
 // 1. Data Bootstrap
 export async function fetchInitialData() {
+  if (!isCloudSyncEnabled()) return null;
   return request('/data');
 }
 

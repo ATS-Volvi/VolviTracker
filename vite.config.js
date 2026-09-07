@@ -1,13 +1,17 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { apiHandler } from './server/api.js'
+
+// By default in local development, the local dev server is completely disconnected from Neon DB.
+// To explicitly test with Neon DB locally, start with VITE_ENABLE_LOCAL_DB=true.
+const enableLocalDb = process.env.VITE_ENABLE_LOCAL_DB === 'true';
 
 export default defineConfig({
   plugins: [
     react(),
-    {
+    ...(enableLocalDb ? [{
       name: 'neon-api-middleware',
-      configureServer(server) {
+      async configureServer(server) {
+        const { apiHandler } = await import('./server/api.js');
         server.middlewares.use((req, res, next) => {
           if (req.url && req.url.startsWith('/api')) {
             return apiHandler(req, res, next);
@@ -15,7 +19,7 @@ export default defineConfig({
           next();
         });
       }
-    }
+    }] : [])
   ],
   server: { port: 5175, open: true, host: 'localhost' },
   root: '.',

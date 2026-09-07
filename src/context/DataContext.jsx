@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useContext, useCallback, use
 import { seedData } from './seed';
 import { DEFAULT_PASSWORD_HASH } from '../utils/crypto';
 import {
+  isCloudSyncEnabled,
   fetchInitialData,
   apiCreateProject,
   apiUpdateProject,
@@ -54,8 +55,13 @@ export const DataProvider = ({ children }) => {
     });
   }, [saveLocal]);
 
-  // Sync data from remote Neon PostgreSQL database
+  // Sync data from remote Neon PostgreSQL database (only active on Vercel deployment)
   const refreshFromCloud = useCallback(async (isInitial = false) => {
+    if (!isCloudSyncEnabled()) {
+      setIsCloudSynced(false);
+      return;
+    }
+
     try {
       const cloudData = await fetchInitialData();
       if (cloudData && typeof cloudData === 'object') {
@@ -95,7 +101,7 @@ export const DataProvider = ({ children }) => {
     }
   }, [saveLocalMultiple]);
 
-  // Initial load: Load local cache immediately, then hydrate from Neon PostgreSQL
+  // Initial load: Load local cache immediately, then hydrate from Neon PostgreSQL if on Vercel
   useEffect(() => {
     const loaded = {};
     ['employees', 'projects', 'tasks', 'meetings'].forEach(key => {
@@ -123,26 +129,30 @@ export const DataProvider = ({ children }) => {
       meetings: Array.isArray(loaded.meetings) ? loaded.meetings : seedData.meetings
     });
 
-    // Hydrate from Neon database
-    refreshFromCloud(true);
+    // In local dev: stay strictly on local storage. In production on Vercel: hydrate & poll Neon DB.
+    if (isCloudSyncEnabled()) {
+      refreshFromCloud(true);
 
-    // Setup periodic polling & window focus sync so all devices stay in sync
-    const interval = setInterval(() => {
-      refreshFromCloud(false);
-    }, 6000);
-
-    const onFocus = () => refreshFromCloud(false);
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
+      const interval = setInterval(() => {
         refreshFromCloud(false);
-      }
-    });
+      }, 6000);
 
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', onFocus);
-    };
+      const onFocus = () => refreshFromCloud(false);
+      const onVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          refreshFromCloud(false);
+        }
+      };
+
+      window.addEventListener('focus', onFocus);
+      document.addEventListener('visibilitychange', onVisibilityChange);
+
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener('focus', onFocus);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      };
+    }
   }, [refreshFromCloud]);
 
   // Recalculate project progress based on tasks

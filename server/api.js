@@ -37,15 +37,15 @@ function sendJson(res, statusCode, data) {
   res.end(JSON.stringify(data));
 }
 
-// Connect/Express compatible API middleware handler
+// Connect/Express compatible API middleware handler (also works as Vercel Serverless Function)
 export async function apiHandler(req, res, next) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const pathname = url.pathname;
+  let pathname = url.pathname;
   const method = req.method.toUpperCase();
 
+  // Normalize pathname to always start with /api regardless of Vercel rewrite handling
   if (!pathname.startsWith('/api')) {
-    if (next) return next();
-    return;
+    pathname = `/api${pathname}`;
   }
 
   // Enable CORS
@@ -60,6 +60,11 @@ export async function apiHandler(req, res, next) {
   }
 
   try {
+    // Health check endpoint
+    if (pathname === '/api/health' && method === 'GET') {
+      return sendJson(res, 200, { status: 'ok', mode: 'Neon PostgreSQL', time: new Date().toISOString() });
+    }
+
     // 1. GET /api/data (Bootstrap)
     if (pathname === '/api/data' && method === 'GET') {
       const data = await getBootstrapData();
