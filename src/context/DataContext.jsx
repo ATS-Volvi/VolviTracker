@@ -1,7 +1,21 @@
-import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { seedData } from './seed';
-
 import { DEFAULT_PASSWORD_HASH } from '../utils/crypto';
+import {
+  fetchInitialData,
+  apiCreateProject,
+  apiUpdateProject,
+  apiDeleteProject,
+  apiCreateTask,
+  apiUpdateTask,
+  apiDeleteTask,
+  apiCreateMeeting,
+  apiUpdateMeeting,
+  apiDeleteMeeting,
+  apiCreateEmployee,
+  apiUpdateEmployee,
+  apiUpdatePassword
+} from '../services/api';
 
 const DataContext = createContext(null);
 
@@ -21,8 +35,67 @@ export const DataProvider = ({ children }) => {
     tasks: [],
     meetings: []
   });
+  const [isCloudSynced, setIsCloudSynced] = useState(false);
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
-  // Load data on mount; sanitize IDs so every item is guaranteed unique
+  // Persist changes to localStorage cache
+  const saveLocal = useCallback((key, value) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // Storage quota or parsing error fallback
+    }
+  }, []);
+
+  const saveLocalMultiple = useCallback((updates) => {
+    Object.entries(updates).forEach(([key, val]) => {
+      saveLocal(key, val);
+    });
+  }, [saveLocal]);
+
+  // Sync data from remote Neon PostgreSQL database
+  const refreshFromCloud = useCallback(async (isInitial = false) => {
+    try {
+      const cloudData = await fetchInitialData();
+      if (cloudData && typeof cloudData === 'object') {
+        const nextData = {
+          employees: Array.isArray(cloudData.employees) ? cloudData.employees : [],
+          projects: Array.isArray(cloudData.projects) ? cloudData.projects : [],
+          tasks: Array.isArray(cloudData.tasks) ? cloudData.tasks : [],
+          meetings: Array.isArray(cloudData.meetings) ? cloudData.meetings : []
+        };
+
+        // Standardize projects to 0-100 & progress 0 = Not started
+        nextData.projects = nextData.projects.map(p => {
+          const prog = Number(p.progress) || 0;
+          let status = p.status || 'Not started';
+          if (prog === 0) status = 'Not started';
+          else if (prog === 1) status = 'Done';
+          return {
+            ...p,
+            startValue: 0,
+            endValue: 100,
+            progress: prog,
+            status
+          };
+        });
+
+        // Only update state if data changed (avoid unnecessary re-renders)
+        const currentJson = JSON.stringify(dataRef.current);
+        const nextJson = JSON.stringify(nextData);
+        if (currentJson !== nextJson || isInitial) {
+          setData(nextData);
+          saveLocalMultiple(nextData);
+        }
+        setIsCloudSynced(true);
+      }
+    } catch (err) {
+      console.warn('[Cloud Sync] Failed to fetch from Neon DB, using local cache:', err.message);
+    }
+  }, [saveLocalMultiple]);
+
+  // Initial load: Load local cache immediately, then hydrate from Neon PostgreSQL
   useEffect(() => {
     const loaded = {};
     const seeded = localStorage.getItem('tracker_seeded') === 'true';
@@ -30,45 +103,7 @@ export const DataProvider = ({ children }) => {
       const stored = localStorage.getItem(key);
       if (stored) {
         try {
-          let items = JSON.parse(stored);
-          let needsResave = false;
-          // Fix any existing items in localStorage that were created without an id or passwordHash
-          items = items.map(item => {
-            let mod = item;
-            if (!mod.id) {
-              needsResave = true;
-              mod = { ...mod, id: generateId() };
-            }
-            if (key === 'projects') {
-              if (mod.startValue !== 0 || mod.endValue !== 100) {
-                needsResave = true;
-                mod = { ...mod, startValue: 0, endValue: 100 };
-              }
-              const pProg = Number(mod.progress) || 0;
-              if (pProg === 0 && mod.status !== 'Not started') {
-                needsResave = true;
-                mod = { ...mod, status: 'Not started', progress: 0 };
-              } else if (pProg === 1 && mod.status !== 'Done') {
-                needsResave = true;
-                mod = { ...mod, status: 'Done', progress: 1 };
-              }
-            }
-            if (key === 'employees') {
-              if (!mod.passwordHash) {
-                needsResave = true;
-                mod = { ...mod, passwordHash: DEFAULT_PASSWORD_HASH };
-              }
-              if ((mod.id === '1' || mod.email === 'swastikk005@gmail.com') && mod.role === 'Product Lead') {
-                needsResave = true;
-                mod = { ...mod, role: 'Admin' };
-              }
-            }
-            return mod;
-          });
-          if (needsResave) {
-            localStorage.setItem(key, JSON.stringify(items));
-          }
-          loaded[key] = items;
+          loaded[key] = JSON.parse(stored);
         } catch {
           loaded[key] = seeded ? [] : seedData[key];
         }
@@ -76,70 +111,30 @@ export const DataProvider = ({ children }) => {
         loaded[key] = seeded ? [] : seedData[key];
       }
     });
-    if (!seeded) {
-      ['employees', 'projects', 'tasks', 'meetings'].forEach(key => {
-        localStorage.setItem(key, JSON.stringify(seedData[key]));
-      });
-      localStorage.setItem('tracker_seeded', 'true');
-    }
-
-    // Sync project progress with associated tasks if any
-    if (loaded.projects && loaded.tasks) {
-      let needsProjectResave = false;
-      const synced = loaded.projects.map(p => {
-        const pTasks = loaded.tasks.filter(t => t.projectId === p.id);
-        if (pTasks.length > 0) {
-          const completed = pTasks.filter(t => t.status === 'Done').length;
-          const calculatedProgress = completed / pTasks.length;
-          const expectedStatus = calculatedProgress === 1 ? 'Done' : (calculatedProgress === 0 ? 'Not started' : 'In progress');
-          if (p.progress !== calculatedProgress || p.status !== expectedStatus) {
-            needsProjectResave = true;
-            return {
-              ...p,
-              progress: calculatedProgress,
-              status: expectedStatus
-            };
-          }
-        }
-        return p;
-      });
-      if (needsProjectResave) {
-        loaded.projects = synced;
-        localStorage.setItem('projects', JSON.stringify(synced));
-      }
-    }
 
     setData(loaded);
-  }, []);
 
-  // Persist changes to localStorage
-  const save = useCallback((key, value) => {
-    localStorage.setItem(key, JSON.stringify(value));
-    setData(prev => ({ ...prev, [key]: value }));
-  }, []);
+    // Hydrate from Neon database
+    refreshFromCloud(true);
 
-  const saveMultiple = useCallback((updates) => {
-    Object.entries(updates).forEach(([key, val]) => {
-      localStorage.setItem(key, JSON.stringify(val));
+    // Setup periodic polling & window focus sync so all devices stay in sync
+    const interval = setInterval(() => {
+      refreshFromCloud(false);
+    }, 6000);
+
+    const onFocus = () => refreshFromCloud(false);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        refreshFromCloud(false);
+      }
     });
-    setData(prev => ({ ...prev, ...updates }));
-  }, []);
 
-  // Employee CRUD
-  const addEmployee = (emp) => {
-    const item = { ...emp, id: emp.id || generateId() };
-    save('employees', [...data.employees, item]);
-    return item;
-  };
-  const updateEmployee = (id, updates) => {
-    if (!id) return;
-    const updated = data.employees.map(e => e.id === id ? { ...e, ...updates } : e);
-    save('employees', updated);
-  };
-  const removeEmployee = (id) => {
-    if (!id) return;
-    save('employees', data.employees.filter(e => e.id !== id));
-  };
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refreshFromCloud]);
 
   // Recalculate project progress based on tasks
   const syncProjectProgress = (projectId, currentTasks, currentProjects) => {
@@ -153,13 +148,15 @@ export const DataProvider = ({ children }) => {
 
     return currentProjects.map(p => {
       if (p.id === projectId) {
-        return { ...p, progress, status };
+        return { ...p, progress, status, startValue: 0, endValue: 100 };
       }
       return p;
     });
   };
 
-  // Project CRUD
+  // ----------------------------------------------------
+  // Project CRUD with Cloud Neon Sync
+  // ----------------------------------------------------
   const addProject = (proj) => {
     let finalStatus = proj.status || 'Not started';
     let finalProg = proj.progress !== undefined ? proj.progress : 0;
@@ -167,12 +164,27 @@ export const DataProvider = ({ children }) => {
     else if (finalProg === 1) finalStatus = 'Done';
     else if (finalStatus === 'Not started' && finalProg > 0) finalStatus = 'In progress';
 
-    const item = { ...proj, id: proj.id || generateId(), progress: finalProg, status: finalStatus, startValue: 0, endValue: 100 };
-    save('projects', [...data.projects, item]);
+    const item = {
+      ...proj,
+      id: proj.id || generateId(),
+      progress: finalProg,
+      status: finalStatus,
+      startValue: 0,
+      endValue: 100
+    };
+
+    const nextProjects = [...data.projects, item];
+    setData(prev => ({ ...prev, projects: nextProjects }));
+    saveLocal('projects', nextProjects);
+
+    // Sync to Neon Cloud
+    apiCreateProject(item).catch(e => console.error('[Neon Error] addProject:', e));
     return item;
   };
+
   const updateProject = (id, updates) => {
     if (!id) return;
+    let nextUpdatedItem = null;
     const updated = data.projects.map(p => {
       if (p.id === id) {
         const merged = { ...p, ...updates };
@@ -188,20 +200,31 @@ export const DataProvider = ({ children }) => {
             merged.progress = 0.25;
           }
         }
+        nextUpdatedItem = merged;
         return merged;
       }
       return p;
     });
-    save('projects', updated);
+
+    setData(prev => ({ ...prev, projects: updated }));
+    saveLocal('projects', updated);
+
+    // Sync to Neon Cloud
+    if (nextUpdatedItem) {
+      apiUpdateProject(id, updates).catch(e => console.error('[Neon Error] updateProject:', e));
+    }
   };
+
   const removeProject = (id) => {
     if (!id) return;
-    save('projects', data.projects.filter(p => p.id !== id));
-    // Also remove or unlink tasks associated with this project
-    const remainingTasks = data.tasks.filter(t => t.projectId !== id);
-    if (remainingTasks.length !== data.tasks.length) {
-      save('tasks', remainingTasks);
-    }
+    const nextProjects = data.projects.filter(p => p.id !== id);
+    const nextTasks = data.tasks.filter(t => t.projectId !== id);
+
+    setData(prev => ({ ...prev, projects: nextProjects, tasks: nextTasks }));
+    saveLocalMultiple({ projects: nextProjects, tasks: nextTasks });
+
+    // Sync to Neon Cloud
+    apiDeleteProject(id).catch(e => console.error('[Neon Error] removeProject:', e));
   };
 
   // Atomic Project + Tasks creation
@@ -227,13 +250,17 @@ export const DataProvider = ({ children }) => {
       ...data.tasks,
       ...projectTasks.map(t => ({
         ...t,
-        id: t.id || generateId(),
+        id: t.id && !t.id.startsWith('temp_') ? t.id : generateId(),
         projectId: projectId
       }))
     ];
 
-    save('projects', [...data.projects, projectItem]);
-    save('tasks', newTasks);
+    const nextProjects = [...data.projects, projectItem];
+    setData(prev => ({ ...prev, projects: nextProjects, tasks: newTasks }));
+    saveLocalMultiple({ projects: nextProjects, tasks: newTasks });
+
+    // Sync to Neon Cloud
+    apiCreateProject(projectItem, projectTasks).catch(e => console.error('[Neon Error] addProjectWithTasks:', e));
     return projectItem;
   };
 
@@ -265,15 +292,23 @@ export const DataProvider = ({ children }) => {
     const otherTasks = data.tasks.filter(t => t.projectId !== projectId);
     const updatedProjectTasks = projectTasks.map(t => ({
       ...t,
-      id: t.id || generateId(),
+      id: t.id && !t.id.startsWith('temp_') ? t.id : generateId(),
       projectId: projectId
     }));
 
-    save('projects', updatedProjects);
-    save('tasks', [...otherTasks, ...updatedProjectTasks]);
+    const nextTasks = [...otherTasks, ...updatedProjectTasks];
+    setData(prev => ({ ...prev, projects: updatedProjects, tasks: nextTasks }));
+    saveLocalMultiple({ projects: updatedProjects, tasks: nextTasks });
+
+    // Sync to Neon Cloud
+    const targetProj = updatedProjects.find(p => p.id === projectId);
+    apiCreateProject(targetProj || { id: projectId, ...projUpdates }, projectTasks)
+      .catch(e => console.error('[Neon Error] updateProjectWithTasks:', e));
   };
 
-  // Task CRUD
+  // ----------------------------------------------------
+  // Task CRUD with Cloud Neon Sync
+  // ----------------------------------------------------
   const addTask = (task) => {
     const item = { ...task, id: task.id || generateId() };
     const nextTasks = [...data.tasks, item];
@@ -282,7 +317,12 @@ export const DataProvider = ({ children }) => {
     if (item.projectId) {
       updatedProjects = syncProjectProgress(item.projectId, nextTasks, updatedProjects);
     }
-    saveMultiple({ tasks: nextTasks, projects: updatedProjects });
+
+    setData(prev => ({ ...prev, tasks: nextTasks, projects: updatedProjects }));
+    saveLocalMultiple({ tasks: nextTasks, projects: updatedProjects });
+
+    // Sync to Neon Cloud
+    apiCreateTask(item).catch(e => console.error('[Neon Error] addTask:', e));
     return item;
   };
 
@@ -303,7 +343,12 @@ export const DataProvider = ({ children }) => {
     if (prevProjectId) {
       updatedProjects = syncProjectProgress(prevProjectId, nextTasks, updatedProjects);
     }
-    saveMultiple({ tasks: nextTasks, projects: updatedProjects });
+
+    setData(prev => ({ ...prev, tasks: nextTasks, projects: updatedProjects }));
+    saveLocalMultiple({ tasks: nextTasks, projects: updatedProjects });
+
+    // Sync to Neon Cloud
+    apiUpdateTask(id, updates).catch(e => console.error('[Neon Error] updateTask:', e));
   };
 
   const removeTask = (id) => {
@@ -315,40 +360,99 @@ export const DataProvider = ({ children }) => {
     if (targetTask?.projectId) {
       updatedProjects = syncProjectProgress(targetTask.projectId, nextTasks, updatedProjects);
     }
-    saveMultiple({ tasks: nextTasks, projects: updatedProjects });
+
+    setData(prev => ({ ...prev, tasks: nextTasks, projects: updatedProjects }));
+    saveLocalMultiple({ tasks: nextTasks, projects: updatedProjects });
+
+    // Sync to Neon Cloud
+    apiDeleteTask(id).catch(e => console.error('[Neon Error] removeTask:', e));
   };
 
-  // Meeting CRUD
+  // ----------------------------------------------------
+  // Meeting CRUD with Cloud Neon Sync
+  // ----------------------------------------------------
   const addMeeting = (meeting) => {
     const item = { ...meeting, id: meeting.id || generateId() };
-    save('meetings', [...data.meetings, item]);
+    const nextMeetings = [...data.meetings, item];
+
+    setData(prev => ({ ...prev, meetings: nextMeetings }));
+    saveLocal('meetings', nextMeetings);
+
+    // Sync to Neon Cloud
+    apiCreateMeeting(item).catch(e => console.error('[Neon Error] addMeeting:', e));
     return item;
   };
+
   const updateMeeting = (id, updates) => {
     if (!id) return;
     const updated = data.meetings.map(m => m.id === id ? { ...m, ...updates } : m);
-    save('meetings', updated);
-  };
-  const removeMeeting = (id) => {
-    if (!id) return;
-    save('meetings', data.meetings.filter(m => m.id !== id));
+
+    setData(prev => ({ ...prev, meetings: updated }));
+    saveLocal('meetings', updated);
+
+    // Sync to Neon Cloud
+    apiUpdateMeeting(id, updates).catch(e => console.error('[Neon Error] updateMeeting:', e));
   };
 
-  const getEmployee = (id) => data.employees.find(e => e.id === id) || null;
-  const getProjectTasks = (projectId) => data.tasks.filter(t => t.projectId === projectId);
+  const removeMeeting = (id) => {
+    if (!id) return;
+    const nextMeetings = data.meetings.filter(m => m.id !== id);
+
+    setData(prev => ({ ...prev, meetings: nextMeetings }));
+    saveLocal('meetings', nextMeetings);
+
+    // Sync to Neon Cloud
+    apiDeleteMeeting(id).catch(e => console.error('[Neon Error] removeMeeting:', e));
+  };
+
+  // ----------------------------------------------------
+  // Employee CRUD & Credentials with Cloud Neon Sync
+  // ----------------------------------------------------
+  const addEmployee = (emp) => {
+    const item = { ...emp, id: emp.id || generateId() };
+    const nextEmployees = [...data.employees, item];
+
+    setData(prev => ({ ...prev, employees: nextEmployees }));
+    saveLocal('employees', nextEmployees);
+
+    // Sync to Neon Cloud
+    apiCreateEmployee(item).catch(e => console.error('[Neon Error] addEmployee:', e));
+    return item;
+  };
+
+  const updateEmployee = (id, updates) => {
+    if (!id) return;
+    const updated = data.employees.map(e => e.id === id ? { ...e, ...updates } : e);
+
+    setData(prev => ({ ...prev, employees: updated }));
+    saveLocal('employees', updated);
+
+    // Sync to Neon Cloud
+    apiUpdateEmployee(id, updates).catch(e => console.error('[Neon Error] updateEmployee:', e));
+  };
 
   const updateEmployeeCredentials = (email, newPasswordHash) => {
     if (!email) return;
     const updated = data.employees.map(e =>
       e.email?.toLowerCase() === email.toLowerCase() ? { ...e, passwordHash: newPasswordHash } : e
     );
-    save('employees', updated);
+
+    setData(prev => ({ ...prev, employees: updated }));
+    saveLocal('employees', updated);
+
+    // Sync to Neon Cloud
+    apiUpdatePassword(email, newPasswordHash).catch(e => console.error('[Neon Error] updateEmployeeCredentials:', e));
   };
+
+  const getEmployee = (id) => data.employees.find(e => e.id === id) || null;
+  const getProjectTasks = (projectId) => data.tasks.filter(t => t.projectId === projectId);
 
   const value = {
     ...data,
+    isCloudSynced,
     getEmployee,
     getProjectTasks,
+    refreshFromCloud,
     addEmployee, updateEmployee, removeEmployee, updateEmployeeCredentials,
     addProject, updateProject, removeProject, addProjectWithTasks, updateProjectWithTasks,
     addTask, updateTask, removeTask,
