@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { useToast } from '../context/ToastContext';
 import ProjectsTable from '../components/projects/ProjectsTable';
@@ -9,6 +10,7 @@ import StatusPieChart from '../components/widgets/StatusPieChart';
 import { exportToCsv, exportToJson } from '../utils/export';
 
 export const Dashboard = () => {
+  const { isAdmin } = useAuth();
   const { projects: allProjects, tasks: allTasks, meetings: allMeetings, employees: allEmployees } = useData();
   const { addToast } = useToast();
 
@@ -381,9 +383,11 @@ export const Dashboard = () => {
           </div>
         </div>
 
-        <div className="pt-6 border-t border-gray-200/70 w-full">
-          <EmployeesGrid employees={allEmployees} />
-        </div>
+        {isAdmin && (
+          <div className="pt-6 border-t border-gray-200/70 w-full">
+            <EmployeesGrid employees={allEmployees} />
+          </div>
+        )}
       </div>
 
       {/* Footer / Summary Stats */}

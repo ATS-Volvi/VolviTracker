@@ -1,6 +1,8 @@
 import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import { seedData } from './seed';
 
+import { DEFAULT_PASSWORD_HASH } from '../utils/crypto';
+
 const DataContext = createContext(null);
 
 // Generate deterministic unique ID
@@ -30,13 +32,24 @@ export const DataProvider = ({ children }) => {
         try {
           let items = JSON.parse(stored);
           let needsResave = false;
-          // Fix any existing items in localStorage that were created without an id
+          // Fix any existing items in localStorage that were created without an id or passwordHash
           items = items.map(item => {
-            if (!item.id) {
+            let mod = item;
+            if (!mod.id) {
               needsResave = true;
-              return { ...item, id: generateId() };
+              mod = { ...mod, id: generateId() };
             }
-            return item;
+            if (key === 'employees') {
+              if (!mod.passwordHash) {
+                needsResave = true;
+                mod = { ...mod, passwordHash: DEFAULT_PASSWORD_HASH };
+              }
+              if ((mod.id === '1' || mod.email === 'swastikk005@gmail.com') && mod.role === 'Product Lead') {
+                needsResave = true;
+                mod = { ...mod, role: 'Admin' };
+              }
+            }
+            return mod;
           });
           if (needsResave) {
             localStorage.setItem(key, JSON.stringify(items));
@@ -55,6 +68,32 @@ export const DataProvider = ({ children }) => {
       });
       localStorage.setItem('tracker_seeded', 'true');
     }
+
+    // Sync project progress with associated tasks if any
+    if (loaded.projects && loaded.tasks) {
+      let needsProjectResave = false;
+      const synced = loaded.projects.map(p => {
+        const pTasks = loaded.tasks.filter(t => t.projectId === p.id);
+        if (pTasks.length > 0) {
+          const completed = pTasks.filter(t => t.status === 'Done').length;
+          const calculatedProgress = completed / pTasks.length;
+          if (p.progress !== calculatedProgress) {
+            needsProjectResave = true;
+            return {
+              ...p,
+              progress: calculatedProgress,
+              status: calculatedProgress === 1 ? 'Done' : (calculatedProgress > 0 && p.status === 'Not started' ? 'In progress' : p.status)
+            };
+          }
+        }
+        return p;
+      });
+      if (needsProjectResave) {
+        loaded.projects = synced;
+        localStorage.setItem('projects', JSON.stringify(synced));
+      }
+    }
+
     setData(loaded);
   }, []);
 
@@ -80,6 +119,26 @@ export const DataProvider = ({ children }) => {
     save('employees', data.employees.filter(e => e.id !== id));
   };
 
+  // Recalculate project progress based on tasks
+  const syncProjectProgress = (projectId, currentTasks, currentProjects) => {
+    if (!projectId) return currentProjects;
+    const projectTasks = currentTasks.filter(t => t.projectId === projectId);
+    if (projectTasks.length === 0) return currentProjects;
+
+    const completed = projectTasks.filter(t => t.status === 'Done').length;
+    const progress = completed / projectTasks.length;
+    const status = progress === 1 ? 'Done' : (progress > 0 ? 'In progress' : undefined);
+
+    return currentProjects.map(p => {
+      if (p.id === projectId) {
+        const updates = { progress };
+        if (status) updates.status = status;
+        return { ...p, ...updates };
+      }
+      return p;
+    });
+  };
+
   // Project CRUD
   const addProject = (proj) => {
     const item = { ...proj, id: proj.id || generateId() };
@@ -94,22 +153,113 @@ export const DataProvider = ({ children }) => {
   const removeProject = (id) => {
     if (!id) return;
     save('projects', data.projects.filter(p => p.id !== id));
+    // Also remove or unlink tasks associated with this project
+    const remainingTasks = data.tasks.filter(t => t.projectId !== id);
+    if (remainingTasks.length !== data.tasks.length) {
+      save('tasks', remainingTasks);
+    }
+  };
+
+  // Atomic Project + Tasks creation
+  const addProjectWithTasks = (proj, projectTasks = []) => {
+    const projectId = proj.id || generateId();
+    const completedCount = projectTasks.filter(t => t.status === 'Done').length;
+    const computedProgress = projectTasks.length > 0
+      ? (completedCount / projectTasks.length)
+      : (proj.progress !== undefined ? proj.progress : 0);
+
+    const projectItem = {
+      ...proj,
+      id: projectId,
+      progress: computedProgress,
+      status: computedProgress === 1 && projectTasks.length > 0
+        ? 'Done'
+        : (computedProgress > 0 && proj.status === 'Not started' ? 'In progress' : (proj.status || 'Not started'))
+    };
+
+    const newTasks = [
+      ...data.tasks,
+      ...projectTasks.map(t => ({
+        ...t,
+        id: t.id || generateId(),
+        projectId: projectId
+      }))
+    ];
+
+    save('projects', [...data.projects, projectItem]);
+    save('tasks', newTasks);
+    return projectItem;
+  };
+
+  // Atomic Project + Tasks update
+  const updateProjectWithTasks = (projectId, projUpdates, projectTasks = []) => {
+    if (!projectId) return;
+    const completedCount = projectTasks.filter(t => t.status === 'Done').length;
+    const computedProgress = projectTasks.length > 0
+      ? (completedCount / projectTasks.length)
+      : (projUpdates.progress !== undefined ? projUpdates.progress : 0);
+
+    const updatedProjects = data.projects.map(p => {
+      if (p.id === projectId) {
+        return {
+          ...p,
+          ...projUpdates,
+          progress: computedProgress,
+          status: computedProgress === 1 && projectTasks.length > 0
+            ? 'Done'
+            : (computedProgress > 0 && (projUpdates.status || p.status) === 'Not started' ? 'In progress' : (projUpdates.status || p.status))
+        };
+      }
+      return p;
+    });
+
+    const otherTasks = data.tasks.filter(t => t.projectId !== projectId);
+    const updatedProjectTasks = projectTasks.map(t => ({
+      ...t,
+      id: t.id || generateId(),
+      projectId: projectId
+    }));
+
+    save('projects', updatedProjects);
+    save('tasks', [...otherTasks, ...updatedProjectTasks]);
   };
 
   // Task CRUD
   const addTask = (task) => {
     const item = { ...task, id: task.id || generateId() };
-    save('tasks', [...data.tasks, item]);
+    const nextTasks = [...data.tasks, item];
+    save('tasks', nextTasks);
+
+    if (item.projectId) {
+      const updatedProjects = syncProjectProgress(item.projectId, nextTasks, data.projects);
+      save('projects', updatedProjects);
+    }
     return item;
   };
+
   const updateTask = (id, updates) => {
     if (!id) return;
-    const updated = data.tasks.map(t => t.id === id ? { ...t, ...updates } : t);
-    save('tasks', updated);
+    const oldTask = data.tasks.find(t => t.id === id);
+    const nextTasks = data.tasks.map(t => t.id === id ? { ...t, ...updates } : t);
+    save('tasks', nextTasks);
+
+    const targetProjectId = updates.projectId || oldTask?.projectId;
+    if (targetProjectId) {
+      const updatedProjects = syncProjectProgress(targetProjectId, nextTasks, data.projects);
+      save('projects', updatedProjects);
+    }
   };
+
   const removeTask = (id) => {
     if (!id) return;
-    save('tasks', data.tasks.filter(t => t.id !== id));
+    const targetTask = data.tasks.find(t => t.id === id);
+    const nextTasks = data.tasks.filter(t => t.id !== id);
+    save('tasks', nextTasks);
+
+    if (targetTask?.projectId) {
+      const updatedProjects = syncProjectProgress(targetTask.projectId, nextTasks, data.projects);
+      save('projects', updatedProjects);
+    }
   };
 
   // Meeting CRUD
@@ -129,12 +279,22 @@ export const DataProvider = ({ children }) => {
   };
 
   const getEmployee = (id) => data.employees.find(e => e.id === id) || null;
+  const getProjectTasks = (projectId) => data.tasks.filter(t => t.projectId === projectId);
+
+  const updateEmployeeCredentials = (email, newPasswordHash) => {
+    if (!email) return;
+    const updated = data.employees.map(e =>
+      e.email?.toLowerCase() === email.toLowerCase() ? { ...e, passwordHash: newPasswordHash } : e
+    );
+    save('employees', updated);
+  };
 
   const value = {
     ...data,
     getEmployee,
-    addEmployee, updateEmployee, removeEmployee,
-    addProject, updateProject, removeProject,
+    getProjectTasks,
+    addEmployee, updateEmployee, removeEmployee, updateEmployeeCredentials,
+    addProject, updateProject, removeProject, addProjectWithTasks, updateProjectWithTasks,
     addTask, updateTask, removeTask,
     addMeeting, updateMeeting, removeMeeting
   };

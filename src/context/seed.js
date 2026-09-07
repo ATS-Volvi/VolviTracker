@@ -1,9 +1,11 @@
+import { DEFAULT_PASSWORD_HASH } from '../utils/crypto';
+
 // Seed data used on first load when localStorage is empty.
 export const seedEmployees = [
-  { id: '1', fullName: 'Swastik Kumar', email: 'swastikk005@gmail.com', role: 'Product Lead', avatar: 'https://i.pravatar.cc/150?u=swastik' },
-  { id: '2', fullName: 'Amara Patel', email: 'amara@example.com', role: 'Designer', avatar: 'https://i.pravatar.cc/150?u=amara' },
-  { id: '3', fullName: 'Liam Chen', email: 'liam@example.com', role: 'Engineer', avatar: 'https://i.pravatar.cc/150?u=liam' },
-  { id: '4', fullName: 'Noor Hassan', email: 'noor@example.com', role: 'Engineer', avatar: 'https://i.pravatar.cc/150?u=noor' }
+  { id: '1', fullName: 'Swastik Kumar', email: 'swastikk005@gmail.com', role: 'Admin', avatar: 'https://i.pravatar.cc/150?u=swastik', passwordHash: DEFAULT_PASSWORD_HASH },
+  { id: '2', fullName: 'Amara Patel', email: 'amara@example.com', role: 'Designer', avatar: 'https://i.pravatar.cc/150?u=amara', passwordHash: DEFAULT_PASSWORD_HASH },
+  { id: '3', fullName: 'Liam Chen', email: 'liam@example.com', role: 'Engineer', avatar: 'https://i.pravatar.cc/150?u=liam', passwordHash: DEFAULT_PASSWORD_HASH },
+  { id: '4', fullName: 'Noor Hassan', email: 'noor@example.com', role: 'Engineer', avatar: 'https://i.pravatar.cc/150?u=noor', passwordHash: DEFAULT_PASSWORD_HASH }
 ];
 
 export const seedProjects = [
@@ -13,10 +15,11 @@ export const seedProjects = [
 ];
 
 export const seedTasks = [
-  { id: 't1', name: 'Design homepage hero', assigneeId: '2', status: 'In progress', dueDate: '2026-07-20', priority: 'High', description: 'New hero section with gradient.' },
-  { id: 't2', name: 'Set up CI pipeline', assigneeId: '3', status: 'Not started', dueDate: '2026-07-25', priority: 'Medium', description: 'GitHub Actions for lint + test.' },
-  { id: 't3', name: 'Write API docs', assigneeId: '4', status: 'Done', dueDate: '2026-07-05', priority: 'Low', description: 'Document the v1 endpoints.' },
-  { id: 't4', name: 'User interview synthesis', assigneeId: '1', status: 'In progress', dueDate: '2026-07-18', priority: 'Medium', description: 'Summarize 10 interviews.' }
+  { id: 't1', name: 'Design homepage hero', projectId: 'p1', assigneeId: '2', status: 'In progress', dueDate: '2026-07-20', priority: 'High', description: 'New hero section with gradient.' },
+  { id: 't5', name: 'iOS Beta TestFlight build', projectId: 'p1', assigneeId: '1', status: 'Done', dueDate: '2026-07-10', priority: 'High', description: 'TestFlight build submitted and approved.' },
+  { id: 't2', name: 'Set up CI pipeline', projectId: 'p3', assigneeId: '3', status: 'Not started', dueDate: '2026-07-25', priority: 'Medium', description: 'GitHub Actions for lint + test.' },
+  { id: 't3', name: 'Write API docs', projectId: 'p2', assigneeId: '4', status: 'Done', dueDate: '2026-07-05', priority: 'Low', description: 'Document the v1 endpoints.' },
+  { id: 't4', name: 'User interview synthesis', projectId: 'p1', assigneeId: '1', status: 'In progress', dueDate: '2026-07-18', priority: 'Medium', description: 'Summarize 10 interviews.' }
 ];
 
 export const seedMeetings = [

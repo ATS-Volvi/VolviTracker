@@ -21,6 +21,36 @@ export const TasksTab = ({ tasks: tasksProp, heading = 'Tasks Tracker' }) => {
 
   const getProject = (pId) => projects.find(p => p.id === pId);
 
+  const getTaskAssignees = (t) => {
+    if (Array.isArray(t.assigneeIds) && t.assigneeIds.length > 0) {
+      return t.assigneeIds.map(id => getEmployee(id)).filter(Boolean);
+    }
+    if (t.assigneeId) {
+      const emp = getEmployee(t.assigneeId);
+      return emp ? [emp] : [];
+    }
+    return [];
+  };
+
+  const AssigneesDisplay = ({ task }) => {
+    const emps = getTaskAssignees(task);
+    if (emps.length === 0) {
+      return <span className="text-xs text-gray-400 italic">Unassigned</span>;
+    }
+    return (
+      <div className="flex items-center gap-1.5 min-w-0" title={emps.map(e => e.fullName).join(', ')}>
+        <div className="flex items-center -space-x-1.5 shrink-0 overflow-hidden">
+          {emps.slice(0, 3).map(e => (
+            <Avatar key={e.id} src={e.avatar} alt={e.fullName} className="h-6 w-6 ring-2 ring-white" />
+          ))}
+        </div>
+        <span className="text-xs text-gray-600 truncate max-w-[120px]">
+          {emps.length === 1 ? emps[0].fullName : `${emps.length} assigned`}
+        </span>
+      </div>
+    );
+  };
+
   const completedTasks = tasks.filter(t => t.status === 'Done');
 
   const handleDeleteTask = (e, task) => {
@@ -111,8 +141,7 @@ export const TasksTab = ({ tasks: tasksProp, heading = 'Tasks Tracker' }) => {
                 </div>
                 <div className="mt-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    {emp && <Avatar src={emp.avatar} alt={emp.fullName} className="h-6 w-6" />}
-                    <span className="text-xs text-gray-500">{emp?.fullName}</span>
+                    <AssigneesDisplay task={t} />
                   </div>
                   <div className="flex items-center gap-2">
                     <PriorityPill priority={t.priority} />
@@ -169,8 +198,7 @@ export const TasksTab = ({ tasks: tasksProp, heading = 'Tasks Tracker' }) => {
                     </div>
                     <div className="mt-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        {emp && <Avatar src={emp.avatar} alt={emp.fullName} className="h-6 w-6" />}
-                        <span className="text-xs text-gray-500">{emp?.fullName}</span>
+                        <AssigneesDisplay task={t} />
                       </div>
                       <div className="flex items-center gap-2">
                         <PriorityPill priority={t.priority} />
@@ -280,7 +308,7 @@ export const TasksTab = ({ tasks: tasksProp, heading = 'Tasks Tracker' }) => {
                   <tr key={t.id} className="border-b border-gray-50 hover:bg-slate-50/60">
                     <Td><button className="font-medium text-gray-800 hover:text-indigo-600" onClick={() => { setEditing(t); setOpen(true); }}>{t.name}</button></Td>
                     <Td className="text-gray-600 text-xs">{proj ? <span className="badge bg-blue-50 text-blue-700 text-[10px] font-semibold">{proj.name}</span> : '—'}</Td>
-                    <Td><div className="flex items-center gap-2">{emp && <Avatar src={emp.avatar} alt={emp.fullName} className="h-6 w-6" />}<span className="text-gray-600">{emp?.fullName}</span></div></Td>
+                    <Td><AssigneesDisplay task={t} /></Td>
                     <Td><StatusSelect value={t.status} onChange={(s) => handleStatusChange(t.id, s, t.name)} /></Td>
                     <Td className="text-gray-600">{fmtDate(t.dueDate)}</Td>
                     <Td><PriorityPill priority={t.priority} /></Td>
