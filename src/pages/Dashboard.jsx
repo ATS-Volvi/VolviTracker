@@ -11,7 +11,11 @@ import { exportToCsv, exportToJson } from '../utils/export';
 
 export const Dashboard = () => {
   const { isAdmin } = useAuth();
-  const { projects: allProjects, tasks: allTasks, meetings: allMeetings, employees: allEmployees } = useData();
+  const { projects: rawProjects, tasks: rawTasks, meetings: rawMeetings, employees: rawEmployees } = useData();
+  const allProjects = Array.isArray(rawProjects) ? rawProjects : [];
+  const allTasks = Array.isArray(rawTasks) ? rawTasks : [];
+  const allMeetings = Array.isArray(rawMeetings) ? rawMeetings : [];
+  const allEmployees = Array.isArray(rawEmployees) ? rawEmployees : [];
   const { addToast } = useToast();
 
   const [exportType, setExportType] = useState(null);

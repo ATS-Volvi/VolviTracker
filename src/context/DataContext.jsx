@@ -30,10 +30,10 @@ const generateId = () => {
 
 export const DataProvider = ({ children }) => {
   const [data, setData] = useState({
-    employees: [],
-    projects: [],
-    tasks: [],
-    meetings: []
+    employees: Array.isArray(seedData.employees) ? seedData.employees : [],
+    projects: Array.isArray(seedData.projects) ? seedData.projects : [],
+    tasks: Array.isArray(seedData.tasks) ? seedData.tasks : [],
+    meetings: Array.isArray(seedData.meetings) ? seedData.meetings : []
   });
   const [isCloudSynced, setIsCloudSynced] = useState(false);
   const dataRef = useRef(data);
@@ -60,10 +60,10 @@ export const DataProvider = ({ children }) => {
       const cloudData = await fetchInitialData();
       if (cloudData && typeof cloudData === 'object') {
         const nextData = {
-          employees: Array.isArray(cloudData.employees) ? cloudData.employees : [],
-          projects: Array.isArray(cloudData.projects) ? cloudData.projects : [],
-          tasks: Array.isArray(cloudData.tasks) ? cloudData.tasks : [],
-          meetings: Array.isArray(cloudData.meetings) ? cloudData.meetings : []
+          employees: Array.isArray(cloudData.employees) ? cloudData.employees : (seedData.employees || []),
+          projects: Array.isArray(cloudData.projects) ? cloudData.projects : (seedData.projects || []),
+          tasks: Array.isArray(cloudData.tasks) ? cloudData.tasks : (seedData.tasks || []),
+          meetings: Array.isArray(cloudData.meetings) ? cloudData.meetings : (seedData.meetings || [])
         };
 
         // Standardize projects to 0-100 & progress 0 = Not started
@@ -98,21 +98,30 @@ export const DataProvider = ({ children }) => {
   // Initial load: Load local cache immediately, then hydrate from Neon PostgreSQL
   useEffect(() => {
     const loaded = {};
-    const seeded = localStorage.getItem('tracker_seeded') === 'true';
     ['employees', 'projects', 'tasks', 'meetings'].forEach(key => {
       const stored = localStorage.getItem(key);
       if (stored) {
         try {
-          loaded[key] = JSON.parse(stored);
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            loaded[key] = parsed;
+          } else {
+            loaded[key] = seedData[key] || [];
+          }
         } catch {
-          loaded[key] = seeded ? [] : seedData[key];
+          loaded[key] = seedData[key] || [];
         }
       } else {
-        loaded[key] = seeded ? [] : seedData[key];
+        loaded[key] = seedData[key] || [];
       }
     });
 
-    setData(loaded);
+    setData({
+      employees: Array.isArray(loaded.employees) ? loaded.employees : seedData.employees,
+      projects: Array.isArray(loaded.projects) ? loaded.projects : seedData.projects,
+      tasks: Array.isArray(loaded.tasks) ? loaded.tasks : seedData.tasks,
+      meetings: Array.isArray(loaded.meetings) ? loaded.meetings : seedData.meetings
+    });
 
     // Hydrate from Neon database
     refreshFromCloud(true);
@@ -444,11 +453,20 @@ export const DataProvider = ({ children }) => {
     apiUpdatePassword(email, newPasswordHash).catch(e => console.error('[Neon Error] updateEmployeeCredentials:', e));
   };
 
-  const getEmployee = (id) => data.employees.find(e => e.id === id) || null;
-  const getProjectTasks = (projectId) => data.tasks.filter(t => t.projectId === projectId);
+  const getEmployee = (id) => (Array.isArray(data.employees) ? data.employees : seedData.employees).find(e => String(e.id) === String(id)) || null;
+  const getProjectTasks = (projectId) => (Array.isArray(data.tasks) ? data.tasks : seedData.tasks).filter(t => t.projectId === projectId);
+
+  const safeEmployees = Array.isArray(data.employees) && data.employees.length > 0 ? data.employees : (seedData.employees || []);
+  const safeProjects = Array.isArray(data.projects) ? data.projects : (seedData.projects || []);
+  const safeTasks = Array.isArray(data.tasks) ? data.tasks : (seedData.tasks || []);
+  const safeMeetings = Array.isArray(data.meetings) ? data.meetings : (seedData.meetings || []);
 
   const value = {
     ...data,
+    employees: safeEmployees,
+    projects: safeProjects,
+    tasks: safeTasks,
+    meetings: safeMeetings,
     isCloudSynced,
     getEmployee,
     getProjectTasks,

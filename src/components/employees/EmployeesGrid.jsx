@@ -6,6 +6,7 @@ import { Avatar } from '../widgets/Avatar';
 
 export const EmployeesGrid = () => {
   const { employees } = useData();
+  const empList = Array.isArray(employees) ? employees : [];
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
 
@@ -24,11 +25,11 @@ export const EmployeesGrid = () => {
             Admin Access
           </span>
         </div>
-        <span className="text-xs text-gray-500 font-medium">{employees.length} team members</span>
+        <span className="text-xs text-gray-500 font-medium">{empList.length} team members</span>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-        {employees.map(e => {
+        {empList.map(e => {
           const isUserAdmin = (e.role || '').toLowerCase() === 'admin';
           return (
             <button

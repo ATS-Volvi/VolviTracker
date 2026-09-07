@@ -141,7 +141,7 @@ const Login = () => {
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
 
   // Seed / fallback employees
-  const profiles = employees.length
+  const profiles = Array.isArray(employees) && employees.length > 0
     ? employees
     : [
         { id: '1', fullName: 'Swastik Kumar', email: 'swastikk005@gmail.com', role: 'Admin', avatar: 'https://i.pravatar.cc/150?u=swastikk' },

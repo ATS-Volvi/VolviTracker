@@ -85,7 +85,6 @@ export const ProjectsTable = ({ projects = [] }) => {
         setAssigneeDropdownId(null);
         setActiveProgressPopoverId(null);
         setShowFilterMenu(false);
-        setShowNewMenu(false);
         setEditingNameId(null);
       }
     };
