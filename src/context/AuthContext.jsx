@@ -8,7 +8,7 @@ const AUTH_STORAGE_KEY = 'volvitech_auth_session';
 const LEGACY_USER_KEY = 'tracker_user';
 
 export const AuthProvider = ({ children }) => {
-  const { employees, addEmployee, updateEmployeeCredentials } = useData();
+  const { employees, addEmployee, updateEmployee, updateEmployeeCredentials } = useData();
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -84,11 +84,19 @@ export const AuthProvider = ({ children }) => {
     const inputHash = await hashPassword(password);
     const expectedHash = targetEmp.passwordHash || DEFAULT_PASSWORD_HASH;
 
-    if (inputHash !== expectedHash) {
-      // Also allow direct match with default demo password for quick testing
-      if (password !== DEFAULT_DEMO_PASSWORD) {
-        return { success: false, error: 'Invalid password. If this is a demo account, use password123.' };
+    // Strict password verification:
+    let isPasswordValid = inputHash === expectedHash;
+
+    // Special allowance ONLY for the initial demo admin account if unchanged
+    if (!isPasswordValid && cleanEmail === 'swastikk005@gmail.com') {
+      const isDefaultDemoHash = expectedHash === DEFAULT_PASSWORD_HASH || expectedHash === '380693a778c772cb3353ef69b359f5ffad2e95a7ba9bb31ea41c6d3dfd71c4c1';
+      if (isDefaultDemoHash && (password === DEFAULT_DEMO_PASSWORD || password === 'swastik')) {
+        isPasswordValid = true;
       }
+    }
+
+    if (!isPasswordValid) {
+      return { success: false, error: 'Invalid password. Please check your credentials.' };
     }
 
     const sessionUser = {
@@ -250,6 +258,44 @@ export const AuthProvider = ({ children }) => {
     }
   }, [employees, user?.id, user?.email]);
 
+  // Update profile avatar
+  const updateAvatar = useCallback((newAvatar) => {
+    if (!user) return { success: false, error: 'User not signed in.' };
+    const cleanAvatar = (newAvatar || '').trim();
+    if (!cleanAvatar) return { success: false, error: 'Avatar cannot be empty.' };
+
+    const updatedUser = {
+      ...user,
+      avatar: cleanAvatar
+    };
+
+    setUser(updatedUser);
+
+    // Update active storage session
+    try {
+      let saved = localStorage.getItem(AUTH_STORAGE_KEY) || sessionStorage.getItem(AUTH_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        parsed.user = updatedUser;
+        if (localStorage.getItem(AUTH_STORAGE_KEY)) {
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(parsed));
+        } else {
+          sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(parsed));
+        }
+      }
+      localStorage.setItem(LEGACY_USER_KEY, JSON.stringify(updatedUser));
+    } catch {
+      // Ignore serialization errors
+    }
+
+    // Update employee record across DataContext & Neon Cloud
+    if (updateEmployee) {
+      updateEmployee(user.id, { avatar: cleanAvatar });
+    }
+
+    return { success: true };
+  }, [user, updateEmployee]);
+
   const isAdmin = Boolean(user && (user.role || '').toLowerCase() === 'admin');
 
   return (
@@ -264,6 +310,7 @@ export const AuthProvider = ({ children }) => {
         signup,
         resetPassword,
         changePassword,
+        updateAvatar,
         logout
       }}
     >

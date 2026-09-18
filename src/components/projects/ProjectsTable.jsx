@@ -41,7 +41,7 @@ const STATUS_CONFIG = {
 
 const ALL_STATUSES = ['Not started', 'In progress', 'Done'];
 
-export const ProjectsTable = ({ projects = [] }) => {
+export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
   const { employees, addProject, updateProject, removeProject, getEmployee, addTask, tasks } = useData();
   const { addToast } = useToast();
 
@@ -317,7 +317,7 @@ export const ProjectsTable = ({ projects = [] }) => {
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
             </div>
-            <h2 className="text-xl font-extrabold text-gray-900 tracking-tight">Projects</h2>
+            <h2 className="text-xl font-extrabold text-gray-900 tracking-tight">{title}</h2>
             <span className="text-xs bg-gray-100 text-gray-600 font-bold px-2.5 py-0.5 rounded-full">
               {displayProjects.length}
             </span>

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import Avatar from '../components/widgets/Avatar';
 import TasksTab from '../components/tasks/TasksTab';
 import MeetingList from '../components/meetings/MeetingList';
+import ProjectsTable from '../components/projects/ProjectsTable';
 
 const fmt = (dt) => new Date(dt).toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -41,20 +42,27 @@ export const Employee = () => {
             </p>
           </div>
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="btn-primary w-full sm:w-auto text-xs py-2 px-4"
-            >
-              Return to Dashboard
-            </button>
-            {user && (
+            {isAdmin ? (
               <button
-                onClick={() => navigate(`/employee/${user.id}`)}
-                className="btn-ghost w-full sm:w-auto text-xs py-2 px-4"
+                onClick={() => navigate('/dashboard')}
+                className="btn-primary w-full sm:w-auto text-xs py-2 px-4"
+              >
+                Return to Dashboard
+              </button>
+            ) : (
+              <button
+                onClick={() => navigate(`/employee/${user?.id}`)}
+                className="btn-primary w-full sm:w-auto text-xs py-2 px-4"
               >
                 Go to My Profile
               </button>
             )}
+            <button
+              onClick={() => navigate('/docs')}
+              className="btn-ghost w-full sm:w-auto text-xs py-2 px-4"
+            >
+              Company Docs
+            </button>
           </div>
         </div>
       </div>
@@ -67,7 +75,13 @@ export const Employee = () => {
     return (
       <div className="min-h-screen">
         <div className="mx-auto max-w-3xl px-4 py-10 text-center text-gray-500">
-          Employee not found. <button className="text-blue-600 hover:underline" onClick={() => navigate('/dashboard')}>Back to dashboard</button>
+          Employee not found.{' '}
+          <button
+            className="text-blue-600 hover:underline"
+            onClick={() => navigate(isAdmin ? '/dashboard' : `/employee/${user?.id}`)}
+          >
+            {isAdmin ? 'Back to dashboard' : 'Back to my profile'}
+          </button>
         </div>
       </div>
     );
@@ -93,7 +107,7 @@ export const Employee = () => {
 
   return (
     <div className="min-h-screen">
-      <main className="mx-auto max-w-4xl px-4 py-6 space-y-6">
+      <main className="mx-auto max-w-7xl px-3 sm:px-6 py-6 space-y-6">
         <section className="card p-5">
           <div className="flex items-start gap-4">
             <Avatar src={emp.avatar} alt={emp.fullName} className="h-16 w-16" />
@@ -128,31 +142,10 @@ export const Employee = () => {
           </div>
         </section>
 
-        {/* Assigned Projects Section */}
-        {myProjects.length > 0 && (
-          <section className="card p-5">
-            <h2 className="text-lg font-bold text-gray-900 mb-3">Assigned Projects ({myProjects.length})</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {myProjects.map(p => (
-                <div key={p.id} className="p-3.5 rounded-xl border border-gray-200/80 bg-gray-50/50 hover:bg-white hover:shadow-sm transition">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-sm text-gray-900">{p.name}</span>
-                    <span className="badge bg-blue-100 text-blue-700 text-[10px] font-semibold">{p.status}</span>
-                  </div>
-                  <div className="text-xs text-gray-500 mb-2">
-                    {p.startDate ? p.startDate.slice(0, 10) : ''} → {p.endDate ? p.endDate.slice(0, 10) : ''}
-                  </div>
-                  <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500 rounded-full"
-                      style={{ width: `${Math.round((p.progress || 0) * (p.progress <= 1 && p.progress > 0 ? 100 : 1))}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+        {/* Assigned Projects Section (Same view as main page projects tab) */}
+        <section className="w-full">
+          <ProjectsTable projects={myProjects} title="Assigned Projects" />
+        </section>
 
         <TasksTab tasks={myTasks} heading="My Tasks" />
         <MeetingList meetings={myMeetings} defaultAttendeeId={id} />

@@ -5,6 +5,7 @@ import NavBar from './components/NavBar';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Employee from './pages/Employee';
+import Docs from './pages/Docs';
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -32,8 +33,8 @@ const RequireAuth = ({ children }) => {
   return children;
 };
 
-const App = () => {
-  const { user, loading } = useAuth();
+const RequireAdmin = ({ children }) => {
+  const { user, isAdmin, loading } = useAuth();
 
   if (loading) {
     return (
@@ -43,21 +44,54 @@ const App = () => {
     );
   }
 
+  if (!isAdmin) {
+    return <Navigate to={user ? `/employee/${user.id}` : '/login'} replace />;
+  }
+
+  return children;
+};
+
+const App = () => {
+  const { user, isAdmin, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  const defaultHome = user
+    ? (isAdmin ? '/dashboard' : `/employee/${user.id}`)
+    : '/login';
+
   return (
     <div className="min-h-screen bg-gray-50">
       <ScrollToTop />
       {user && <NavBar />}
       <Routes>
-        <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+        <Route path="/login" element={user ? <Navigate to={defaultHome} replace /> : <Login />} />
         <Route
           path="/dashboard"
-          element={<RequireAuth><Dashboard /></RequireAuth>}
+          element={
+            <RequireAuth>
+              <RequireAdmin>
+                <Dashboard />
+              </RequireAdmin>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/docs"
+          element={<RequireAuth><Docs /></RequireAuth>}
         />
         <Route
           path="/employee/:id"
           element={<RequireAuth><Employee /></RequireAuth>}
         />
-        <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
+        <Route path="/" element={<Navigate to={defaultHome} replace />} />
+        <Route path="*" element={<Navigate to={defaultHome} replace />} />
       </Routes>
     </div>
   );

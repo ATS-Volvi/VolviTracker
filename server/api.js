@@ -11,7 +11,10 @@ import {
   deleteMeetingRecord,
   createEmployeeRecord,
   updateEmployeeRecord,
-  updatePasswordByEmail
+  updatePasswordByEmail,
+  createDocRecord,
+  updateDocRecord,
+  deleteDocRecord
 } from './db.js';
 
 // Helper to read JSON body from request stream
@@ -154,6 +157,27 @@ export async function apiHandler(req, res, next) {
         const body = await parseJsonBody(req);
         const updated = await updateEmployeeRecord(id, body);
         return sendJson(res, 200, updated || { id });
+      }
+    }
+
+    // 6. Docs
+    if (pathname === '/api/docs' && method === 'POST') {
+      const body = await parseJsonBody(req);
+      const doc = await createDocRecord(body);
+      return sendJson(res, 201, doc);
+    }
+
+    const docMatch = pathname.match(/^\/api\/docs\/([^/]+)$/);
+    if (docMatch) {
+      const id = decodeURIComponent(docMatch[1]);
+      if (method === 'PUT') {
+        const body = await parseJsonBody(req);
+        const updated = await updateDocRecord(id, body);
+        return sendJson(res, 200, updated || { id });
+      }
+      if (method === 'DELETE') {
+        await deleteDocRecord(id);
+        return sendJson(res, 200, { success: true, id });
       }
     }
 

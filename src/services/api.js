@@ -12,7 +12,10 @@ import {
   directDeleteMeeting,
   directCreateEmployee,
   directUpdateEmployee,
-  directUpdatePassword
+  directUpdatePassword,
+  directCreateDoc,
+  directUpdateDoc,
+  directDeleteDoc
 } from './neonDirect';
 
 const API_BASE = '/api';
@@ -218,3 +221,40 @@ export async function apiUpdatePassword(email, passwordHash) {
     return await directUpdatePassword(email, passwordHash);
   }
 }
+
+// 6. Docs
+export async function apiCreateDoc(doc) {
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request('/docs', {
+      method: 'POST',
+      body: JSON.stringify(doc)
+    });
+  } catch {
+    return await directCreateDoc(doc);
+  }
+}
+
+export async function apiUpdateDoc(id, updates) {
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request(`/docs/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
+  } catch {
+    return await directUpdateDoc(id, updates);
+  }
+}
+
+export async function apiDeleteDoc(id) {
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request(`/docs/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+  } catch {
+    return await directDeleteDoc(id);
+  }
+}
+

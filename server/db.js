@@ -54,6 +54,23 @@ export const toMeetingDto = (row) => row ? ({
   attendeeId: row.attendee_id || ''
 }) : null;
 
+export const toDocDto = (row) => row ? ({
+  id: row.id,
+  title: row.title,
+  category: row.category || 'General',
+  summary: row.summary || '',
+  content: row.content || '',
+  tags: Array.isArray(row.tags) ? row.tags : (row.tags ? (typeof row.tags === 'string' ? JSON.parse(row.tags) : row.tags) : []),
+  externalUrl: row.external_url || '',
+  authorId: row.author_id || '',
+  authorName: row.author_name || '',
+  authorRole: row.author_role || '',
+  authorAvatar: row.author_avatar || '',
+  isPinned: Boolean(row.is_pinned),
+  createdAt: row.created_at ? new Date(row.created_at).toISOString() : '',
+  updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : ''
+}) : null;
+
 let isInitialized = false;
 
 // Initialize database schema tables & seed if empty
@@ -121,6 +138,26 @@ export async function initDb() {
       );
     `;
 
+    // 5. Docs Table
+    await sql`
+      CREATE TABLE IF NOT EXISTS docs (
+        id VARCHAR(100) PRIMARY KEY,
+        title TEXT NOT NULL,
+        category TEXT DEFAULT 'General',
+        summary TEXT DEFAULT '',
+        content TEXT DEFAULT '',
+        tags JSONB DEFAULT '[]'::jsonb,
+        external_url TEXT DEFAULT '',
+        author_id VARCHAR(100),
+        author_name TEXT DEFAULT '',
+        author_role TEXT DEFAULT '',
+        author_avatar TEXT DEFAULT '',
+        is_pinned BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `;
+
     // Check if initial seeding is needed
     const empCount = await sql`SELECT COUNT(*)::int as count FROM employees;`;
     if (empCount[0]?.count === 0) {
@@ -176,6 +213,7 @@ export async function initDb() {
 // Data retrieval for client hydration
 export async function getBootstrapData() {
   await initDb();
+  let docRows = [];
   const [empRows, projRows, taskRows, meetRows] = await Promise.all([
     sql`SELECT * FROM employees ORDER BY created_at ASC`,
     sql`SELECT * FROM projects ORDER BY created_at ASC`,
@@ -183,11 +221,18 @@ export async function getBootstrapData() {
     sql`SELECT * FROM meetings ORDER BY created_at ASC`
   ]);
 
+  try {
+    docRows = await sql`SELECT * FROM docs ORDER BY created_at DESC`;
+  } catch {
+    docRows = [];
+  }
+
   return {
     employees: empRows.map(toEmployeeDto),
     projects: projRows.map(toProjectDto),
     tasks: taskRows.map(toTaskDto),
-    meetings: meetRows.map(toMeetingDto)
+    meetings: meetRows.map(toMeetingDto),
+    docs: docRows.map(toDocDto)
   };
 }
 
@@ -499,3 +544,67 @@ async function recalcProjectProgress(projectId) {
     WHERE id = ${projectId};
   `;
 }
+
+// ----------------------------------------------------
+// Doc Operations
+// ----------------------------------------------------
+export async function createDocRecord(doc) {
+  await initDb();
+  const id = doc.id || ('doc_' + Date.now() + Math.random().toString(36).substring(2, 6));
+  const tagsJson = JSON.stringify(Array.isArray(doc.tags) ? doc.tags : []);
+
+  await sql`
+    INSERT INTO docs (id, title, category, summary, content, tags, external_url, author_id, author_name, author_role, author_avatar, is_pinned)
+    VALUES (${id}, ${doc.title || ''}, ${doc.category || 'General'}, ${doc.summary || ''}, ${doc.content || ''}, ${tagsJson}::jsonb, ${doc.externalUrl || ''}, ${doc.authorId || ''}, ${doc.authorName || ''}, ${doc.authorRole || ''}, ${doc.authorAvatar || ''}, ${Boolean(doc.isPinned)})
+    ON CONFLICT (id) DO UPDATE SET
+      title = EXCLUDED.title,
+      category = EXCLUDED.category,
+      summary = EXCLUDED.summary,
+      content = EXCLUDED.content,
+      tags = EXCLUDED.tags,
+      external_url = EXCLUDED.external_url,
+      is_pinned = EXCLUDED.is_pinned,
+      updated_at = NOW();
+  `;
+
+  const res = await sql`SELECT * FROM docs WHERE id = ${id}`;
+  return toDocDto(res[0]);
+}
+
+export async function updateDocRecord(id, updates) {
+  await initDb();
+  const existing = await sql`SELECT * FROM docs WHERE id = ${id}`;
+  if (existing.length === 0) return createDocRecord({ id, ...updates });
+
+  const current = existing[0];
+  const title = updates.title !== undefined ? updates.title : current.title;
+  const category = updates.category !== undefined ? updates.category : current.category;
+  const summary = updates.summary !== undefined ? updates.summary : current.summary;
+  const content = updates.content !== undefined ? updates.content : current.content;
+  const tagsJson = JSON.stringify(updates.tags !== undefined ? updates.tags : (current.tags || []));
+  const externalUrl = updates.externalUrl !== undefined ? updates.externalUrl : current.external_url;
+  const isPinned = updates.isPinned !== undefined ? Boolean(updates.isPinned) : Boolean(current.is_pinned);
+
+  await sql`
+    UPDATE docs SET
+      title = ${title},
+      category = ${category},
+      summary = ${summary},
+      content = ${content},
+      tags = ${tagsJson}::jsonb,
+      external_url = ${externalUrl},
+      is_pinned = ${isPinned},
+      updated_at = NOW()
+    WHERE id = ${id};
+  `;
+
+  const res = await sql`SELECT * FROM docs WHERE id = ${id}`;
+  return toDocDto(res[0]);
+}
+
+export async function deleteDocRecord(id) {
+  await initDb();
+  await sql`DELETE FROM docs WHERE id = ${id}`;
+  return true;
+}
+

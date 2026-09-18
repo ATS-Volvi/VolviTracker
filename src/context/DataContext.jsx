@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { seedData } from './seed';
+import { seedDocs } from './seedDocs';
 import { DEFAULT_PASSWORD_HASH } from '../utils/crypto';
 import {
   isCloudSyncEnabled,
@@ -15,7 +16,10 @@ import {
   apiDeleteMeeting,
   apiCreateEmployee,
   apiUpdateEmployee,
-  apiUpdatePassword
+  apiUpdatePassword,
+  apiCreateDoc,
+  apiUpdateDoc,
+  apiDeleteDoc
 } from '../services/api';
 
 const DataContext = createContext(null);
@@ -34,7 +38,8 @@ export const DataProvider = ({ children }) => {
     employees: Array.isArray(seedData.employees) ? seedData.employees : [],
     projects: Array.isArray(seedData.projects) ? seedData.projects : [],
     tasks: Array.isArray(seedData.tasks) ? seedData.tasks : [],
-    meetings: Array.isArray(seedData.meetings) ? seedData.meetings : []
+    meetings: Array.isArray(seedData.meetings) ? seedData.meetings : [],
+    docs: Array.isArray(seedDocs) ? seedDocs : []
   });
   const [isCloudSynced, setIsCloudSynced] = useState(false);
   const dataRef = useRef(data);
@@ -69,6 +74,7 @@ export const DataProvider = ({ children }) => {
         let remoteTasks = Array.isArray(cloudData.tasks) ? [...cloudData.tasks] : [];
         let remoteMeetings = Array.isArray(cloudData.meetings) ? [...cloudData.meetings] : [];
         let remoteEmployees = Array.isArray(cloudData.employees) ? [...cloudData.employees] : [];
+        let remoteDocs = Array.isArray(cloudData.docs) ? [...cloudData.docs] : [];
 
         // Automatic Local-to-Cloud Sync:
         // If the device has custom user projects (e.g. "CRM for FACE co", "ATS")
@@ -100,7 +106,8 @@ export const DataProvider = ({ children }) => {
           employees: remoteEmployees.length > 0 ? remoteEmployees : (seedData.employees || []),
           projects: remoteProjects,
           tasks: remoteTasks,
-          meetings: remoteMeetings.length > 0 ? remoteMeetings : (seedData.meetings || [])
+          meetings: remoteMeetings.length > 0 ? remoteMeetings : (seedData.meetings || []),
+          docs: remoteDocs.length > 0 ? remoteDocs : (dataRef.current.docs || seedDocs || [])
         };
 
         // Standardize projects to 0-100 & progress 0 = Not started
@@ -135,7 +142,7 @@ export const DataProvider = ({ children }) => {
   // Initial load: Load local cache immediately, then hydrate from Neon PostgreSQL if on Vercel
   useEffect(() => {
     const loaded = {};
-    ['employees', 'projects', 'tasks', 'meetings'].forEach(key => {
+    ['employees', 'projects', 'tasks', 'meetings', 'docs'].forEach(key => {
       const stored = localStorage.getItem(key);
       if (stored) {
         try {
@@ -143,13 +150,13 @@ export const DataProvider = ({ children }) => {
           if (Array.isArray(parsed) && parsed.length > 0) {
             loaded[key] = parsed;
           } else {
-            loaded[key] = seedData[key] || [];
+            loaded[key] = key === 'docs' ? seedDocs : (seedData[key] || []);
           }
         } catch {
-          loaded[key] = seedData[key] || [];
+          loaded[key] = key === 'docs' ? seedDocs : (seedData[key] || []);
         }
       } else {
-        loaded[key] = seedData[key] || [];
+        loaded[key] = key === 'docs' ? seedDocs : (seedData[key] || []);
       }
     });
 
@@ -157,7 +164,8 @@ export const DataProvider = ({ children }) => {
       employees: Array.isArray(loaded.employees) ? loaded.employees : seedData.employees,
       projects: Array.isArray(loaded.projects) ? loaded.projects : seedData.projects,
       tasks: Array.isArray(loaded.tasks) ? loaded.tasks : seedData.tasks,
-      meetings: Array.isArray(loaded.meetings) ? loaded.meetings : seedData.meetings
+      meetings: Array.isArray(loaded.meetings) ? loaded.meetings : seedData.meetings,
+      docs: Array.isArray(loaded.docs) ? loaded.docs : seedDocs
     });
 
     // In local dev: stay strictly on local storage. In production on Vercel: hydrate & poll Neon DB.
@@ -501,6 +509,66 @@ export const DataProvider = ({ children }) => {
     apiUpdatePassword(email, newPasswordHash).catch(e => console.error('[Neon Error] updateEmployeeCredentials:', e));
   };
 
+  // ----------------------------------------------------
+  // Docs CRUD with Local Cache & Cloud Sync
+  // ----------------------------------------------------
+  const addDoc = (doc) => {
+    const item = {
+      ...doc,
+      id: doc.id || ('doc-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6)),
+      createdAt: doc.createdAt || new Date().toISOString(),
+      updatedAt: doc.updatedAt || new Date().toISOString(),
+      tags: Array.isArray(doc.tags) ? doc.tags : [],
+      isPinned: Boolean(doc.isPinned)
+    };
+
+    const nextDocs = [item, ...(data.docs || [])];
+    setData(prev => ({ ...prev, docs: nextDocs }));
+    saveLocal('docs', nextDocs);
+
+    apiCreateDoc(item).catch(e => console.error('[Neon Error] addDoc:', e));
+    return item;
+  };
+
+  const updateDoc = (id, updates) => {
+    if (!id) return;
+    let nextUpdatedItem = null;
+    const nextDocs = (data.docs || []).map(d => {
+      if (d.id === id) {
+        nextUpdatedItem = {
+          ...d,
+          ...updates,
+          updatedAt: new Date().toISOString()
+        };
+        return nextUpdatedItem;
+      }
+      return d;
+    });
+
+    setData(prev => ({ ...prev, docs: nextDocs }));
+    saveLocal('docs', nextDocs);
+
+    if (nextUpdatedItem) {
+      apiUpdateDoc(id, nextUpdatedItem).catch(e => console.error('[Neon Error] updateDoc:', e));
+    }
+  };
+
+  const removeDoc = (id) => {
+    if (!id) return;
+    const nextDocs = (data.docs || []).filter(d => d.id !== id);
+    setData(prev => ({ ...prev, docs: nextDocs }));
+    saveLocal('docs', nextDocs);
+
+    apiDeleteDoc(id).catch(e => console.error('[Neon Error] removeDoc:', e));
+  };
+
+  const togglePinDoc = (id) => {
+    if (!id) return;
+    const doc = (data.docs || []).find(d => d.id === id);
+    if (!doc) return;
+    updateDoc(id, { isPinned: !doc.isPinned });
+  };
+
   const getEmployee = (id) => (Array.isArray(data.employees) ? data.employees : seedData.employees).find(e => String(e.id) === String(id)) || null;
   const getProjectTasks = (projectId) => (Array.isArray(data.tasks) ? data.tasks : seedData.tasks).filter(t => t.projectId === projectId);
 
@@ -508,6 +576,7 @@ export const DataProvider = ({ children }) => {
   const safeProjects = Array.isArray(data.projects) ? data.projects : (seedData.projects || []);
   const safeTasks = Array.isArray(data.tasks) ? data.tasks : (seedData.tasks || []);
   const safeMeetings = Array.isArray(data.meetings) ? data.meetings : (seedData.meetings || []);
+  const safeDocs = Array.isArray(data.docs) && data.docs.length > 0 ? data.docs : (seedDocs || []);
 
   const value = {
     ...data,
@@ -515,6 +584,7 @@ export const DataProvider = ({ children }) => {
     projects: safeProjects,
     tasks: safeTasks,
     meetings: safeMeetings,
+    docs: safeDocs,
     isCloudSynced,
     getEmployee,
     getProjectTasks,
@@ -522,7 +592,8 @@ export const DataProvider = ({ children }) => {
     addEmployee, updateEmployee, removeEmployee, updateEmployeeCredentials,
     addProject, updateProject, removeProject, addProjectWithTasks, updateProjectWithTasks,
     addTask, updateTask, removeTask,
-    addMeeting, updateMeeting, removeMeeting
+    addMeeting, updateMeeting, removeMeeting,
+    addDoc, updateDoc, removeDoc, togglePinDoc
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

@@ -53,8 +53,26 @@ export const toMeetingDto = (row) => row ? ({
   attendeeId: row.attendee_id ? String(row.attendee_id) : ''
 }) : null;
 
+export const toDocDto = (row) => row ? ({
+  id: String(row.id),
+  title: row.title || '',
+  category: row.category || 'General',
+  summary: row.summary || '',
+  content: row.content || '',
+  tags: Array.isArray(row.tags) ? row.tags : (row.tags ? (typeof row.tags === 'string' ? JSON.parse(row.tags) : []) : []),
+  externalUrl: row.external_url || '',
+  authorId: row.author_id ? String(row.author_id) : '',
+  authorName: row.author_name || '',
+  authorRole: row.author_role || '',
+  authorAvatar: row.author_avatar || '',
+  isPinned: Boolean(row.is_pinned),
+  createdAt: row.created_at ? new Date(row.created_at).toISOString() : '',
+  updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : ''
+}) : null;
+
 // Bootstrap Data from Neon DB
 export async function directGetBootstrapData() {
+  let docRows = [];
   const [empRows, projRows, taskRows, meetRows] = await Promise.all([
     sql`SELECT * FROM employees ORDER BY created_at ASC`,
     sql`SELECT * FROM projects ORDER BY created_at ASC`,
@@ -62,11 +80,18 @@ export async function directGetBootstrapData() {
     sql`SELECT * FROM meetings ORDER BY created_at ASC`
   ]);
 
+  try {
+    docRows = await sql`SELECT * FROM docs ORDER BY created_at DESC`;
+  } catch {
+    docRows = [];
+  }
+
   return {
     employees: empRows.map(toEmployeeDto).filter(Boolean),
     projects: projRows.map(toProjectDto).filter(Boolean),
     tasks: taskRows.map(toTaskDto).filter(Boolean),
-    meetings: meetRows.map(toMeetingDto).filter(Boolean)
+    meetings: meetRows.map(toMeetingDto).filter(Boolean),
+    docs: docRows.map(toDocDto).filter(Boolean)
   };
 }
 
@@ -362,3 +387,93 @@ async function directRecalcProjectProgress(projectId) {
     WHERE id = ${projectId};
   `;
 }
+
+// ----------------------------------------------------
+// Docs Direct Operations
+// ----------------------------------------------------
+export async function directCreateDoc(doc) {
+  const id = doc.id || ('doc_' + Date.now() + Math.random().toString(36).substring(2, 6));
+  const tagsJson = JSON.stringify(Array.isArray(doc.tags) ? doc.tags : []);
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS docs (
+        id VARCHAR(100) PRIMARY KEY,
+        title TEXT NOT NULL,
+        category TEXT DEFAULT 'General',
+        summary TEXT DEFAULT '',
+        content TEXT DEFAULT '',
+        tags JSONB DEFAULT '[]'::jsonb,
+        external_url TEXT DEFAULT '',
+        author_id VARCHAR(100),
+        author_name TEXT DEFAULT '',
+        author_role TEXT DEFAULT '',
+        author_avatar TEXT DEFAULT '',
+        is_pinned BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `;
+    await sql`
+      INSERT INTO docs (id, title, category, summary, content, tags, external_url, author_id, author_name, author_role, author_avatar, is_pinned)
+      VALUES (${id}, ${doc.title || ''}, ${doc.category || 'General'}, ${doc.summary || ''}, ${doc.content || ''}, ${tagsJson}::jsonb, ${doc.externalUrl || ''}, ${doc.authorId || ''}, ${doc.authorName || ''}, ${doc.authorRole || ''}, ${doc.authorAvatar || ''}, ${Boolean(doc.isPinned)})
+      ON CONFLICT (id) DO UPDATE SET
+        title = EXCLUDED.title,
+        category = EXCLUDED.category,
+        summary = EXCLUDED.summary,
+        content = EXCLUDED.content,
+        tags = EXCLUDED.tags,
+        external_url = EXCLUDED.external_url,
+        is_pinned = EXCLUDED.is_pinned,
+        updated_at = NOW();
+    `;
+    const res = await sql`SELECT * FROM docs WHERE id = ${id}`;
+    return toDocDto(res[0]);
+  } catch (err) {
+    console.warn('[neonDirect] directCreateDoc error:', err);
+    return { ...doc, id };
+  }
+}
+
+export async function directUpdateDoc(id, updates) {
+  try {
+    const res = await sql`SELECT * FROM docs WHERE id = ${id}`;
+    if (res.length === 0) return directCreateDoc({ id, ...updates });
+    const current = res[0];
+    const title = updates.title !== undefined ? updates.title : current.title;
+    const category = updates.category !== undefined ? updates.category : current.category;
+    const summary = updates.summary !== undefined ? updates.summary : current.summary;
+    const content = updates.content !== undefined ? updates.content : current.content;
+    const tagsJson = JSON.stringify(updates.tags !== undefined ? updates.tags : (current.tags || []));
+    const externalUrl = updates.externalUrl !== undefined ? updates.externalUrl : current.external_url;
+    const isPinned = updates.isPinned !== undefined ? Boolean(updates.isPinned) : Boolean(current.is_pinned);
+
+    await sql`
+      UPDATE docs SET
+        title = ${title},
+        category = ${category},
+        summary = ${summary},
+        content = ${content},
+        tags = ${tagsJson}::jsonb,
+        external_url = ${externalUrl},
+        is_pinned = ${isPinned},
+        updated_at = NOW()
+      WHERE id = ${id};
+    `;
+    const updated = await sql`SELECT * FROM docs WHERE id = ${id}`;
+    return toDocDto(updated[0]);
+  } catch (err) {
+    console.warn('[neonDirect] directUpdateDoc error:', err);
+    return { id, ...updates };
+  }
+}
+
+export async function directDeleteDoc(id) {
+  try {
+    await sql`DELETE FROM docs WHERE id = ${id}`;
+    return true;
+  } catch (err) {
+    console.warn('[neonDirect] directDeleteDoc error:', err);
+    return false;
+  }
+}
+

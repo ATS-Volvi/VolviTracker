@@ -1,18 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Avatar } from './widgets/Avatar';
 import ChangePasswordModal from './auth/ChangePasswordModal';
+import ChangeProfilePictureModal from './auth/ChangeProfilePictureModal';
 import logo from '../assets/volvitech-logo.png';
 
 const NavBar = () => {
   const { user, isAdmin, logout } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isScrolled, setIsScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [changeAvatarOpen, setChangeAvatarOpen] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -42,6 +45,10 @@ const NavBar = () => {
     navigate('/login');
   };
 
+  const isPlannerActive = location.pathname === '/dashboard' || location.pathname === '/';
+  const isProfileActive = Boolean(user && location.pathname === `/employee/${user.id}`);
+  const isDocsActive = location.pathname.startsWith('/docs');
+
   return (
     <>
       <header
@@ -52,8 +59,11 @@ const NavBar = () => {
         }`}
       >
         <nav className="w-full px-4 sm:px-8 py-2.5 flex items-center justify-between">
-          <div className="flex items-center space-x-6">
-            <Link to="/dashboard" className="flex items-center gap-2.5 hover:opacity-90 transition">
+          <div className="flex items-center space-x-3 sm:space-x-5">
+            <Link
+              to={isAdmin ? '/dashboard' : `/employee/${user?.id}`}
+              className="flex items-center gap-2.5 hover:opacity-90 transition"
+            >
               <img
                 src={logo}
                 alt="Volvitech"
@@ -61,12 +71,50 @@ const NavBar = () => {
               />
             </Link>
             <span className="h-4 w-px bg-gray-200 hidden sm:inline-block"></span>
-            <Link
-              to="/dashboard"
-              className="text-sm font-bold text-gray-700 hover:text-blue-600 transition hidden sm:inline-block"
-            >
-              Planner
-            </Link>
+            <div className="flex items-center gap-1 sm:gap-1.5">
+              {isAdmin ? (
+                <Link
+                  to="/dashboard"
+                  className={`text-xs sm:text-sm font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
+                    isPlannerActive
+                      ? 'bg-blue-50 text-blue-600 shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/70'
+                  }`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                  <span>Planner</span>
+                </Link>
+              ) : (
+                <Link
+                  to={`/employee/${user?.id}`}
+                  className={`text-xs sm:text-sm font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
+                    isProfileActive
+                      ? 'bg-blue-50 text-blue-600 shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/70'
+                  }`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span>Personal</span>
+                </Link>
+              )}
+              <Link
+                to="/docs"
+                className={`text-xs sm:text-sm font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
+                  isDocsActive
+                    ? 'bg-blue-50 text-blue-600 shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/70'
+                }`}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                <span>Docs</span>
+              </Link>
+            </div>
           </div>
 
           <div className="flex items-center space-x-3">
@@ -128,16 +176,19 @@ const NavBar = () => {
 
                     {/* Menu links */}
                     <div className="py-1">
-                      <Link
-                        to={`/employee/${user.id}`}
-                        onClick={() => setMenuOpen(false)}
-                        className="flex items-center gap-2.5 px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:text-blue-600 transition"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setChangeAvatarOpen(true);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:text-blue-600 transition text-left"
                       >
                         <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
-                        My Profile & Tasks
-                      </Link>
+                        Change Profile Picture
+                      </button>
 
                       <button
                         type="button"
@@ -178,6 +229,12 @@ const NavBar = () => {
       <ChangePasswordModal
         isOpen={changePasswordOpen}
         onClose={() => setChangePasswordOpen(false)}
+      />
+
+      {/* Change Profile Picture Modal */}
+      <ChangeProfilePictureModal
+        isOpen={changeAvatarOpen}
+        onClose={() => setChangeAvatarOpen(false)}
       />
     </>
   );
