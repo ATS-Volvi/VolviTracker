@@ -580,9 +580,9 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                       ) : (
                         <div className="flex items-center justify-between group/cell">
                           <button
-                            onClick={() => { setEditingNameId(p.id); setTempNameValue(p.name); }}
-                            className="text-left font-medium text-gray-800 hover:text-blue-600 transition truncate"
-                            title="Click to rename"
+                            onClick={() => { setEditingProject(p); setModalOpen(true); }}
+                            className="text-left font-medium text-gray-800 hover:text-blue-600 transition truncate hover:underline cursor-pointer"
+                            title="Click to edit project"
                           >
                             {p.name || <span className="text-gray-400 italic">Untitled</span>}
                           </button>
@@ -1093,7 +1093,13 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                 return (
                   <div key={p.id} className="flex items-center gap-4 group">
                     <div className="w-48 text-xs font-semibold text-gray-800 truncate flex items-center justify-between pr-2">
-                      <span className="truncate">{p.name}</span>
+                      <button
+                        onClick={() => { setEditingProject(p); setModalOpen(true); }}
+                        className="truncate font-semibold text-gray-800 text-left hover:text-blue-600 hover:underline transition cursor-pointer"
+                        title="Click to edit project"
+                      >
+                        {p.name}
+                      </button>
                       {assignees.length > 0 && (
                         <div className="flex -space-x-1 shrink-0">
                           {assignees.slice(0, 2).map(e => (
@@ -1189,7 +1195,11 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                   </div>
                 </div>
 
-                <h3 className="text-base font-bold text-gray-900 mt-3 group-hover:text-blue-600 transition">
+                <h3
+                  onClick={() => { setEditingProject(p); setModalOpen(true); }}
+                  className="text-base font-bold text-gray-900 mt-3 hover:text-blue-600 transition cursor-pointer hover:underline"
+                  title="Click to edit project"
+                >
                   {p.name}
                 </h3>
 
