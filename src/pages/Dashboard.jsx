@@ -87,7 +87,7 @@ export const Dashboard = () => {
   };
 
   return (
-    <div className="w-full min-h-screen bg-[#FBFBFC] px-3 sm:px-6 py-6 space-y-6">
+    <div className="w-full min-h-screen bg-[#FBFBFC] px-4 sm:px-8 py-6 space-y-6">
       {/* Top Main Title & Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import Avatar from '../components/widgets/Avatar';
 import TasksTab from '../components/tasks/TasksTab';
 import MeetingList from '../components/meetings/MeetingList';
 import ProjectsTable from '../components/projects/ProjectsTable';
+import EditEmployeeModal from '../components/employees/EditEmployeeModal';
 
 const fmt = (dt) => new Date(dt).toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -18,10 +20,12 @@ const STATUS_STYLES = {
 export const Employee = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { getEmployee, projects = [], tasks, meetings } = useData();
+  const { getEmployee, projects = [], tasks, meetings, updateEmployee } = useData();
   const { user, isAdmin } = useAuth();
+  const { addToast } = useToast();
   const [comment, setComment] = useState('');
   const [props, setProps] = useState([]);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const isOwnProfile = user && String(user.id) === String(id);
 
@@ -71,6 +75,15 @@ export const Employee = () => {
 
   const emp = getEmployee(id);
 
+  // Sync custom properties
+  useEffect(() => {
+    if (emp && Array.isArray(emp.properties)) {
+      setProps(emp.properties);
+    } else {
+      setProps([]);
+    }
+  }, [emp?.properties]);
+
   if (!emp) {
     return (
       <div className="min-h-screen">
@@ -100,38 +113,127 @@ export const Employee = () => {
     return m.attendeeId === id;
   });
 
-  const addProperty = () => {
-    const v = window.prompt('Add a property (e.g. Department: Engineering)');
-    if (v && v.trim()) setProps([...props, v.trim()]);
+  const handleAddProperty = () => {
+    const v = window.prompt('Add a property (e.g. Department: Engineering, Location: New York)');
+    if (v && v.trim()) {
+      const cleanVal = v.trim();
+      const currentProps = Array.isArray(emp.properties) ? emp.properties : props;
+      const nextProps = [...currentProps, cleanVal];
+      setProps(nextProps);
+      if (updateEmployee) {
+        updateEmployee(id, { properties: nextProps });
+      }
+      addToast(`Added property: "${cleanVal}"`, 'success', 2000);
+    }
+  };
+
+  const handleRemoveProperty = (idxToRemove) => {
+    const currentProps = Array.isArray(emp.properties) ? emp.properties : props;
+    const nextProps = currentProps.filter((_, i) => i !== idxToRemove);
+    setProps(nextProps);
+    if (updateEmployee) {
+      updateEmployee(id, { properties: nextProps });
+    }
+    addToast('Property removed', 'info', 2000);
+  };
+
+  const handleSaveProperties = (updates) => {
+    if (updateEmployee) {
+      updateEmployee(id, updates);
+    }
   };
 
   return (
-    <div className="min-h-screen">
-      <main className="mx-auto max-w-7xl px-3 sm:px-6 py-6 space-y-6">
+    <div className="w-full min-h-screen">
+      <main className="w-full px-4 sm:px-8 py-6 space-y-6">
         <section className="card p-5">
-          <div className="flex items-start gap-4">
-            <Avatar src={emp.avatar} alt={emp.fullName} className="h-16 w-16" />
-            <div className="flex-1">
-              <div className="flex items-center gap-3">
-                <h1 className="text-xl font-semibold text-gray-900">{emp.fullName}</h1>
-                {isOwnProfile ? (
-                  <span className="badge bg-indigo-100 text-indigo-700">You</span>
-                ) : isAdmin ? (
-                  <span className="badge bg-purple-100 text-purple-700 border border-purple-200 font-semibold">Admin View</span>
-                ) : null}
-              </div>
-              <p className="text-sm text-gray-500">{emp.email}</p>
-              <p className="text-sm text-gray-500">{emp.role || '—'}</p>
-              {props.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {props.map((p, i) => (
-                    <span key={i} className="badge bg-slate-100 text-slate-600">{p}</span>
-                  ))}
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <Avatar src={emp.avatar} alt={emp.fullName} className="h-16 w-16 shadow-sm border border-gray-100" />
+              <div className="flex-1">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h1 className="text-xl font-bold text-gray-900">{emp.fullName}</h1>
+                  {isOwnProfile ? (
+                    <span className="badge bg-indigo-100 text-indigo-700">You</span>
+                  ) : isAdmin ? (
+                    <span className="badge bg-purple-100 text-purple-700 border border-purple-200 font-semibold">Admin View</span>
+                  ) : null}
+                  {(isAdmin || isOwnProfile) && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditModalOpen(true)}
+                      className="text-gray-400 hover:text-purple-700 p-1 rounded-md hover:bg-purple-50 transition"
+                      title="Edit employee properties"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
+                <p className="text-xs text-gray-500 mt-0.5">{emp.email}</p>
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200/60">
+                    {emp.role || '—'}
+                  </span>
+                  {(isAdmin || isOwnProfile) && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditModalOpen(true)}
+                      className="text-[11px] text-blue-600 hover:text-blue-700 font-medium hover:underline"
+                    >
+                      Change designation
+                    </button>
+                  )}
+                </div>
+                {props.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {props.map((p, i) => (
+                      <span key={i} className="inline-flex items-center gap-1.5 text-xs bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-md border border-slate-200">
+                        <span>{p}</span>
+                        {(isAdmin || isOwnProfile) && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveProperty(i)}
+                            className="text-slate-400 hover:text-rose-600 font-bold ml-0.5 transition"
+                            title="Remove property"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Admin / Owner Actions */}
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              {(isAdmin || isOwnProfile) && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5 text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition shadow-2xs font-semibold"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                  <span>Edit Details</span>
+                </button>
+              )}
+              {(isAdmin || isOwnProfile) && (
+                <button
+                  type="button"
+                  className="btn-ghost text-xs py-1.5 px-3 text-gray-700 hover:bg-gray-100 rounded-xl transition border border-gray-200 shadow-2xs"
+                  onClick={handleAddProperty}
+                >
+                  + Add property
+                </button>
               )}
             </div>
-            <button className="btn-ghost text-sm" onClick={addProperty}>+ Add property</button>
           </div>
+
           <div className="mt-4">
             <input
               className="input-field"
@@ -150,6 +252,14 @@ export const Employee = () => {
         <TasksTab tasks={myTasks} heading="My Tasks" />
         <MeetingList meetings={myMeetings} defaultAttendeeId={id} />
       </main>
+
+      {/* Edit Employee Properties Modal */}
+      <EditEmployeeModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        employee={emp}
+        onSave={handleSaveProperties}
+      />
     </div>
   );
 };
