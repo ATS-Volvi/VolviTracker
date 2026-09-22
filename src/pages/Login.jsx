@@ -1,10 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useData } from '../context/DataContext';
 import { useToast } from '../context/ToastContext';
 import ForgotPasswordModal from '../components/auth/ForgotPasswordModal';
-import { DEFAULT_DEMO_PASSWORD } from '../utils/crypto';
 import logo from '../assets/volvitech-logo.png';
 
 const ROLE_OPTIONS = [
@@ -39,8 +37,7 @@ const calculatePasswordStrength = (pass) => {
 };
 
 const Login = () => {
-  const { login, signup, quickLogin } = useAuth();
-  const { employees } = useData();
+  const { login, signup } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
 
@@ -140,22 +137,6 @@ const Login = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
 
-  // Demo profiles for quick testing
-  const demoAdmin = (Array.isArray(employees) && employees.find(e => e.id === '1' || (e.role || '').toLowerCase() === 'admin')) || {
-    id: '1',
-    fullName: 'Swastik Kumar',
-    email: 'swastikk005@gmail.com',
-    role: 'Admin',
-    avatar: 'https://i.pravatar.cc/150?u=swastik'
-  };
-
-  const demoMember = (Array.isArray(employees) && employees.find(e => (e.role || '').toLowerCase() !== 'admin')) || {
-    id: '3',
-    fullName: 'Liam Chen',
-    email: 'liam@example.com',
-    role: 'Engineer',
-    avatar: 'https://i.pravatar.cc/150?u=liam'
-  };
 
   const getRedirectPath = (u) => {
     const isUserAdmin = (u?.role || '').toLowerCase() === 'admin';
@@ -212,20 +193,6 @@ const Login = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const autofillDemoProfile = (p) => {
-    setMode('signin');
-    setEmail(p.email);
-    setPassword(DEFAULT_DEMO_PASSWORD);
-    setErrorMessage('');
-    addToast(`Filled credentials for ${p.fullName}. Click "Sign In" to proceed.`, 'info', 2500);
-  };
-
-  const handleQuickSignIn = (p) => {
-    quickLogin(p);
-    addToast(`Signed in as ${p.fullName}`, 'success');
-    navigate(getRedirectPath(p));
   };
 
   const passwordStrength = calculatePasswordStrength(signupPassword);
@@ -612,100 +579,6 @@ const Login = () => {
           </form>
         )}
 
-        {/* DEMO PROFILES SECTION */}
-        <div className="my-6 flex items-center gap-3 text-[11px] font-semibold tracking-wider text-gray-400">
-          <div className="h-px flex-1 bg-gray-200" />
-          <span>QUICK DEMO PROFILES</span>
-          <div className="h-px flex-1 bg-gray-200" />
-        </div>
-
-        <div className="space-y-3">
-          {/* Admin Profile */}
-          <div className="w-full flex items-center justify-between p-2.5 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50/40 transition group bg-white shadow-2xs">
-            <div className="flex items-center gap-3 min-w-0 pr-2">
-              <img
-                src={demoAdmin.avatar}
-                alt={demoAdmin.fullName}
-                className="h-9 w-9 rounded-full object-cover shrink-0 border border-gray-100 shadow-sm"
-                onError={(e) => {
-                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(demoAdmin.fullName)}&background=0070F3&color=fff`;
-                }}
-              />
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-gray-900 truncate">{demoAdmin.fullName}</span>
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200">
-                    {demoAdmin.role || 'Admin'}
-                  </span>
-                </div>
-                <div className="text-[11px] text-gray-500 truncate">{demoAdmin.email}</div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => autofillDemoProfile(demoAdmin)}
-                title="Auto-fill form with demo credentials"
-                className="px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:text-blue-700 hover:bg-white rounded-lg border border-gray-200 shadow-2xs transition"
-              >
-                Fill
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickSignIn(demoAdmin)}
-                title="Instant 1-Click Sign In"
-                className="px-3 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg border border-blue-200 transition"
-              >
-                Sign in
-              </button>
-            </div>
-          </div>
-
-          {/* Member / Non-admin Profile */}
-          {demoMember && (
-            <div className="w-full flex items-center justify-between p-2.5 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50/40 transition group bg-white shadow-2xs">
-              <div className="flex items-center gap-3 min-w-0 pr-2">
-                <img
-                  src={demoMember.avatar}
-                  alt={demoMember.fullName}
-                  className="h-9 w-9 rounded-full object-cover shrink-0 border border-gray-100 shadow-sm"
-                  onError={(e) => {
-                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(demoMember.fullName)}&background=0070F3&color=fff`;
-                  }}
-                />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-gray-900 truncate">{demoMember.fullName}</span>
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                      {demoMember.role || 'Member'}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-gray-500 truncate">{demoMember.email}</div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => autofillDemoProfile(demoMember)}
-                  title="Auto-fill form with demo credentials"
-                  className="px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:text-blue-700 hover:bg-white rounded-lg border border-gray-200 shadow-2xs transition"
-                >
-                  Fill
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickSignIn(demoMember)}
-                  title="Instant 1-Click Sign In"
-                  className="px-3 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg border border-blue-200 transition"
-                >
-                  Sign in
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Forgot Password Modal */}

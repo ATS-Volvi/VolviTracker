@@ -16,6 +16,7 @@ import {
   apiDeleteMeeting,
   apiCreateEmployee,
   apiUpdateEmployee,
+  apiDeleteEmployee,
   apiUpdatePassword,
   apiCreateDoc,
   apiUpdateDoc,
@@ -494,6 +495,9 @@ export const DataProvider = ({ children }) => {
     const nextEmployees = data.employees.filter(e => e.id !== id);
     setData(prev => ({ ...prev, employees: nextEmployees }));
     saveLocal('employees', nextEmployees);
+
+    // Sync deletion to Neon Cloud
+    apiDeleteEmployee(id).catch(e => console.error('[Neon Error] removeEmployee:', e));
   };
 
   const updateEmployeeCredentials = (email, newPasswordHash) => {

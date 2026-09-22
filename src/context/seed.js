@@ -9,9 +9,9 @@ export const seedEmployees = [
 ];
 
 export const seedProjects = [
-  { id: 'p1', name: 'Public launch of iOS app', assigneeId: '1', status: 'In progress', startDate: '2025-04-09', endDate: '2025-04-30', startValue: 0, endValue: 100, progress: 0.5 },
-  { id: 'p2', name: 'Revamp new hire onboarding', assigneeId: '', status: 'Done', startDate: '2025-01-20', endDate: '2025-02-04', startValue: 0, endValue: 100, progress: 1.0 },
-  { id: 'p3', name: 'Quarterly sales planning', assigneeId: '', status: 'Not started', startDate: '2025-03-24', endDate: '2025-03-28', startValue: 0, endValue: 100, progress: 0 }
+  { id: 'p1', name: 'Public launch of iOS app', clientName: 'Apex Mobility', contactDesignation: 'VP of Product', clientDesignation: 'VP of Product', pocName: 'Sarah Jenkins', refererName: 'Michael Scott', contactNumber: '+1 (555) 234-8901', contactEmail: 'sarah.jenkins@apexmobility.io', assigneeId: '1', status: 'In progress', startDate: '2025-04-09', endDate: '2025-04-30', startValue: 0, endValue: 100, progress: 0.5 },
+  { id: 'p2', name: 'Revamp new hire onboarding', clientName: 'Internal Ops', contactDesignation: 'Head of People', clientDesignation: 'Head of People', pocName: 'Emma Watson', refererName: 'Internal HR', contactNumber: '+1 (555) 872-1094', contactEmail: 'emma.watson@volvitech.internal', assigneeId: '', status: 'Done', startDate: '2025-01-20', endDate: '2025-02-04', startValue: 0, endValue: 100, progress: 1.0 },
+  { id: 'p3', name: 'Quarterly sales planning', clientName: 'Global Sales Org', contactDesignation: 'Director of RevOps', clientDesignation: 'Director of RevOps', pocName: 'David Miller', refererName: 'Partner Agency', contactNumber: '+1 (555) 439-0128', contactEmail: 'david.miller@globalsales.com', assigneeId: '', status: 'Not started', startDate: '2025-03-24', endDate: '2025-03-28', startValue: 0, endValue: 100, progress: 0 }
 ];
 
 export const seedTasks = [

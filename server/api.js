@@ -11,6 +11,7 @@ import {
   deleteMeetingRecord,
   createEmployeeRecord,
   updateEmployeeRecord,
+  deleteEmployeeRecord,
   updatePasswordByEmail,
   createDocRecord,
   updateDocRecord,
@@ -157,6 +158,10 @@ export async function apiHandler(req, res, next) {
         const body = await parseJsonBody(req);
         const updated = await updateEmployeeRecord(id, body);
         return sendJson(res, 200, updated || { id });
+      }
+      if (method === 'DELETE') {
+        await deleteEmployeeRecord(id);
+        return sendJson(res, 200, { success: true, id });
       }
     }
 

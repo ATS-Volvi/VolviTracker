@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../widgets/Modal';
+import { sortTasks } from '../../utils/taskSort';
+import { downloadTaskTemplateExcel, parseTaskExcelFile } from '../../utils/excelTaskImport';
 
 const STATUSES = ['Not started', 'In progress', 'Done'];
 const PRIORITIES = ['Low', 'Medium', 'High'];
@@ -15,10 +18,18 @@ const getLocalDateString = (d = new Date()) => {
 
 export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   const { employees, addProjectWithTasks, updateProjectWithTasks, getProjectTasks } = useData();
+  const { user, isAdmin } = useAuth();
   const { addToast } = useToast();
 
   const [form, setForm] = useState({
     name: '',
+    clientName: '',
+    contactDesignation: '',
+    clientDesignation: '',
+    pocName: '',
+    refererName: '',
+    contactNumber: '',
+    contactEmail: '',
     assigneeIds: [],
     status: 'Not started',
     startDate: '',
@@ -50,6 +61,10 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   });
   const [showEditAssigneeDropdown, setShowEditAssigneeDropdown] = useState(false);
   const editAssigneeDropdownRef = useRef(null);
+
+  // Excel import/export state and ref
+  const excelFileInputRef = useRef(null);
+  const [isImporting, setIsImporting] = useState(false);
 
   // Close assignee dropdowns when clicking outside
   useEffect(() => {
@@ -100,8 +115,16 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       const start = initial.startDate ? initial.startDate.slice(0, 10) : today;
       const end = initial.endDate ? initial.endDate.slice(0, 10) : '';
 
+      const desig = initial.contactDesignation || initial.clientDesignation || '';
       setForm({
         name: initial.name || '',
+        clientName: initial.clientName || '',
+        contactDesignation: desig,
+        clientDesignation: desig,
+        pocName: initial.pocName || initial.pointOfContactName || '',
+        refererName: initial.refererName || '',
+        contactNumber: initial.contactNumber || initial.contactPhone || '',
+        contactEmail: initial.contactEmail || '',
         assigneeIds: initialAssigneeIds,
         status: initialStatus,
         startDate: start,
@@ -112,7 +135,10 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       });
 
       setNewTaskDeadline(today);
-      setNewTaskAssigneeIds(initialAssigneeIds.length > 0 ? [initialAssigneeIds[0]] : (employees[0] ? [employees[0].id] : []));
+      const defaultNewAssignees = (!isAdmin && user?.id)
+        ? [user.id]
+        : (initialAssigneeIds.length > 0 ? [initialAssigneeIds[0]] : (employees[0] ? [employees[0].id] : []));
+      setNewTaskAssigneeIds(defaultNewAssignees);
       setEditingTaskId(null);
     } else {
       const today = getLocalDateString();
@@ -122,6 +148,13 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
 
       setForm({
         name: '',
+        clientName: '',
+        contactDesignation: '',
+        clientDesignation: '',
+        pocName: '',
+        refererName: '',
+        contactNumber: '',
+        contactEmail: '',
         assigneeIds: [],
         status: 'Not started',
         startDate: today,
@@ -134,11 +167,14 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       setProjectTasks([]);
       setNewTaskTitle('');
       setNewTaskDeadline(today);
-      setNewTaskAssigneeIds(employees[0] ? [employees[0].id] : []);
+      const defaultNewAssignees = (!isAdmin && user?.id)
+        ? [user.id]
+        : (employees[0] ? [employees[0].id] : []);
+      setNewTaskAssigneeIds(defaultNewAssignees);
       setNewTaskPriority('Medium');
       setEditingTaskId(null);
     }
-  }, [initial, isOpen, employees]);
+  }, [initial, isOpen, employees, isAdmin, user?.id]);
 
   // Recalculate progress whenever projectTasks change
   const totalTasks = projectTasks.length;
@@ -171,12 +207,14 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   };
 
   const toggleNewTaskAssignee = (empId) => {
+    if (!isAdmin) return;
     setNewTaskAssigneeIds(prev =>
       prev.includes(empId) ? prev.filter(id => id !== empId) : [...prev, empId]
     );
   };
 
   const toggleEditTaskAssignee = (empId) => {
+    if (!isAdmin) return;
     setEditTaskForm(prev => ({
       ...prev,
       assigneeIds: prev.assigneeIds.includes(empId)
@@ -201,12 +239,17 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
     const title = newTaskTitle.trim();
     if (!title) return;
 
+    const assignedIds = (!isAdmin && user?.id)
+      ? [user.id]
+      : (newTaskAssigneeIds.length > 0 ? [...newTaskAssigneeIds] : (form.assigneeIds.length > 0 ? [form.assigneeIds[0]] : []));
+    const primaryAssigneeId = assignedIds[0] || (employees[0]?.id || '');
+
     const taskItem = {
       id: 'temp_' + Date.now() + Math.random().toString(36).substr(2, 4),
       name: title,
       dueDate: newTaskDeadline || form.endDate || form.startDate,
-      assigneeIds: newTaskAssigneeIds.length > 0 ? [...newTaskAssigneeIds] : (form.assigneeIds.length > 0 ? [form.assigneeIds[0]] : []),
-      assigneeId: newTaskAssigneeIds[0] || form.assigneeIds[0] || (employees[0]?.id || ''),
+      assigneeIds: assignedIds,
+      assigneeId: primaryAssigneeId,
       priority: newTaskPriority,
       status: 'Not started',
       description: ''
@@ -220,7 +263,9 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   const handleStartEditTask = (task) => {
     setEditingTaskId(task.id);
     let ids = [];
-    if (Array.isArray(task.assigneeIds) && task.assigneeIds.length > 0) {
+    if (!isAdmin && user?.id) {
+      ids = [user.id];
+    } else if (Array.isArray(task.assigneeIds) && task.assigneeIds.length > 0) {
       ids = [...task.assigneeIds];
     } else if (task.assigneeId) {
       ids = [task.assigneeId];
@@ -239,6 +284,10 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   const handleSaveEditTask = () => {
     if (!editTaskForm.name.trim()) return;
 
+    const finalEditAssignees = (!isAdmin && user?.id)
+      ? [user.id]
+      : editTaskForm.assigneeIds;
+
     setProjectTasks(prev =>
       prev.map(t => {
         if (t.id === editingTaskId) {
@@ -246,8 +295,8 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
             ...t,
             name: editTaskForm.name.trim(),
             dueDate: editTaskForm.dueDate,
-            assigneeIds: editTaskForm.assigneeIds,
-            assigneeId: editTaskForm.assigneeIds[0] || '',
+            assigneeIds: finalEditAssignees,
+            assigneeId: finalEditAssignees[0] || '',
             priority: editTaskForm.priority,
             status: editTaskForm.status
           };
@@ -283,6 +332,48 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       setShowEditAssigneeDropdown(false);
     }
     setProjectTasks(prev => prev.filter(t => t.id !== taskId));
+  };
+
+  const handleDownloadTemplate = () => {
+    try {
+      downloadTaskTemplateExcel(employees);
+      addToast('Tasks template downloaded!', 'success', 3000);
+    } catch (err) {
+      console.error('Template download error:', err);
+      addToast('Failed to download template', 'error', 3000);
+    }
+  };
+
+  const handleImportExcelFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const { tasks, count } = await parseTaskExcelFile(
+        file,
+        employees,
+        newTaskDeadline || form.endDate || form.startDate || getLocalDateString()
+      );
+
+      if (count === 0) {
+        addToast('No tasks found in the uploaded file.', 'warning', 4000);
+      } else {
+        const finalTasks = (!isAdmin && user?.id)
+          ? tasks.map(t => ({ ...t, assigneeIds: [user.id], assigneeId: user.id }))
+          : tasks;
+        setProjectTasks(prev => [...prev, ...finalTasks]);
+        addToast(`Successfully imported ${count} task${count > 1 ? 's' : ''}!`, 'success', 4000);
+      }
+    } catch (err) {
+      console.error('Excel import error:', err);
+      addToast(err.message || 'Failed to parse Excel file.', 'error', 4000);
+    } finally {
+      setIsImporting(false);
+      if (e.target) {
+        e.target.value = '';
+      }
+    }
   };
 
   const submit = (e) => {
@@ -344,6 +435,97 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                 required
                 placeholder="e.g. Mobile App Redesign"
               />
+            </div>
+
+            {/* Client Name & Referer Name */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-gray-700">
+                  Client Name
+                </label>
+                <input
+                  type="text"
+                  className="input-field text-sm"
+                  value={form.clientName || ''}
+                  onChange={set('clientName')}
+                  placeholder="e.g. Acme Corp / Sarah Jenkins"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-gray-700">
+                  Referer Name
+                </label>
+                <input
+                  type="text"
+                  className="input-field text-sm"
+                  value={form.refererName || ''}
+                  onChange={set('refererName')}
+                  placeholder="e.g. Michael Scott / Partner Agency"
+                />
+              </div>
+            </div>
+
+            {/* Point of Contact & Contact Designation */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-gray-700">
+                  Point of Contact Name
+                </label>
+                <input
+                  type="text"
+                  className="input-field text-sm"
+                  value={form.pocName || ''}
+                  onChange={set('pocName')}
+                  placeholder="e.g. Alex Rivera"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-gray-700">
+                  Contact Designation
+                </label>
+                <input
+                  type="text"
+                  className="input-field text-sm"
+                  value={form.contactDesignation || form.clientDesignation || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setForm(prev => ({
+                      ...prev,
+                      contactDesignation: val,
+                      clientDesignation: val
+                    }));
+                  }}
+                  placeholder="e.g. VP of Product"
+                />
+              </div>
+            </div>
+
+            {/* Contact Number & Contact Email */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-gray-700">
+                  Contact Number
+                </label>
+                <input
+                  type="tel"
+                  className="input-field text-sm"
+                  value={form.contactNumber || ''}
+                  onChange={set('contactNumber')}
+                  placeholder="e.g. +1 (555) 019-2834"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-gray-700">
+                  Contact Email
+                </label>
+                <input
+                  type="email"
+                  className="input-field text-sm"
+                  value={form.contactEmail || ''}
+                  onChange={set('contactEmail')}
+                  placeholder="e.g. alex.rivera@acme.com"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -492,7 +674,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
 
         {/* Dedicated Tasks & Deadlines Section */}
         <div className="border-t border-gray-200 pt-5 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
                 <h4 className="text-sm font-bold text-gray-900">Project Tasks & Deadlines</h4>
@@ -505,14 +687,52 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
               </p>
             </div>
 
-            {hasTasks && (
-              <div className="flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 text-emerald-800 text-xs font-semibold">
-                <svg className="w-4 h-4 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <div className="flex items-center gap-2 flex-wrap">
+              {hasTasks && (
+                <div className="flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-800 text-xs font-semibold">
+                  <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>{autoProgress}% Progress</span>
+                </div>
+              )}
+
+              {/* Template Download Button */}
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                title="Download formatted Excel template for tasks"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 rounded-lg shadow-sm transition hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+              >
+                <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
-                <span>Live Project Progress: {autoProgress}%</span>
-              </div>
-            )}
+                <span>Download Template</span>
+              </button>
+
+              {/* Import Excel Button */}
+              <button
+                type="button"
+                onClick={() => excelFileInputRef.current?.click()}
+                disabled={isImporting}
+                title="Import tasks from an Excel file (.xlsx, .xls, .csv)"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 border border-emerald-600 rounded-lg shadow-sm transition hover:shadow focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer"
+              >
+                <svg className="w-3.5 h-3.5 text-white shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                <span>{isImporting ? 'Importing...' : 'Import Excel'}</span>
+              </button>
+
+              {/* Hidden file input */}
+              <input
+                ref={excelFileInputRef}
+                type="file"
+                accept=".xlsx, .xls, .csv"
+                className="hidden"
+                onChange={handleImportExcelFile}
+              />
+            </div>
           </div>
 
           {/* Quick Task Adder Form */}
@@ -522,11 +742,17 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                 <svg className="w-3.5 h-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                <span>Add Task with Deadlines & Multiple Assignees</span>
+                <span>{isAdmin ? 'Add Task with Deadlines & Multiple Assignees' : 'Add Task (Self-assigned)'}</span>
               </div>
-              {newTaskAssigneeIds.length > 0 && (
-                <span className="text-[11px] font-medium text-blue-600">
-                  {newTaskAssigneeIds.length} employee{newTaskAssigneeIds.length > 1 ? 's' : ''} assigned
+              {isAdmin ? (
+                newTaskAssigneeIds.length > 0 && (
+                  <span className="text-[11px] font-medium text-blue-600">
+                    {newTaskAssigneeIds.length} employee{newTaskAssigneeIds.length > 1 ? 's' : ''} assigned
+                  </span>
+                )
+              ) : (
+                <span className="text-[11px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                  Assigned to: {user?.fullName || 'You'}
                 </span>
               )}
             </div>
@@ -609,115 +835,141 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                 </div>
               </div>
 
-              {/* Multi-Select Assignee Dropdown */}
+              {/* Assignee Selection in Quick Task Adder */}
               <div className="sm:col-span-3 relative" ref={assigneeDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowAssigneeDropdown(!showAssigneeDropdown)}
-                  className="input-field text-xs h-9 bg-white flex items-center justify-between gap-1.5 w-full text-left"
-                  title="Assign one or more employees"
-                >
-                  <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
-                    {newTaskAssigneeIds.length === 0 ? (
-                      <span className="text-gray-400 truncate flex items-center gap-1">
-                        <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                        </svg>
-                        <span>Assign team (0)</span>
-                      </span>
-                    ) : (
+                {isAdmin ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowAssigneeDropdown(!showAssigneeDropdown)}
+                      className="input-field text-xs h-9 bg-white flex items-center justify-between gap-1.5 w-full text-left cursor-pointer"
+                      title="Assign one or more employees"
+                    >
                       <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
-                        <div className="flex items-center -space-x-1.5 shrink-0">
-                          {newTaskAssigneeIds.slice(0, 3).map(id => {
-                            const emp = employees.find(e => e.id === id);
-                            return emp ? (
-                              <img
-                                key={id}
-                                src={emp.avatar}
-                                alt={emp.fullName}
-                                className="w-4 h-4 rounded-full object-cover ring-1 ring-white"
-                              />
-                            ) : null;
+                        {newTaskAssigneeIds.length === 0 ? (
+                          <span className="text-gray-400 truncate flex items-center gap-1">
+                            <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                            </svg>
+                            <span>Assign team (0)</span>
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
+                            <div className="flex items-center -space-x-1.5 shrink-0">
+                              {newTaskAssigneeIds.slice(0, 3).map(id => {
+                                const emp = employees.find(e => e.id === id);
+                                return emp ? (
+                                  <img
+                                    key={id}
+                                    src={emp.avatar}
+                                    alt={emp.fullName}
+                                    className="w-4 h-4 rounded-full object-cover ring-1 ring-white"
+                                  />
+                                ) : null;
+                              })}
+                            </div>
+                            <span className="text-[11px] font-semibold text-gray-800 truncate">
+                              {newTaskAssigneeIds.length === 1
+                                ? employees.find(e => e.id === newTaskAssigneeIds[0])?.fullName.split(' ')[0]
+                                : `${newTaskAssigneeIds.length} assignees`}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <svg
+                        className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-200 ${
+                          showAssigneeDropdown ? 'rotate-180' : ''
+                        }`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {/* Multi-Select Assignee Popover */}
+                    {showAssigneeDropdown && (
+                      <div className="absolute z-30 left-0 mt-1 w-64 rounded-xl bg-white border border-gray-200 shadow-xl p-2 max-h-56 overflow-y-auto custom-scrollbar animate-slide-up text-left">
+                        <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-gray-100 text-[11px]">
+                          <span className="font-semibold text-gray-700">Assign Multiple Employees</span>
+                          <div className="flex items-center gap-1.5">
+                            {form.assigneeIds.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setNewTaskAssigneeIds([...form.assigneeIds])}
+                                className="text-blue-600 hover:underline text-[10px] font-medium"
+                              >
+                                All Project
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setNewTaskAssigneeIds([])}
+                              className="text-gray-400 hover:text-gray-600 text-[10px]"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          {employees.map(e => {
+                            const isSelected = newTaskAssigneeIds.includes(e.id);
+                            return (
+                              <div
+                                key={e.id}
+                                onClick={() => toggleNewTaskAssignee(e.id)}
+                                className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition select-none text-xs ${
+                                  isSelected ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-gray-50 text-gray-700'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  className="h-3.5 w-3.5 accent-blue-600 rounded"
+                                />
+                                <img
+                                  src={e.avatar}
+                                  alt={e.fullName}
+                                  className="w-5 h-5 rounded-full object-cover shrink-0"
+                                  onError={(ev) => {
+                                    ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(e.fullName)}&background=0070F3&color=fff`;
+                                  }}
+                                />
+                                <div className="min-w-0 flex-1 truncate">
+                                  <div className="truncate">{e.fullName}</div>
+                                  <div className="text-[10px] text-gray-400 font-normal truncate">{e.role || 'Member'}</div>
+                                </div>
+                              </div>
+                            );
                           })}
                         </div>
-                        <span className="text-[11px] font-semibold text-gray-800 truncate">
-                          {newTaskAssigneeIds.length === 1
-                            ? employees.find(e => e.id === newTaskAssigneeIds[0])?.fullName.split(' ')[0]
-                            : `${newTaskAssigneeIds.length} assignees`}
-                        </span>
                       </div>
                     )}
-                  </div>
-                  <svg
-                    className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-200 ${
-                      showAssigneeDropdown ? 'rotate-180' : ''
-                    }`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+                  </>
+                ) : (
+                  <div
+                    className="input-field text-xs h-9 bg-gray-50/90 border-gray-200 flex items-center justify-between gap-1.5 w-full text-gray-700 select-none"
+                    title="Non-admin users can only add tasks for themselves"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {/* Multi-Select Assignee Popover */}
-                {showAssigneeDropdown && (
-                  <div className="absolute z-30 left-0 mt-1 w-64 rounded-xl bg-white border border-gray-200 shadow-xl p-2 max-h-56 overflow-y-auto custom-scrollbar animate-slide-up text-left">
-                    <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-gray-100 text-[11px]">
-                      <span className="font-semibold text-gray-700">Assign Multiple Employees</span>
-                      <div className="flex items-center gap-1.5">
-                        {form.assigneeIds.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setNewTaskAssigneeIds([...form.assigneeIds])}
-                            className="text-blue-600 hover:underline text-[10px] font-medium"
-                          >
-                            All Project
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setNewTaskAssigneeIds([])}
-                          className="text-gray-400 hover:text-gray-600 text-[10px]"
-                        >
-                          Clear
-                        </button>
-                      </div>
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
+                      <img
+                        src={user?.avatar || employees.find(e => e.id === user?.id)?.avatar}
+                        alt={user?.fullName}
+                        className="w-4 h-4 rounded-full object-cover ring-1 ring-white shrink-0"
+                        onError={(ev) => {
+                          ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || 'User')}&background=0070F3&color=fff`;
+                        }}
+                      />
+                      <span className="text-[11px] font-semibold text-gray-800 truncate">
+                        {user?.fullName || 'Self'}
+                      </span>
                     </div>
-
-                    <div className="space-y-1">
-                      {employees.map(e => {
-                        const isSelected = newTaskAssigneeIds.includes(e.id);
-                        return (
-                          <div
-                            key={e.id}
-                            onClick={() => toggleNewTaskAssignee(e.id)}
-                            className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition select-none text-xs ${
-                              isSelected ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-gray-50 text-gray-700'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => {}}
-                              className="h-3.5 w-3.5 accent-blue-600 rounded"
-                            />
-                            <img
-                              src={e.avatar}
-                              alt={e.fullName}
-                              className="w-5 h-5 rounded-full object-cover shrink-0"
-                              onError={(ev) => {
-                                ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(e.fullName)}&background=0070F3&color=fff`;
-                              }}
-                            />
-                            <div className="min-w-0 flex-1 truncate">
-                              <div className="truncate">{e.fullName}</div>
-                              <div className="text-[10px] text-gray-400 font-normal truncate">{e.role || 'Member'}</div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 shrink-0">
+                      Self
+                    </span>
                   </div>
                 )}
               </div>
@@ -748,7 +1000,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
           {/* Tasks List / Checklist with Inline Edit */}
           {projectTasks.length > 0 ? (
             <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100 bg-white shadow-2xs max-h-72 overflow-y-auto custom-scrollbar">
-              {projectTasks.map((task, idx) => {
+              {sortTasks(projectTasks).map((task, idx) => {
                 const isEditing = editingTaskId === task.id;
                 const isDone = task.status === 'Done';
                 const taskAssignees = getTaskAssignees(task);
@@ -869,74 +1121,97 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                           </div>
                         </div>
 
-                        {/* Multi-Assignee selector in edit */}
+                        {/* Assignee selector in edit */}
                         <div className="sm:col-span-3 relative" ref={editAssigneeDropdownRef}>
-                          <button
-                            type="button"
-                            onClick={() => setShowEditAssigneeDropdown(!showEditAssigneeDropdown)}
-                            className="input-field text-xs h-9 bg-white flex items-center justify-between gap-1 w-full text-left"
-                          >
-                            <div className="flex items-center gap-1 min-w-0 flex-1 truncate">
-                              {editTaskForm.assigneeIds.length === 0 ? (
-                                <span className="text-gray-400 truncate">Assign team (0)</span>
-                              ) : (
-                                <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
-                                  <div className="flex items-center -space-x-1 shrink-0">
-                                    {editTaskForm.assigneeIds.slice(0, 3).map(id => {
-                                      const emp = employees.find(e => e.id === id);
-                                      return emp ? (
-                                        <img key={id} src={emp.avatar} alt={emp.fullName} className="w-4 h-4 rounded-full object-cover ring-1 ring-white" />
-                                      ) : null;
+                          {isAdmin ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setShowEditAssigneeDropdown(!showEditAssigneeDropdown)}
+                                className="input-field text-xs h-9 bg-white flex items-center justify-between gap-1 w-full text-left cursor-pointer"
+                              >
+                                <div className="flex items-center gap-1 min-w-0 flex-1 truncate">
+                                  {editTaskForm.assigneeIds.length === 0 ? (
+                                    <span className="text-gray-400 truncate">Assign team (0)</span>
+                                  ) : (
+                                    <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
+                                      <div className="flex items-center -space-x-1 shrink-0">
+                                        {editTaskForm.assigneeIds.slice(0, 3).map(id => {
+                                          const emp = employees.find(e => e.id === id);
+                                          return emp ? (
+                                            <img key={id} src={emp.avatar} alt={emp.fullName} className="w-4 h-4 rounded-full object-cover ring-1 ring-white" />
+                                          ) : null;
+                                        })}
+                                      </div>
+                                      <span className="text-[11px] font-semibold text-gray-800 truncate">
+                                        {editTaskForm.assigneeIds.length === 1
+                                          ? employees.find(e => e.id === editTaskForm.assigneeIds[0])?.fullName.split(' ')[0]
+                                          : `${editTaskForm.assigneeIds.length} assignees`}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                                <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+
+                              {showEditAssigneeDropdown && (
+                                <div className="absolute z-30 left-0 mt-1 w-60 rounded-xl bg-white border border-gray-200 shadow-xl p-2 max-h-52 overflow-y-auto custom-scrollbar animate-slide-up text-left">
+                                  <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-gray-100 text-[11px]">
+                                    <span className="font-semibold text-gray-700">Assign Employees</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditTaskForm(prev => ({ ...prev, assigneeIds: [] }))}
+                                      className="text-gray-400 hover:text-gray-600 text-[10px]"
+                                    >
+                                      Clear
+                                    </button>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {employees.map(e => {
+                                      const isSelected = editTaskForm.assigneeIds.includes(e.id);
+                                      return (
+                                        <div
+                                          key={e.id}
+                                          onClick={() => toggleEditTaskAssignee(e.id)}
+                                          className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition select-none text-xs ${
+                                            isSelected ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-gray-50 text-gray-700'
+                                          }`}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => {}}
+                                            className="h-3.5 w-3.5 accent-blue-600 rounded"
+                                          />
+                                          <img src={e.avatar} alt={e.fullName} className="w-4 h-4 rounded-full object-cover shrink-0" />
+                                          <span className="truncate">{e.fullName}</span>
+                                        </div>
+                                      );
                                     })}
                                   </div>
-                                  <span className="text-[11px] font-semibold text-gray-800 truncate">
-                                    {editTaskForm.assigneeIds.length === 1
-                                      ? employees.find(e => e.id === editTaskForm.assigneeIds[0])?.fullName.split(' ')[0]
-                                      : `${editTaskForm.assigneeIds.length} assignees`}
-                                  </span>
                                 </div>
                               )}
-                            </div>
-                            <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </button>
-
-                          {showEditAssigneeDropdown && (
-                            <div className="absolute z-30 left-0 mt-1 w-60 rounded-xl bg-white border border-gray-200 shadow-xl p-2 max-h-52 overflow-y-auto custom-scrollbar animate-slide-up text-left">
-                              <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-gray-100 text-[11px]">
-                                <span className="font-semibold text-gray-700">Assign Employees</span>
-                                <button
-                                  type="button"
-                                  onClick={() => setEditTaskForm(prev => ({ ...prev, assigneeIds: [] }))}
-                                  className="text-gray-400 hover:text-gray-600 text-[10px]"
-                                >
-                                  Clear
-                                </button>
+                            </>
+                          ) : (
+                            <div
+                              className="input-field text-xs h-9 bg-gray-50/90 border-gray-200 flex items-center justify-between gap-1 w-full text-gray-700 select-none"
+                              title="Non-admin users can only assign tasks to themselves"
+                            >
+                              <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
+                                <img
+                                  src={user?.avatar || employees.find(e => e.id === user?.id)?.avatar}
+                                  alt={user?.fullName}
+                                  className="w-4 h-4 rounded-full object-cover ring-1 ring-white shrink-0"
+                                />
+                                <span className="text-[11px] font-semibold text-gray-800 truncate">
+                                  {user?.fullName || 'Self'}
+                                </span>
                               </div>
-                              <div className="space-y-1">
-                                {employees.map(e => {
-                                  const isSelected = editTaskForm.assigneeIds.includes(e.id);
-                                  return (
-                                    <div
-                                      key={e.id}
-                                      onClick={() => toggleEditTaskAssignee(e.id)}
-                                      className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition select-none text-xs ${
-                                        isSelected ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-gray-50 text-gray-700'
-                                      }`}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={isSelected}
-                                        onChange={() => {}}
-                                        className="h-3.5 w-3.5 accent-blue-600 rounded"
-                                      />
-                                      <img src={e.avatar} alt={e.fullName} className="w-4 h-4 rounded-full object-cover shrink-0" />
-                                      <span className="truncate">{e.fullName}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                              <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 shrink-0">
+                                Self
+                              </span>
                             </div>
                           )}
                         </div>

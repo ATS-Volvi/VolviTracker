@@ -12,6 +12,7 @@ import {
   directDeleteMeeting,
   directCreateEmployee,
   directUpdateEmployee,
+  directDeleteEmployee,
   directUpdatePassword,
   directCreateDoc,
   directUpdateDoc,
@@ -207,6 +208,17 @@ export async function apiUpdateEmployee(id, updates) {
     });
   } catch {
     return await directUpdateEmployee(id, updates);
+  }
+}
+
+export async function apiDeleteEmployee(id) {
+  if (!isCloudSyncEnabled()) return null;
+  try {
+    return await request(`/employees/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+  } catch {
+    return await directDeleteEmployee(id);
   }
 }
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../widgets/Modal';
@@ -9,6 +10,7 @@ const PRIORITIES = ['Low', 'Medium', 'High'];
 export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
   const isModalOpen = isOpen !== undefined ? isOpen : open;
   const { employees, projects = [], addTask, updateTask, removeTask } = useData();
+  const { user, isAdmin } = useAuth();
   const { addToast } = useToast();
   const [form, setForm] = useState({
     name: '',
@@ -40,33 +42,40 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
         initialAssigneeIds = [initial.assigneeId];
       }
 
+      // Non-admins can only assign tasks to themselves
+      if (!isAdmin && user?.id) {
+        initialAssigneeIds = [user.id];
+      }
+
       setForm({
         name: initial.name || '',
         projectId: initial.projectId || '',
         assigneeIds: initialAssigneeIds,
-        assigneeId: initialAssigneeIds[0] || initial.assigneeId || '',
+        assigneeId: initialAssigneeIds[0] || (user?.id || ''),
         status: initial.status || 'Not started',
         dueDate: initial.dueDate ? initial.dueDate.slice(0, 10) : '',
         priority: initial.priority || 'Medium',
         description: initial.description || ''
       });
     } else {
+      const defaultAssignees = (!isAdmin && user?.id) ? [user.id] : [];
       setForm({
         name: '',
         projectId: '',
-        assigneeIds: [],
-        assigneeId: '',
+        assigneeIds: defaultAssignees,
+        assigneeId: defaultAssignees[0] || '',
         status: 'Not started',
         dueDate: '',
         priority: 'Medium',
         description: ''
       });
     }
-  }, [initial, isModalOpen]);
+  }, [initial, isModalOpen, isAdmin, user?.id]);
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const toggleAssignee = (empId) => {
+    if (!isAdmin) return; // Non-admin cannot assign tasks to anyone else
     setForm(prev => {
       const exists = prev.assigneeIds.includes(empId);
       const newIds = exists
@@ -78,10 +87,11 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
 
   const submit = (e) => {
     e.preventDefault();
+    const finalAssigneeIds = (!isAdmin && user?.id) ? [user.id] : form.assigneeIds;
     const payload = {
       ...form,
-      assigneeIds: form.assigneeIds,
-      assigneeId: form.assigneeIds[0] || form.assigneeId || ''
+      assigneeIds: finalAssigneeIds,
+      assigneeId: finalAssigneeIds[0] || ''
     };
 
     if (isEditing) {
@@ -119,70 +129,106 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
           </select>
         </div>
 
-        {/* Multi-Assignee Selection */}
+        {/* Assignee Selection */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className="block text-xs font-semibold text-gray-700">
-              Assign Team Members ({form.assigneeIds.length} selected)
+              {isAdmin ? `Assign Team Members (${form.assigneeIds.length} selected)` : 'Assigned Team Member'}
             </label>
-            <div className="flex items-center gap-2 text-[11px]">
-              <button
-                type="button"
-                onClick={() => setForm(prev => ({
-                  ...prev,
-                  assigneeIds: employees.map(e => e.id),
-                  assigneeId: employees[0]?.id || ''
-                }))}
-                className="text-blue-600 hover:underline font-semibold"
-              >
-                Select all
-              </button>
-              <span className="text-gray-300">|</span>
-              <button
-                type="button"
-                onClick={() => setForm(prev => ({ ...prev, assigneeIds: [], assigneeId: '' }))}
-                className="text-gray-500 hover:underline"
-              >
-                Clear
-              </button>
-            </div>
+            {isAdmin ? (
+              <div className="flex items-center gap-2 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setForm(prev => ({
+                    ...prev,
+                    assigneeIds: employees.map(e => e.id),
+                    assigneeId: employees[0]?.id || ''
+                  }))}
+                  className="text-blue-600 hover:underline font-semibold"
+                >
+                  Select all
+                </button>
+                <span className="text-gray-300">|</span>
+                <button
+                  type="button"
+                  onClick={() => setForm(prev => ({ ...prev, assigneeIds: [], assigneeId: '' }))}
+                  className="text-gray-500 hover:underline"
+                >
+                  Clear
+                </button>
+              </div>
+            ) : (
+              <span className="text-[11px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md font-medium border border-blue-100">
+                Self-assigned only
+              </span>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2 border border-gray-200 rounded-xl bg-gray-50/60 custom-scrollbar">
-            {employees.map(emp => {
-              const isSelected = form.assigneeIds.includes(emp.id);
-              return (
-                <div
-                  key={emp.id}
-                  onClick={() => toggleAssignee(emp.id)}
-                  className={`flex items-center gap-2.5 p-1.5 rounded-lg cursor-pointer border transition text-xs select-none ${
-                    isSelected
-                      ? 'bg-blue-50 border-blue-400 text-blue-900 shadow-2xs font-semibold'
-                      : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => {}}
-                    className="h-3.5 w-3.5 accent-blue-600 rounded"
-                  />
-                  <img
-                    src={emp.avatar}
-                    alt={emp.fullName}
-                    className="w-5 h-5 rounded-full object-cover shrink-0"
-                    onError={(ev) => {
-                      ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.fullName)}&background=0070F3&color=fff`;
-                    }}
-                  />
-                  <div className="truncate flex-1">
-                    <div className="truncate">{emp.fullName}</div>
-                    <div className="text-[10px] text-gray-400 font-normal truncate">{emp.role || emp.email}</div>
+          {isAdmin ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2 border border-gray-200 rounded-xl bg-gray-50/60 custom-scrollbar">
+              {employees.map(emp => {
+                const isSelected = form.assigneeIds.includes(emp.id);
+                return (
+                  <div
+                    key={emp.id}
+                    onClick={() => toggleAssignee(emp.id)}
+                    className={`flex items-center gap-2.5 p-1.5 rounded-lg cursor-pointer border transition text-xs select-none ${
+                      isSelected
+                        ? 'bg-blue-50 border-blue-400 text-blue-900 shadow-2xs font-semibold'
+                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => {}}
+                      className="h-3.5 w-3.5 accent-blue-600 rounded"
+                    />
+                    <img
+                      src={emp.avatar}
+                      alt={emp.fullName}
+                      className="w-5 h-5 rounded-full object-cover shrink-0"
+                      onError={(ev) => {
+                        ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.fullName)}&background=0070F3&color=fff`;
+                      }}
+                    />
+                    <div className="truncate flex-1">
+                      <div className="truncate">{emp.fullName}</div>
+                      <div className="text-[10px] text-gray-400 font-normal truncate">{emp.role || emp.email}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-3 border border-blue-200 rounded-xl bg-gradient-to-r from-blue-50/70 to-indigo-50/40 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <img
+                  src={user?.avatar || employees.find(e => e.id === user?.id)?.avatar}
+                  alt={user?.fullName}
+                  className="w-8 h-8 rounded-full object-cover shrink-0 ring-2 ring-blue-500/30"
+                  onError={(ev) => {
+                    ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || 'User')}&background=0070F3&color=fff`;
+                  }}
+                />
+                <div>
+                  <div className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                    <span>{user?.fullName || 'Your Account'}</span>
+                    <span className="text-[10px] text-blue-700 bg-blue-100 font-semibold px-1.5 py-0.2 rounded">You</span>
+                  </div>
+                  <div className="text-[11px] text-gray-500 font-normal">
+                    {user?.email || 'Non-admin users can only assign tasks to themselves'}
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+              <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Assigned</span>
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">

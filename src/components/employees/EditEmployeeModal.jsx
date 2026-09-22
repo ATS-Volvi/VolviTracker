@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useToast } from '../../context/ToastContext';
+import { useData } from '../../context/DataContext';
 import { Avatar } from '../widgets/Avatar';
 
 const ROLE_SUGGESTIONS = [
@@ -17,8 +18,9 @@ const ROLE_SUGGESTIONS = [
   'Data Analyst'
 ];
 
-const EditEmployeeModal = ({ isOpen, onClose, employee, onSave }) => {
+const EditEmployeeModal = ({ isOpen, onClose, employee, onSave, onDelete }) => {
   const { addToast } = useToast();
+  const { employees = [] } = useData();
 
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState('');
@@ -26,12 +28,100 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave }) => {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Designation dropdown states
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [roleSearchQuery, setRoleSearchQuery] = useState('');
+  const [showAddCustomInput, setShowAddCustomInput] = useState(false);
+  const [newCustomRoleInput, setNewCustomRoleInput] = useState('');
+  const [customDesignations, setCustomDesignations] = useState(() => {
+    try {
+      const saved = localStorage.getItem('volvi_custom_designations');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const dropdownRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsDropdownOpen(false);
+        setShowAddCustomInput(false);
+      }
+    };
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDropdownOpen]);
+
+  // Combine default suggestions + employee existing roles + user added custom roles
+  const allDesignations = useMemo(() => {
+    const pool = [
+      ...ROLE_SUGGESTIONS,
+      ...(employees || []).map(e => e.role),
+      ...(customDesignations || []),
+      role
+    ];
+    const seen = new Set();
+    const result = [];
+    for (const item of pool) {
+      const clean = (item || '').trim();
+      if (!clean) continue;
+      const lower = clean.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        result.push(clean);
+      }
+    }
+    return result;
+  }, [employees, customDesignations, role]);
+
+  // Filtered by search query
+  const filteredDesignations = useMemo(() => {
+    const q = roleSearchQuery.trim().toLowerCase();
+    if (!q) return allDesignations;
+    return allDesignations.filter(d => d.toLowerCase().includes(q));
+  }, [allDesignations, roleSearchQuery]);
+
+  const handleAddCustomRole = (customRoleName) => {
+    const clean = (customRoleName || '').trim();
+    if (!clean) return;
+
+    // Check if not already in custom designations
+    if (!customDesignations.some(r => r.toLowerCase() === clean.toLowerCase())) {
+      const nextCustom = [...customDesignations, clean];
+      setCustomDesignations(nextCustom);
+      try {
+        localStorage.setItem('volvi_custom_designations', JSON.stringify(nextCustom));
+      } catch (e) {
+        console.error('Failed to save custom designation:', e);
+      }
+    }
+
+    setRole(clean);
+    setRoleSearchQuery('');
+    setNewCustomRoleInput('');
+    setShowAddCustomInput(false);
+    setIsDropdownOpen(false);
+    addToast(`Added "${clean}" to designations list`, 'success', 2500);
+  };
+
   useEffect(() => {
     if (isOpen && employee) {
       setFullName(employee.fullName || '');
       setRole(employee.role || '');
       setAvatar(employee.avatar || '');
       setError('');
+      setIsDropdownOpen(false);
+      setRoleSearchQuery('');
+      setShowAddCustomInput(false);
+      setNewCustomRoleInput('');
     }
   }, [isOpen, employee]);
 
@@ -50,8 +140,20 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave }) => {
     }
 
     if (!cleanRole) {
-      setError('Please enter employee designation/role.');
+      setError('Please select or add an employee designation/role.');
       return;
+    }
+
+    // If cleanRole is custom and not yet saved, save it to persistent custom list
+    if (!customDesignations.some(r => r.toLowerCase() === cleanRole.toLowerCase()) &&
+        !ROLE_SUGGESTIONS.some(r => r.toLowerCase() === cleanRole.toLowerCase())) {
+      const nextCustom = [...customDesignations, cleanRole];
+      setCustomDesignations(nextCustom);
+      try {
+        localStorage.setItem('volvi_custom_designations', JSON.stringify(nextCustom));
+      } catch (err) {
+        console.error(err);
+      }
     }
 
     setSaving(true);
@@ -142,30 +244,192 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave }) => {
             />
           </div>
 
-          {/* Designation / Role */}
-          <div>
+          {/* Designation / Role Dropdown */}
+          <div className="relative" ref={dropdownRef}>
             <div className="flex items-center justify-between mb-1">
               <label className="block text-xs font-semibold text-gray-700">
                 Designation / Role <span className="text-rose-500">*</span>
               </label>
-              <span className="text-[10px] text-gray-400">Type or pick from list</span>
+              <span className="text-[10px] text-gray-400">Select or add custom</span>
             </div>
-            <div className="relative">
-              <input
-                type="text"
-                list="designation-suggestions"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                placeholder="e.g. Software Engineer, Designer"
-                className="input-field text-sm"
-                required
-              />
-              <datalist id="designation-suggestions">
-                {ROLE_SUGGESTIONS.map((r, i) => (
-                  <option key={i} value={r} />
-                ))}
-              </datalist>
-            </div>
+
+            {/* Dropdown Trigger Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsDropdownOpen(!isDropdownOpen);
+                if (!isDropdownOpen) {
+                  setRoleSearchQuery('');
+                  setShowAddCustomInput(false);
+                }
+              }}
+              className="w-full flex items-center justify-between px-3.5 py-2 bg-white border border-gray-200 rounded-xl text-left text-sm text-gray-900 shadow-2xs hover:border-purple-300 focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition cursor-pointer"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${role ? 'bg-purple-600' : 'bg-gray-300'}`} />
+                <span className={role ? 'font-medium text-gray-900 truncate' : 'text-gray-400'}>
+                  {role || 'Select employee designation...'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-gray-400">
+                <svg
+                  className={`w-4 h-4 transition-transform duration-200 ${
+                    isDropdownOpen ? 'rotate-180 text-purple-600' : ''
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </button>
+
+            {/* Dropdown Menu Panel */}
+            {isDropdownOpen && (
+              <div className="absolute left-0 right-0 top-full mt-1.5 z-40 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden animate-fade-in text-left">
+                {/* Search Box */}
+                <div className="p-2 border-b border-gray-100 bg-gray-50/70">
+                  <div className="relative">
+                    <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 1114 0z" />
+                    </svg>
+                    <input
+                      type="text"
+                      value={roleSearchQuery}
+                      onChange={(e) => setRoleSearchQuery(e.target.value)}
+                      placeholder="Search designations..."
+                      className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-400"
+                      autoFocus
+                    />
+                    {roleSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setRoleSearchQuery('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* List of Designations */}
+                <div className="max-h-48 overflow-y-auto py-1 divide-y divide-gray-50">
+                  {filteredDesignations.length > 0 ? (
+                    filteredDesignations.map((d) => {
+                      const isSelected = role === d;
+                      const isCustom = customDesignations.includes(d);
+                      return (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => {
+                            setRole(d);
+                            setIsDropdownOpen(false);
+                            setRoleSearchQuery('');
+                          }}
+                          className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition ${
+                            isSelected
+                              ? 'bg-purple-50 text-purple-700 font-semibold'
+                              : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="truncate">{d}</span>
+                            {isCustom && (
+                              <span className="text-[10px] bg-purple-100 text-purple-700 font-medium px-1.5 py-0.5 rounded-md shrink-0">
+                                custom
+                              </span>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <svg className="w-4 h-4 text-purple-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="py-3 px-4 text-center text-xs text-gray-400">
+                      No matching designations found
+                    </div>
+                  )}
+
+                  {/* Inline quick-create if search query doesn't match any existing designation */}
+                  {roleSearchQuery.trim() &&
+                    !allDesignations.some(
+                      (d) => d.toLowerCase() === roleSearchQuery.trim().toLowerCase()
+                    ) && (
+                      <button
+                        type="button"
+                        onClick={() => handleAddCustomRole(roleSearchQuery)}
+                        className="w-full text-left px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 flex items-center gap-2 font-medium bg-purple-50/40 border-t border-purple-100 transition"
+                      >
+                        <span className="w-5 h-5 rounded-md bg-purple-200 text-purple-800 flex items-center justify-center font-bold text-xs shrink-0">
+                          +
+                        </span>
+                        <span className="truncate">
+                          Add <strong>"{roleSearchQuery.trim()}"</strong> as custom designation
+                        </span>
+                      </button>
+                    )}
+                </div>
+
+                {/* Bottom Add Custom Designation bar */}
+                <div className="p-2 border-t border-gray-100 bg-gray-50">
+                  {!showAddCustomInput ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCustomInput(true)}
+                      className="w-full text-xs font-semibold text-purple-600 hover:text-purple-700 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg hover:bg-purple-50 transition"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span>Add Custom Designation</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={newCustomRoleInput}
+                        onChange={(e) => setNewCustomRoleInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddCustomRole(newCustomRoleInput);
+                          }
+                        }}
+                        placeholder="Enter custom designation..."
+                        className="flex-1 px-2.5 py-1.5 text-xs bg-white border border-gray-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddCustomRole(newCustomRoleInput)}
+                        disabled={!newCustomRoleInput.trim()}
+                        className="bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs py-1.5 px-3 rounded-lg transition shrink-0 disabled:opacity-50"
+                      >
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddCustomInput(false);
+                          setNewCustomRoleInput('');
+                        }}
+                        className="text-gray-400 hover:text-gray-600 p-1 rounded-md text-xs"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Quick role pills */}
             <div className="flex flex-wrap gap-1.5 mt-2">
@@ -230,29 +494,49 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave }) => {
           </div>
 
           {/* Action buttons */}
-          <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-2.5">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="btn-ghost text-xs py-2 px-4 text-gray-600 hover:text-gray-900"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="btn-primary text-xs py-2 px-5 font-semibold flex items-center gap-1.5"
-            >
-              {saving ? (
-                <>
-                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Saving...</span>
-                </>
-              ) : (
-                <span>Save Changes</span>
-              )}
-            </button>
+          <div className="pt-4 border-t border-gray-100 flex items-center justify-between gap-2.5">
+            {onDelete ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onDelete();
+                }}
+                disabled={saving}
+                className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-3 py-2 rounded-xl transition flex items-center gap-1.5"
+                title="Delete this employee account"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span>Delete Account</span>
+              </button>
+            ) : <div />}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={saving}
+                className="btn-ghost text-xs py-2 px-4 text-gray-600 hover:text-gray-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="btn-primary text-xs py-2 px-5 font-semibold flex items-center gap-1.5"
+              >
+                {saving ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <span>Save Changes</span>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>

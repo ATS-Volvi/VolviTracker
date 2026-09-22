@@ -1,19 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { Avatar } from '../widgets/Avatar';
 import { StatusSelect } from '../widgets/StatusSelect';
 import { PriorityPill } from '../widgets/PriorityPill';
 import { TaskForm } from '../forms/TaskForm';
+import { sortTasks } from '../../utils/taskSort';
 
-const STATUSES = ['Not started', 'In progress', 'Done'];
+const STATUSES = ['In progress', 'Not started', 'Done'];
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
 
-export const TasksTab = ({ tasks: tasksProp, heading = 'Tasks Tracker' }) => {
-  const { tasks: allTasks, projects = [], getEmployee, updateTask, removeTask } = useData();
+export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = 'Tasks Tracker' }) => {
+  const { tasks: allTasks = [], projects: allProjects = [], getEmployee, updateTask, removeTask } = useData();
   const { addToast } = useToast();
   const tasks = tasksProp || allTasks;
+
+  // Available project tabs:
+  // 1. If projectsProp is explicitly passed (e.g. employee's assigned projects), show only those projects.
+  // 2. Else if tasksProp is passed, restrict project tabs to projects that actually have tasks in tasksProp.
+  // 3. Otherwise (global dashboard), show all projects.
+  const relevantProjects = projectsProp !== undefined
+    ? projectsProp
+    : (tasksProp ? allProjects.filter(p => tasks.some(t => String(t.projectId) === String(p.id))) : allProjects);
 
   // Project-based segregation tabs
   const [activeProjectTab, setActiveProjectTab] = useState('all'); // 'all', projectId, or 'unassigned'
@@ -22,21 +31,30 @@ export const TasksTab = ({ tasks: tasksProp, heading = 'Tasks Tracker' }) => {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
 
-  const getProject = (pId) => projects.find(p => p.id === pId);
+  // Auto-reset activeProjectTab if the selected project tab is no longer in relevantProjects
+  useEffect(() => {
+    if (activeProjectTab !== 'all' && activeProjectTab !== 'unassigned') {
+      if (!relevantProjects.some(p => String(p.id) === String(activeProjectTab))) {
+        setActiveProjectTab('all');
+      }
+    }
+  }, [relevantProjects, activeProjectTab]);
 
-  // Available project tabs
-  const relevantProjects = projects;
-  const unassignedCount = tasks.filter(t => !t.projectId || !projects.some(p => p.id === t.projectId)).length;
+  const getProject = (pId) => allProjects.find(p => String(p.id) === String(pId));
+  const unassignedCount = tasks.filter(t => !t.projectId || !allProjects.some(p => String(p.id) === String(t.projectId))).length;
 
   // Tasks segregated by active project tab
   const currentProjectTasks = activeProjectTab === 'all'
     ? tasks
     : activeProjectTab === 'unassigned'
-      ? tasks.filter(t => !t.projectId || !projects.some(p => p.id === t.projectId))
-      : tasks.filter(t => t.projectId === activeProjectTab);
+      ? tasks.filter(t => !t.projectId || !allProjects.some(p => String(p.id) === String(t.projectId)))
+      : tasks.filter(t => String(t.projectId) === String(activeProjectTab));
+
+  // Tasks sorted: incomplete on top, upcoming next, completed at the bottom
+  const sortedCurrentProjectTasks = sortTasks(currentProjectTasks);
 
   // Tasks further filtered by status
-  const displayedTasks = currentProjectTasks.filter(t => {
+  const displayedTasks = sortedCurrentProjectTasks.filter(t => {
     if (statusFilter === 'active') return t.status !== 'Done';
     if (statusFilter === 'done') return t.status === 'Done';
     return true;
@@ -120,6 +138,34 @@ export const TasksTab = ({ tasks: tasksProp, heading = 'Tasks Tracker' }) => {
               <span className="text-gray-500">
                 Project: <strong className="text-gray-800 font-semibold">{activeProjectObj.name}</strong>
               </span>
+              {activeProjectObj.clientName && (
+                <span className="text-gray-500">
+                  Client: <strong className="text-gray-700 font-medium">{activeProjectObj.clientName}</strong>
+                </span>
+              )}
+              {(activeProjectObj.pocName || activeProjectObj.contactDesignation || activeProjectObj.clientDesignation) && (
+                <span className="text-gray-500">
+                  POC: <strong className="text-gray-700 font-medium">{activeProjectObj.pocName || 'Contact'}</strong>
+                  {(activeProjectObj.contactDesignation || activeProjectObj.clientDesignation) && (
+                    <span className="text-gray-400 font-normal"> ({activeProjectObj.contactDesignation || activeProjectObj.clientDesignation})</span>
+                  )}
+                </span>
+              )}
+              {activeProjectObj.contactEmail && (
+                <a href={`mailto:${activeProjectObj.contactEmail}`} className="text-blue-600 hover:underline inline-flex items-center gap-0.5" title={activeProjectObj.contactEmail}>
+                  ✉️ {activeProjectObj.contactEmail}
+                </a>
+              )}
+              {activeProjectObj.contactNumber && (
+                <a href={`tel:${activeProjectObj.contactNumber}`} className="text-emerald-700 hover:underline inline-flex items-center gap-0.5" title={activeProjectObj.contactNumber}>
+                  📞 {activeProjectObj.contactNumber}
+                </a>
+              )}
+              {activeProjectObj.refererName && (
+                <span className="text-gray-500">
+                  Ref: <span className="text-gray-600 italic">{activeProjectObj.refererName}</span>
+                </span>
+              )}
               <span className={`badge text-[10px] font-semibold ${
                 activeProjectObj.status === 'Done' ? 'bg-emerald-100 text-emerald-800' :
                 activeProjectObj.status === 'In progress' ? 'bg-blue-100 text-blue-800' :
@@ -163,8 +209,8 @@ export const TasksTab = ({ tasks: tasksProp, heading = 'Tasks Tracker' }) => {
 
         {/* Dynamic Project Tabs */}
         {relevantProjects.map(p => {
-          const count = tasks.filter(t => t.projectId === p.id).length;
-          const isActive = activeProjectTab === p.id;
+          const count = tasks.filter(t => String(t.projectId) === String(p.id)).length;
+          const isActive = String(activeProjectTab) === String(p.id);
           const pPct = Math.round((p.progress <= 1 && p.progress > 0 ? p.progress * 100 : (p.progress || 0)));
           return (
             <button

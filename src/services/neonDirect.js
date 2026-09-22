@@ -21,6 +21,13 @@ export const toEmployeeDto = (row) => row ? ({
 export const toProjectDto = (row) => row ? ({
   id: String(row.id),
   name: row.name || '',
+  clientName: row.client_name || '',
+  contactDesignation: row.contact_designation || row.client_designation || '',
+  clientDesignation: row.contact_designation || row.client_designation || '',
+  pocName: row.poc_name || '',
+  refererName: row.referer_name || '',
+  contactNumber: row.contact_number || '',
+  contactEmail: row.contact_email || '',
   status: row.status || 'Not started',
   startDate: row.start_date || '',
   endDate: row.end_date || '',
@@ -108,15 +115,29 @@ export async function directCreateProject(project, tasks = []) {
   }
   let status = progress === 1 ? 'Done' : (progress === 0 ? 'Not started' : (project.status || 'In progress'));
 
+  const clientName = project.clientName || '';
+  const contactDesignation = project.contactDesignation || project.clientDesignation || '';
+  const pocName = project.pocName || project.pointOfContactName || '';
+  const refererName = project.refererName || '';
+  const contactNumber = project.contactNumber || project.contactPhone || '';
+  const contactEmail = project.contactEmail || '';
+
   await sql`
     INSERT INTO projects (
-      id, name, status, start_date, end_date, start_value, end_value, progress, assignee_ids, assignee_id
+      id, name, client_name, contact_designation, client_designation, poc_name, referer_name, contact_number, contact_email, status, start_date, end_date, start_value, end_value, progress, assignee_ids, assignee_id
     ) VALUES (
-      ${id}, ${project.name || 'Untitled Project'}, ${status}, ${project.startDate || ''}, ${project.endDate || ''},
+      ${id}, ${project.name || 'Untitled Project'}, ${clientName}, ${contactDesignation}, ${contactDesignation}, ${pocName}, ${refererName}, ${contactNumber}, ${contactEmail}, ${status}, ${project.startDate || ''}, ${project.endDate || ''},
       0, 100, ${progress}, ${assigneeIdsJson}::jsonb, ${assigneeId}
     )
     ON CONFLICT (id) DO UPDATE SET
       name = EXCLUDED.name,
+      client_name = EXCLUDED.client_name,
+      contact_designation = EXCLUDED.contact_designation,
+      client_designation = EXCLUDED.client_designation,
+      poc_name = EXCLUDED.poc_name,
+      referer_name = EXCLUDED.referer_name,
+      contact_number = EXCLUDED.contact_number,
+      contact_email = EXCLUDED.contact_email,
       status = EXCLUDED.status,
       start_date = EXCLUDED.start_date,
       end_date = EXCLUDED.end_date,
@@ -172,9 +193,23 @@ export async function directUpdateProject(id, updates) {
   const assigneeIdsJson = JSON.stringify(Array.isArray(assigneeIds) ? assigneeIds : []);
   const assigneeId = updates.assigneeId !== undefined ? updates.assigneeId : ((assigneeIds && assigneeIds[0]) || current.assignee_id || '');
 
+  const clientName = updates.clientName !== undefined ? updates.clientName : (current.client_name || '');
+  const contactDesignation = updates.contactDesignation !== undefined ? updates.contactDesignation : (updates.clientDesignation !== undefined ? updates.clientDesignation : (current.contact_designation || current.client_designation || ''));
+  const pocName = updates.pocName !== undefined ? updates.pocName : (current.poc_name || '');
+  const refererName = updates.refererName !== undefined ? updates.refererName : (current.referer_name || '');
+  const contactNumber = updates.contactNumber !== undefined ? updates.contactNumber : (updates.contactPhone !== undefined ? updates.contactPhone : (current.contact_number || ''));
+  const contactEmail = updates.contactEmail !== undefined ? updates.contactEmail : (current.contact_email || '');
+
   await sql`
     UPDATE projects SET
       name = ${name},
+      client_name = ${clientName},
+      contact_designation = ${contactDesignation},
+      client_designation = ${contactDesignation},
+      poc_name = ${pocName},
+      referer_name = ${refererName},
+      contact_number = ${contactNumber},
+      contact_email = ${contactEmail},
       status = ${status},
       progress = ${progress},
       start_date = ${startDate},
@@ -369,6 +404,12 @@ export async function directUpdatePassword(email, newPasswordHash) {
   `;
   const updated = await sql`SELECT * FROM employees WHERE LOWER(email) = ${cleanEmail}`;
   return toEmployeeDto(updated[0]);
+}
+
+export async function directDeleteEmployee(id) {
+  if (!id) return { success: false };
+  await sql`DELETE FROM employees WHERE id = ${id}`;
+  return { success: true };
 }
 
 async function directRecalcProjectProgress(projectId) {

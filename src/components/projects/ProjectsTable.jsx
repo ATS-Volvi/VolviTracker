@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { ProjectForm } from '../forms/ProjectForm';
@@ -43,6 +44,7 @@ const ALL_STATUSES = ['Not started', 'In progress', 'Done'];
 
 export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
   const { employees, addProject, updateProject, removeProject, getEmployee, addTask, tasks } = useData();
+  const { user, isAdmin } = useAuth();
   const { addToast } = useToast();
 
   // Active View: 'table', 'board', 'timeline', 'cards'
@@ -288,12 +290,16 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
   const applyAiTasks = () => {
     if (!aiGeneratedTasks.length) return;
     const assignees = getProjectAssignees(aiSelectedProject || {});
-    const defaultAssigneeId = assignees[0]?.id || employees[0]?.id || '';
+    const defaultAssigneeId = (!isAdmin && user?.id)
+      ? user.id
+      : (assignees[0]?.id || employees[0]?.id || '');
+    const defaultAssigneeIds = defaultAssigneeId ? [defaultAssigneeId] : [];
 
     aiGeneratedTasks.forEach(task => {
       addTask({
         name: task.name,
         assigneeId: defaultAssigneeId,
+        assigneeIds: defaultAssigneeIds,
         status: 'Not started',
         dueDate: task.dueDate,
         priority: task.priority,
@@ -579,13 +585,50 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                         />
                       ) : (
                         <div className="flex items-center justify-between group/cell">
-                          <button
-                            onClick={() => { setEditingProject(p); setModalOpen(true); }}
-                            className="text-left font-medium text-gray-800 hover:text-blue-600 transition truncate hover:underline cursor-pointer"
-                            title="Click to edit project"
-                          >
-                            {p.name || <span className="text-gray-400 italic">Untitled</span>}
-                          </button>
+                          <div className="min-w-0 pr-2">
+                            <button
+                              onClick={() => { setEditingProject(p); setModalOpen(true); }}
+                              className="text-left font-medium text-gray-800 hover:text-blue-600 transition truncate hover:underline cursor-pointer block"
+                              title="Click to edit project"
+                            >
+                              {p.name || <span className="text-gray-400 italic">Untitled</span>}
+                            </button>
+                            {(p.clientName || p.contactDesignation || p.clientDesignation || p.pocName || p.refererName || p.contactNumber || p.contactEmail) && (
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-500 font-normal mt-0.5">
+                                {p.clientName && (
+                                  <span>
+                                    <span className="text-gray-400 font-medium">Client: </span>
+                                    <span className="text-gray-700 font-medium">{p.clientName}</span>
+                                  </span>
+                                )}
+                                {(p.pocName || p.contactDesignation || p.clientDesignation) && (
+                                  <span>
+                                    <span className="text-gray-400 font-medium">Contact: </span>
+                                    <span className="text-gray-700 font-medium">{p.pocName || 'POC'}</span>
+                                    {(p.contactDesignation || p.clientDesignation) && (
+                                      <span className="text-gray-400"> ({p.contactDesignation || p.clientDesignation})</span>
+                                    )}
+                                  </span>
+                                )}
+                                {p.contactEmail && (
+                                  <a href={`mailto:${p.contactEmail}`} className="text-blue-600 hover:underline inline-flex items-center gap-0.5" title={p.contactEmail}>
+                                    ✉️ {p.contactEmail}
+                                  </a>
+                                )}
+                                {p.contactNumber && (
+                                  <a href={`tel:${p.contactNumber}`} className="text-emerald-700 hover:underline inline-flex items-center gap-0.5" title={p.contactNumber}>
+                                    📞 {p.contactNumber}
+                                  </a>
+                                )}
+                                {p.refererName && (
+                                  <span>
+                                    <span className="text-gray-400 font-medium">Ref: </span>
+                                    <span className="text-gray-600 italic">{p.refererName}</span>
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                           <div className="opacity-0 group-hover/cell:opacity-100 flex items-center gap-1">
                             <button
                               onClick={() => { setEditingProject(p); setModalOpen(true); }}
@@ -636,8 +679,8 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                             {/* Text labels */}
                             <span className="text-gray-700 font-medium truncate text-xs">
                               {assignees.length === 1
-                                ? (assignees[0].email || assignees[0].fullName)
-                                : `${assignees[0].fullName?.split(' ')[0]} +${assignees.length - 1}`}
+                                ? (assignees[0].fullName || assignees[0].email)
+                                : `${assignees[0].fullName?.split(' ')[0] || assignees[0].email} +${assignees.length - 1}`}
                             </span>
                           </div>
                         ) : (
@@ -967,12 +1010,42 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                         className="bg-white p-3.5 rounded-xl border border-gray-200/80 shadow-sm hover:shadow-md hover:border-blue-300 transition-all group w-full"
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <button
-                            onClick={() => { setEditingProject(p); setModalOpen(true); }}
-                            className="font-bold text-sm text-gray-800 text-left hover:text-blue-600 transition"
-                          >
-                            {p.name}
-                          </button>
+                          <div className="min-w-0">
+                            <button
+                              onClick={() => { setEditingProject(p); setModalOpen(true); }}
+                              className="font-bold text-sm text-gray-800 text-left hover:text-blue-600 transition block truncate"
+                            >
+                              {p.name}
+                            </button>
+                            {(p.clientName || p.contactDesignation || p.clientDesignation || p.pocName || p.refererName || p.contactNumber || p.contactEmail) && (
+                              <div className="text-[11px] text-gray-500 mt-0.5 space-y-0.5">
+                                {p.clientName && (
+                                  <div className="truncate">
+                                    <span className="text-gray-400 font-medium">Client: </span>
+                                    <span className="text-gray-700 font-medium">{p.clientName}</span>
+                                  </div>
+                                )}
+                                {(p.pocName || p.contactDesignation || p.clientDesignation) && (
+                                  <div className="text-[10px] text-gray-500 truncate">
+                                    <span className="text-gray-400 font-medium">Contact: </span>
+                                    <span className="text-gray-700 font-medium">{p.pocName || 'POC'}</span>
+                                    {(p.contactDesignation || p.clientDesignation) && (
+                                      <span className="text-gray-400"> ({p.contactDesignation || p.clientDesignation})</span>
+                                    )}
+                                  </div>
+                                )}
+                                {(p.contactEmail || p.contactNumber || p.refererName) && (
+                                  <div className="text-[10px] text-gray-400 truncate flex items-center gap-1.5">
+                                    {p.contactEmail && <span className="text-blue-600 truncate">{p.contactEmail}</span>}
+                                    {p.contactEmail && p.contactNumber && <span>•</span>}
+                                    {p.contactNumber && <span className="text-emerald-700 truncate">{p.contactNumber}</span>}
+                                    {(p.contactEmail || p.contactNumber) && p.refererName && <span>•</span>}
+                                    {p.refererName && <span>Ref: <span className="text-gray-600">{p.refererName}</span></span>}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
                             <button
                               onClick={() => runAiAssistant(p)}
@@ -1197,11 +1270,39 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
 
                 <h3
                   onClick={() => { setEditingProject(p); setModalOpen(true); }}
-                  className="text-base font-bold text-gray-900 mt-3 hover:text-blue-600 transition cursor-pointer hover:underline"
+                  className="text-base font-bold text-gray-900 mt-3 hover:text-blue-600 transition cursor-pointer hover:underline truncate"
                   title="Click to edit project"
                 >
                   {p.name}
                 </h3>
+                {(p.clientName || p.contactDesignation || p.clientDesignation || p.pocName || p.refererName || p.contactNumber || p.contactEmail) && (
+                  <div className="mt-1 text-xs text-gray-500 space-y-0.5">
+                    {p.clientName && (
+                      <div className="truncate">
+                        <span className="text-gray-400 font-medium">Client: </span>
+                        <span className="text-gray-700 font-medium">{p.clientName}</span>
+                      </div>
+                    )}
+                    {(p.pocName || p.contactDesignation || p.clientDesignation) && (
+                      <div className="text-[11px] text-gray-500 truncate">
+                        <span className="text-gray-400 font-medium">Contact: </span>
+                        <span className="text-gray-700 font-medium">{p.pocName || 'POC'}</span>
+                        {(p.contactDesignation || p.clientDesignation) && (
+                          <span className="text-gray-400"> ({p.contactDesignation || p.clientDesignation})</span>
+                        )}
+                      </div>
+                    )}
+                    {(p.contactEmail || p.contactNumber || p.refererName) && (
+                      <div className="text-[11px] text-gray-400 truncate flex items-center gap-1.5">
+                        {p.contactEmail && <a href={`mailto:${p.contactEmail}`} className="text-blue-600 hover:underline">{p.contactEmail}</a>}
+                        {p.contactEmail && p.contactNumber && <span>•</span>}
+                        {p.contactNumber && <a href={`tel:${p.contactNumber}`} className="text-emerald-700 hover:underline">{p.contactNumber}</a>}
+                        {(p.contactEmail || p.contactNumber) && p.refererName && <span>•</span>}
+                        {p.refererName && <span>Ref: <span className="text-gray-600">{p.refererName}</span></span>}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
                   <div className="flex items-center gap-1.5">

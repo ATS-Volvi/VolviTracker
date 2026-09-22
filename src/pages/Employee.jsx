@@ -20,12 +20,14 @@ const STATUS_STYLES = {
 export const Employee = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { getEmployee, projects = [], tasks, meetings, updateEmployee } = useData();
+  const { getEmployee, projects = [], tasks, meetings, updateEmployee, removeEmployee } = useData();
   const { user, isAdmin } = useAuth();
   const { addToast } = useToast();
   const [comment, setComment] = useState('');
   const [props, setProps] = useState([]);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const isOwnProfile = user && String(user.id) === String(id);
 
@@ -100,17 +102,23 @@ export const Employee = () => {
     );
   }
 
-  const myProjects = projects.filter(p => {
-    if (Array.isArray(p.assigneeIds)) return p.assigneeIds.includes(id);
-    return p.assigneeId === id;
+  const myProjects = (projects || []).filter(p => {
+    const isProjectAssignee =
+      (Array.isArray(p.assigneeIds) && p.assigneeIds.some(aid => String(aid) === String(id))) ||
+      String(p.assigneeId) === String(id);
+    const hasAssignedTask = (tasks || []).some(
+      t => String(t.projectId) === String(p.id) &&
+      ((Array.isArray(t.assigneeIds) && t.assigneeIds.some(aid => String(aid) === String(id))) || String(t.assigneeId) === String(id))
+    );
+    return isProjectAssignee || hasAssignedTask;
   });
-  const myTasks = tasks.filter(t => {
-    if (Array.isArray(t.assigneeIds)) return t.assigneeIds.includes(id);
-    return t.assigneeId === id;
+  const myTasks = (tasks || []).filter(t => {
+    if (Array.isArray(t.assigneeIds)) return t.assigneeIds.some(aid => String(aid) === String(id));
+    return String(t.assigneeId) === String(id);
   });
-  const myMeetings = meetings.filter(m => {
-    if (Array.isArray(m.attendeeIds)) return m.attendeeIds.includes(id);
-    return m.attendeeId === id;
+  const myMeetings = (meetings || []).filter(m => {
+    if (Array.isArray(m.attendeeIds)) return m.attendeeIds.some(aid => String(aid) === String(id));
+    return String(m.attendeeId) === String(id);
   });
 
   const handleAddProperty = () => {
@@ -140,6 +148,23 @@ export const Employee = () => {
   const handleSaveProperties = (updates) => {
     if (updateEmployee) {
       updateEmployee(id, updates);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!isAdmin || isOwnProfile || !emp) return;
+    setIsDeleting(true);
+    try {
+      if (removeEmployee) {
+        removeEmployee(id);
+      }
+      addToast(`Account for ${emp.fullName} has been permanently deleted.`, 'info', 3000);
+      setIsDeleteConfirmOpen(false);
+      navigate('/dashboard');
+    } catch {
+      addToast('Failed to delete employee account.', 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -209,7 +234,7 @@ export const Employee = () => {
             </div>
 
             {/* Admin / Owner Actions */}
-            <div className="flex items-center gap-2 self-start sm:self-auto">
+            <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
               {(isAdmin || isOwnProfile) && (
                 <button
                   type="button"
@@ -231,6 +256,19 @@ export const Employee = () => {
                   + Add property
                 </button>
               )}
+              {isAdmin && !isOwnProfile && (
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteConfirmOpen(true)}
+                  className="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5 text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100/80 border border-rose-200 rounded-xl transition shadow-2xs font-semibold"
+                  title="Permanently delete this account (Admin only)"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  <span>Delete Account</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -249,7 +287,7 @@ export const Employee = () => {
           <ProjectsTable projects={myProjects} title="Assigned Projects" />
         </section>
 
-        <TasksTab tasks={myTasks} heading="My Tasks" />
+        <TasksTab tasks={myTasks} projects={myProjects} heading="My Tasks" />
         <MeetingList meetings={myMeetings} defaultAttendeeId={id} />
       </main>
 
@@ -259,7 +297,60 @@ export const Employee = () => {
         onClose={() => setIsEditModalOpen(false)}
         employee={emp}
         onSave={handleSaveProperties}
+        onDelete={isAdmin && !isOwnProfile ? () => setIsDeleteConfirmOpen(true) : undefined}
       />
+
+      {/* Delete Account Confirmation Modal (Admin Only) */}
+      {isAdmin && !isOwnProfile && isDeleteConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-rose-100 max-w-md w-full p-6 animate-slide-up text-left">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-600 border border-rose-100 shrink-0">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Delete Employee Account</h3>
+                <p className="text-xs text-rose-600 font-semibold">Admin authorization required</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-rose-50/50 border border-rose-100 rounded-xl mb-4 text-xs text-gray-700 leading-relaxed">
+              Are you sure you want to permanently delete the account for <strong className="text-gray-900 font-bold">{emp.fullName}</strong> (<span className="text-gray-600 font-mono text-[11px]">{emp.email}</span>)?
+              <p className="mt-2 text-[11px] text-rose-700 font-medium">
+                ⚠️ This user will be immediately revoked from the workspace and will no longer be able to log in. This action cannot be undone.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsDeleteConfirmOpen(false)}
+                disabled={isDeleting}
+                className="btn-ghost text-xs py-2 px-4 text-gray-600 hover:text-gray-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs py-2 px-4 rounded-xl transition flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Yes, Delete Account</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
