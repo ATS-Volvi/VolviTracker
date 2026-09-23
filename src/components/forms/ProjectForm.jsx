@@ -89,6 +89,11 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
         initialAssigneeIds = [initial.assigneeId];
       }
 
+      // Non-admins can only assign projects to themselves
+      if (!isAdmin && user?.id) {
+        initialAssigneeIds = initialAssigneeIds.includes(user.id) ? [user.id] : [user.id];
+      }
+
       let prog = initial.progress || 0;
       if (prog <= 1 && prog > 0) prog = Math.round(prog * 100);
 
@@ -146,6 +151,8 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       twoWeeksLaterDate.setDate(twoWeeksLaterDate.getDate() + 14);
       const twoWeeksLater = getLocalDateString(twoWeeksLaterDate);
 
+      const defaultProjectAssignees = (!isAdmin && user?.id) ? [user.id] : [];
+
       setForm({
         name: '',
         clientName: '',
@@ -155,7 +162,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
         refererName: '',
         contactNumber: '',
         contactEmail: '',
-        assigneeIds: [],
+        assigneeIds: defaultProjectAssignees,
         status: 'Not started',
         startDate: today,
         endDate: twoWeeksLater,
@@ -197,11 +204,12 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const toggleAssignee = (empId) => {
+    if (!isAdmin && empId !== user?.id) return; // Non-admin members can only select themselves
     setForm(prev => {
       const exists = prev.assigneeIds.includes(empId);
       const newIds = exists
         ? prev.assigneeIds.filter(id => id !== empId)
-        : [...prev.assigneeIds, empId];
+        : (isAdmin ? [...prev.assigneeIds, empId] : [empId]);
       return { ...prev, assigneeIds: newIds };
     });
   };
@@ -385,10 +393,14 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
     else if (progVal === 100) finalStatus = 'Done';
     else if (finalStatus === 'Not started' && progVal > 0) finalStatus = 'In progress';
 
+    const finalAssigneeIds = (!isAdmin && user?.id)
+      ? (form.assigneeIds.includes(user.id) ? [user.id] : (form.assigneeIds.length > 0 ? [user.id] : []))
+      : form.assigneeIds;
+
     const payload = {
       ...form,
-      assigneeIds: form.assigneeIds,
-      assigneeId: form.assigneeIds[0] || '', // legacy compatibility
+      assigneeIds: finalAssigneeIds,
+      assigneeId: finalAssigneeIds[0] || '', // legacy compatibility
       startValue: 0,
       endValue: 100,
       progress: effectiveProgress,
@@ -615,27 +627,33 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
               <label className="block text-xs font-bold text-gray-700">
                 Team Members ({form.assigneeIds.length} selected)
               </label>
-              <div className="flex items-center gap-2 text-[11px]">
-                <button
-                  type="button"
-                  onClick={() => setForm(prev => ({ ...prev, assigneeIds: employees.map(e => e.id) }))}
-                  className="text-blue-600 hover:underline font-semibold"
-                >
-                  Select all
-                </button>
-                <span className="text-gray-300">|</span>
-                <button
-                  type="button"
-                  onClick={() => setForm(prev => ({ ...prev, assigneeIds: [] }))}
-                  className="text-gray-500 hover:underline"
-                >
-                  Clear
-                </button>
-              </div>
+              {isAdmin ? (
+                <div className="flex items-center gap-2 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, assigneeIds: employees.map(e => e.id) }))}
+                    className="text-blue-600 hover:underline font-semibold"
+                  >
+                    Select all
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, assigneeIds: [] }))}
+                    className="text-gray-500 hover:underline"
+                  >
+                    Clear
+                  </button>
+                </div>
+              ) : (
+                <span className="text-[11px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md font-medium border border-blue-100">
+                  Self-assigned only
+                </span>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[260px] overflow-y-auto p-2 border border-gray-200 rounded-xl bg-gray-50/60 custom-scrollbar flex-1">
-              {employees.map(emp => {
+              {(isAdmin ? employees : employees.filter(e => String(e.id) === String(user?.id))).map(emp => {
                 const isSelected = form.assigneeIds.includes(emp.id);
                 return (
                   <div
@@ -662,7 +680,14 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                       }}
                     />
                     <div className="truncate flex-1">
-                      <div className="truncate">{emp.fullName}</div>
+                      <div className="truncate flex items-center gap-1.5">
+                        <span className="truncate">{emp.fullName}</span>
+                        {!isAdmin && (
+                          <span className="text-[9px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.2 rounded shrink-0">
+                            You
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[10px] text-gray-400 font-normal truncate">{emp.role || emp.email}</div>
                     </div>
                   </div>
