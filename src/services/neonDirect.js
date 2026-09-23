@@ -18,6 +18,19 @@ export const toEmployeeDto = (row) => row ? ({
   passwordHash: row.password_hash || ''
 }) : null;
 
+const parseJsonArray = (val) => {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
 export const toProjectDto = (row) => row ? ({
   id: String(row.id),
   name: row.name || '',
@@ -34,7 +47,7 @@ export const toProjectDto = (row) => row ? ({
   startValue: Number(row.start_value) || 0,
   endValue: Number(row.end_value) || 100,
   progress: Number(row.progress) || 0,
-  assigneeIds: Array.isArray(row.assignee_ids) ? row.assignee_ids : (row.assignee_ids ? (typeof row.assignee_ids === 'string' ? JSON.parse(row.assignee_ids) : []) : []),
+  assigneeIds: parseJsonArray(row.assignee_ids),
   assigneeId: row.assignee_id ? String(row.assignee_id) : ''
 }) : null;
 
@@ -46,7 +59,7 @@ export const toTaskDto = (row) => row ? ({
   dueDate: row.due_date || '',
   priority: row.priority || 'Medium',
   description: row.description || '',
-  assigneeIds: Array.isArray(row.assignee_ids) ? row.assignee_ids : (row.assignee_ids ? (typeof row.assignee_ids === 'string' ? JSON.parse(row.assignee_ids) : []) : []),
+  assigneeIds: parseJsonArray(row.assignee_ids),
   assigneeId: row.assignee_id ? String(row.assignee_id) : ''
 }) : null;
 
@@ -56,7 +69,7 @@ export const toMeetingDto = (row) => row ? ({
   dateTime: row.date_time || '',
   status: row.status || 'Not started',
   url: row.url || '',
-  attendeeIds: Array.isArray(row.attendee_ids) ? row.attendee_ids : (row.attendee_ids ? (typeof row.attendee_ids === 'string' ? JSON.parse(row.attendee_ids) : []) : []),
+  attendeeIds: parseJsonArray(row.attendee_ids),
   attendeeId: row.attendee_id ? String(row.attendee_id) : ''
 }) : null;
 
@@ -66,7 +79,7 @@ export const toDocDto = (row) => row ? ({
   category: row.category || 'General',
   summary: row.summary || '',
   content: row.content || '',
-  tags: Array.isArray(row.tags) ? row.tags : (row.tags ? (typeof row.tags === 'string' ? JSON.parse(row.tags) : []) : []),
+  tags: parseJsonArray(row.tags),
   externalUrl: row.external_url || '',
   authorId: row.author_id ? String(row.author_id) : '',
   authorName: row.author_name || '',

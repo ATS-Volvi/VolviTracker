@@ -19,6 +19,19 @@ export const toEmployeeDto = (row) => row ? ({
   passwordHash: row.password_hash || ''
 }) : null;
 
+const parseJsonArray = (val) => {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
 export const toProjectDto = (row) => row ? ({
   id: row.id,
   name: row.name,
@@ -35,8 +48,8 @@ export const toProjectDto = (row) => row ? ({
   startValue: Number(row.start_value) || 0,
   endValue: Number(row.end_value) || 100,
   progress: Number(row.progress) || 0,
-  assigneeIds: Array.isArray(row.assignee_ids) ? row.assignee_ids : (row.assignee_ids ? JSON.parse(row.assignee_ids) : []),
-  assigneeId: row.assignee_id || ''
+  assigneeIds: parseJsonArray(row.assignee_ids),
+  assigneeId: row.assignee_id ? String(row.assignee_id) : ''
 }) : null;
 
 export const toTaskDto = (row) => row ? ({
@@ -47,8 +60,8 @@ export const toTaskDto = (row) => row ? ({
   dueDate: row.due_date || '',
   priority: row.priority || 'Medium',
   description: row.description || '',
-  assigneeIds: Array.isArray(row.assignee_ids) ? row.assignee_ids : (row.assignee_ids ? JSON.parse(row.assignee_ids) : []),
-  assigneeId: row.assignee_id || ''
+  assigneeIds: parseJsonArray(row.assignee_ids),
+  assigneeId: row.assignee_id ? String(row.assignee_id) : ''
 }) : null;
 
 export const toMeetingDto = (row) => row ? ({
@@ -57,8 +70,8 @@ export const toMeetingDto = (row) => row ? ({
   dateTime: row.date_time || '',
   status: row.status || 'Not started',
   url: row.url || '',
-  attendeeIds: Array.isArray(row.attendee_ids) ? row.attendee_ids : (row.attendee_ids ? JSON.parse(row.attendee_ids) : []),
-  attendeeId: row.attendee_id || ''
+  attendeeIds: parseJsonArray(row.attendee_ids),
+  attendeeId: row.attendee_id ? String(row.attendee_id) : ''
 }) : null;
 
 export const toDocDto = (row) => row ? ({
@@ -67,9 +80,9 @@ export const toDocDto = (row) => row ? ({
   category: row.category || 'General',
   summary: row.summary || '',
   content: row.content || '',
-  tags: Array.isArray(row.tags) ? row.tags : (row.tags ? (typeof row.tags === 'string' ? JSON.parse(row.tags) : row.tags) : []),
+  tags: parseJsonArray(row.tags),
   externalUrl: row.external_url || '',
-  authorId: row.author_id || '',
+  authorId: row.author_id ? String(row.author_id) : '',
   authorName: row.author_name || '',
   authorRole: row.author_role || '',
   authorAvatar: row.author_avatar || '',
@@ -120,14 +133,16 @@ export async function initDb() {
         assignee_id VARCHAR(100),
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
-      ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_name TEXT DEFAULT '';
-      ALTER TABLE projects ADD COLUMN IF NOT EXISTS contact_designation TEXT DEFAULT '';
-      ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_designation TEXT DEFAULT '';
-      ALTER TABLE projects ADD COLUMN IF NOT EXISTS poc_name TEXT DEFAULT '';
-      ALTER TABLE projects ADD COLUMN IF NOT EXISTS referer_name TEXT DEFAULT '';
-      ALTER TABLE projects ADD COLUMN IF NOT EXISTS contact_number TEXT DEFAULT '';
-      ALTER TABLE projects ADD COLUMN IF NOT EXISTS contact_email TEXT DEFAULT '';
     `;
+    await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_name TEXT DEFAULT '';`;
+    await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS contact_designation TEXT DEFAULT '';`;
+    await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_designation TEXT DEFAULT '';`;
+    await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS poc_name TEXT DEFAULT '';`;
+    await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS referer_name TEXT DEFAULT '';`;
+    await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS contact_number TEXT DEFAULT '';`;
+    await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS contact_email TEXT DEFAULT '';`;
+    await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS assignee_ids JSONB DEFAULT '[]'::jsonb;`;
+    await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS assignee_id VARCHAR(100);`;
 
     // 3. Tasks Table
     await sql`
