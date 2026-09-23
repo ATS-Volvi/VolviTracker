@@ -15,7 +15,8 @@ export const toEmployeeDto = (row) => row ? ({
   email: row.email || '',
   role: row.role || 'Member',
   avatar: row.avatar || '',
-  passwordHash: row.password_hash || ''
+  passwordHash: row.password_hash || '',
+  isAdmin: Boolean(row.is_admin || (row.role || '').toLowerCase() === 'admin')
 }) : null;
 
 const parseJsonArray = (val) => {
@@ -368,18 +369,20 @@ export async function directDeleteMeeting(id) {
 // Employee Operations
 export async function directCreateEmployee(emp) {
   const id = emp.id || ('emp_' + Date.now() + Math.random().toString(36).substring(2, 6));
+  const isAdmin = Boolean(emp.isAdmin || (emp.role || '').toLowerCase() === 'admin');
 
   await sql`
     INSERT INTO employees (
-      id, full_name, email, role, avatar, password_hash
+      id, full_name, email, role, avatar, password_hash, is_admin
     ) VALUES (
       ${id}, ${emp.fullName}, ${emp.email.toLowerCase().trim()}, ${emp.role || 'Member'},
-      ${emp.avatar || ''}, ${emp.passwordHash || ''}
+      ${emp.avatar || ''}, ${emp.passwordHash || ''}, ${isAdmin}
     )
     ON CONFLICT (email) DO UPDATE SET
       full_name = EXCLUDED.full_name,
       role = EXCLUDED.role,
-      avatar = EXCLUDED.avatar;
+      avatar = EXCLUDED.avatar,
+      is_admin = EXCLUDED.is_admin;
   `;
 
   const created = await sql`SELECT * FROM employees WHERE id = ${id}`;
@@ -392,16 +395,27 @@ export async function directUpdateEmployee(id, updates) {
 
   const current = existing[0];
   const fullName = updates.fullName !== undefined ? updates.fullName : current.full_name;
-  const role = updates.role !== undefined ? updates.role : current.role;
+  let role = updates.role !== undefined ? updates.role : current.role;
   const avatar = updates.avatar !== undefined ? updates.avatar : current.avatar;
   const passwordHash = updates.passwordHash !== undefined ? updates.passwordHash : current.password_hash;
+
+  let isAdmin;
+  if (updates.isAdmin !== undefined) {
+    isAdmin = Boolean(updates.isAdmin);
+    if (!isAdmin && (role || '').toLowerCase() === 'admin') {
+      role = 'Member';
+    }
+  } else {
+    isAdmin = Boolean(current.is_admin || (current.role || '').toLowerCase() === 'admin');
+  }
 
   await sql`
     UPDATE employees SET
       full_name = ${fullName},
       role = ${role},
       avatar = ${avatar},
-      password_hash = ${passwordHash}
+      password_hash = ${passwordHash},
+      is_admin = ${isAdmin}
     WHERE id = ${current.id};
   `;
 

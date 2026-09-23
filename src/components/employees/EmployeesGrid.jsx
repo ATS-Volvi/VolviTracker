@@ -30,7 +30,7 @@ export const EmployeesGrid = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {empList.map(e => {
-          const isUserAdmin = (e.role || '').toLowerCase() === 'admin';
+          const isUserAdmin = e.isAdmin === true || (e.role || '').toLowerCase() === 'admin';
           return (
             <button
               key={e.id}
@@ -43,15 +43,14 @@ export const EmployeesGrid = () => {
                   <span className="truncate font-semibold text-sm text-gray-800 group-hover:text-purple-700 transition">
                     {e.fullName}
                   </span>
+                  {isUserAdmin && (
+                    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded-full border border-purple-200/80 shrink-0">
+                      Admin
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span
-                    className={`inline-block truncate text-[11px] font-medium px-1.5 py-0.2 rounded ${
-                      isUserAdmin
-                        ? 'bg-purple-50 text-purple-700 font-semibold'
-                        : 'text-gray-500'
-                    }`}
-                  >
+                  <span className="inline-block truncate text-[11px] font-medium text-gray-500">
                     {e.role || 'Member'}
                   </span>
                 </div>

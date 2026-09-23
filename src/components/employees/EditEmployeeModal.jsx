@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useToast } from '../../context/ToastContext';
 import { useData } from '../../context/DataContext';
+import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../widgets/Avatar';
 
 const ROLE_SUGGESTIONS = [
-  'Admin',
   'Product Lead',
   'Software Engineer',
   'Frontend Developer',
@@ -21,10 +21,12 @@ const ROLE_SUGGESTIONS = [
 const EditEmployeeModal = ({ isOpen, onClose, employee, onSave, onDelete }) => {
   const { addToast } = useToast();
   const { employees = [] } = useData();
+  const { isAdmin: isCurrentUserAdmin } = useAuth();
 
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState('');
   const [avatar, setAvatar] = useState('');
+  const [isAdminChecked, setIsAdminChecked] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -115,8 +117,9 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave, onDelete }) => {
   useEffect(() => {
     if (isOpen && employee) {
       setFullName(employee.fullName || '');
-      setRole(employee.role || '');
+      setRole((employee.role || '').toLowerCase() === 'admin' ? 'Software Engineer' : (employee.role || ''));
       setAvatar(employee.avatar || '');
+      setIsAdminChecked(employee.isAdmin === true || (employee.role || '').toLowerCase() === 'admin');
       setError('');
       setIsDropdownOpen(false);
       setRoleSearchQuery('');
@@ -132,7 +135,7 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave, onDelete }) => {
     setError('');
 
     const cleanName = fullName.trim();
-    const cleanRole = role.trim();
+    let cleanRole = role.trim();
 
     if (!cleanName) {
       setError('Please enter employee full name.');
@@ -142,6 +145,24 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave, onDelete }) => {
     if (!cleanRole) {
       setError('Please select or add an employee designation/role.');
       return;
+    }
+
+    // Safety check: ensure at least one admin exists if revoking admin status
+    if (isCurrentUserAdmin && !isAdminChecked) {
+      const wasAdmin = employee.isAdmin === true || (employee.role || '').toLowerCase() === 'admin';
+      if (wasAdmin) {
+        const remainingAdmins = (employees || []).filter(
+          e => (e.isAdmin === true || (e.role || '').toLowerCase() === 'admin') && e.id !== employee.id
+        );
+        if (remainingAdmins.length === 0) {
+          setError('Cannot remove admin status: At least one administrator account must be retained.');
+          return;
+        }
+      }
+    }
+
+    if (!isAdminChecked && cleanRole.toLowerCase() === 'admin') {
+      cleanRole = 'Member';
     }
 
     // If cleanRole is custom and not yet saved, save it to persistent custom list
@@ -161,7 +182,8 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave, onDelete }) => {
       await onSave({
         fullName: cleanName,
         role: cleanRole,
-        avatar: avatar.trim() || employee.avatar
+        avatar: avatar.trim() || employee.avatar,
+        isAdmin: isCurrentUserAdmin ? isAdminChecked : Boolean(employee.isAdmin)
       });
       addToast(`Updated properties for ${cleanName}!`, 'success');
       onClose();
@@ -433,7 +455,7 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave, onDelete }) => {
 
             {/* Quick role pills */}
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {['Designer', 'Software Engineer', 'Product Lead', 'Admin'].map((r) => (
+              {['Designer', 'Software Engineer', 'Product Lead', 'Project Manager'].map((r) => (
                 <button
                   key={r}
                   type="button"
@@ -492,6 +514,68 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave, onDelete }) => {
               </button>
             </div>
           </div>
+
+          {/* Administrator Privileges Toggle (Admin Only) */}
+          {isCurrentUserAdmin && (
+            <div className="p-3.5 rounded-xl border border-purple-200/80 bg-purple-50/50">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                    isAdminChecked ? 'bg-purple-600 text-white shadow-xs' : 'bg-gray-200 text-gray-500'
+                  }`}>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-gray-900">Administrator Privileges</span>
+                      {isAdminChecked ? (
+                        <span className="text-[10px] bg-purple-100 text-purple-700 font-bold px-1.5 py-0.5 rounded border border-purple-200/60">
+                          Admin Active
+                        </span>
+                      ) : (
+                        <span className="text-[10px] bg-gray-100 text-gray-500 font-medium px-1.5 py-0.5 rounded">
+                          Standard Member
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">
+                      {isAdminChecked
+                        ? 'This account has full administrative access across the platform.'
+                        : 'Toggle on to grant administrator permissions to this employee.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isAdminChecked}
+                  onClick={() => {
+                    if (isAdminChecked) {
+                      const allAdmins = (employees || []).filter(
+                        e => (e.isAdmin === true || (e.role || '').toLowerCase() === 'admin') && e.id !== employee.id
+                      );
+                      if (allAdmins.length === 0) {
+                        addToast('Cannot remove admin status: At least one administrator account must be retained.', 'warning', 4000);
+                        return;
+                      }
+                    }
+                    setIsAdminChecked(!isAdminChecked);
+                  }}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                    isAdminChecked ? 'bg-purple-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                      isAdminChecked ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Action buttons */}
           <div className="pt-4 border-t border-gray-100 flex items-center justify-between gap-2.5">

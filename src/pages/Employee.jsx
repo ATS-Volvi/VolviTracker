@@ -20,7 +20,7 @@ const STATUS_STYLES = {
 export const Employee = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { getEmployee, projects = [], tasks, meetings, updateEmployee, removeEmployee } = useData();
+  const { getEmployee, employees = [], projects = [], tasks, meetings, updateEmployee, removeEmployee } = useData();
   const { user, isAdmin } = useAuth();
   const { addToast } = useToast();
   const [comment, setComment] = useState('');
@@ -151,6 +151,49 @@ export const Employee = () => {
     }
   };
 
+  const isEmpAdmin = emp.isAdmin === true || (emp.role || '').toLowerCase() === 'admin';
+
+  const handleToggleAdminStatus = async () => {
+    if (!isAdmin) return;
+
+    if (isEmpAdmin) {
+      const remainingAdmins = (employees || []).filter(
+        e => (e.isAdmin === true || (e.role || '').toLowerCase() === 'admin') && e.id !== emp.id
+      );
+      if (remainingAdmins.length === 0) {
+        addToast('Cannot remove admin status: At least one administrator account must be retained.', 'warning', 4000);
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Remove Admin status from ${emp.fullName}? They will become a standard team member.`
+      );
+      if (!confirmed) return;
+
+      try {
+        await updateEmployee(id, {
+          isAdmin: false,
+          role: (emp.role || '').toLowerCase() === 'admin' ? 'Software Engineer' : emp.role
+        });
+        addToast(`Admin status removed from ${emp.fullName}.`, 'info', 3000);
+      } catch {
+        addToast('Failed to update admin status.', 'error');
+      }
+    } else {
+      const confirmed = window.confirm(
+        `Grant Admin status to ${emp.fullName}? They will have full administrative access across the platform.`
+      );
+      if (!confirmed) return;
+
+      try {
+        await updateEmployee(id, { isAdmin: true });
+        addToast(`Granted Admin status to ${emp.fullName}!`, 'success', 3000);
+      } catch {
+        addToast('Failed to grant admin status.', 'error');
+      }
+    }
+  };
+
   const handleConfirmDelete = async () => {
     if (!isAdmin || isOwnProfile || !emp) return;
     setIsDeleting(true);
@@ -201,6 +244,18 @@ export const Employee = () => {
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200/60">
                     {emp.role || '—'}
                   </span>
+                  {isEmpAdmin ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded-md border border-purple-200">
+                      <svg className="w-3 h-3 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM11 14a1 1 0 11-2 0 1 1 0 012 0zm0-7a1 1 0 10-2 0v3a1 1 0 102 0V7z" clipRule="evenodd" />
+                      </svg>
+                      Admin
+                    </span>
+                  ) : (
+                    <span className="inline-block text-[11px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md border border-gray-200">
+                      Standard Member
+                    </span>
+                  )}
                   {(isAdmin || isOwnProfile) && (
                     <button
                       type="button"
@@ -235,6 +290,36 @@ export const Employee = () => {
 
             {/* Admin / Owner Actions */}
             <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+              {/* Admin Status Toggle Action (Admin Only) */}
+              {isAdmin && !isOwnProfile && (
+                <button
+                  type="button"
+                  onClick={handleToggleAdminStatus}
+                  className={`btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5 rounded-xl transition shadow-2xs font-semibold ${
+                    isEmpAdmin
+                      ? 'text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200'
+                      : 'text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200'
+                  }`}
+                  title={isEmpAdmin ? 'Revoke administrator privileges' : 'Grant administrator privileges'}
+                >
+                  {isEmpAdmin ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                      </svg>
+                      <span>Remove Admin Status</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                      <span>Convert to Admin</span>
+                    </>
+                  )}
+                </button>
+              )}
+
               {(isAdmin || isOwnProfile) && (
                 <button
                   type="button"

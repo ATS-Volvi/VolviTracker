@@ -266,11 +266,18 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
           {!collapsed && (
             <>
               <div className="min-w-0 flex-1">
-                <div className="text-xs font-semibold text-gray-800 leading-tight truncate">
-                  {user?.fullName}
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-xs font-semibold text-gray-800 leading-tight truncate">
+                    {user?.fullName}
+                  </span>
+                  {isAdmin && (
+                    <span className="text-[9px] font-bold bg-purple-100 text-purple-700 px-1 py-0.2 rounded shrink-0 border border-purple-200/60">
+                      Admin
+                    </span>
+                  )}
                 </div>
                 <div className="text-[10px] text-gray-500 truncate mt-0.5">
-                  {user?.role || (isAdmin ? 'Admin' : 'Member')}
+                  {user?.role || 'Member'}
                 </div>
               </div>
               <svg

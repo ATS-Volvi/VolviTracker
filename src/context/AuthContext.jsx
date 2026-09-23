@@ -99,12 +99,17 @@ export const AuthProvider = ({ children }) => {
       return { success: false, error: 'Invalid password. Please check your credentials.' };
     }
 
+    const isTargetAdmin = targetEmp.isAdmin !== undefined
+      ? Boolean(targetEmp.isAdmin)
+      : (targetEmp.role || '').toLowerCase() === 'admin';
+
     const sessionUser = {
       id: targetEmp.id,
       fullName: targetEmp.fullName,
       email: targetEmp.email,
       role: targetEmp.role || 'Member',
-      avatar: targetEmp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(targetEmp.fullName)}&background=0070F3&color=fff`
+      avatar: targetEmp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(targetEmp.fullName)}&background=0070F3&color=fff`,
+      isAdmin: isTargetAdmin
     };
 
     const newSession = {
@@ -122,12 +127,17 @@ export const AuthProvider = ({ children }) => {
   // Quick 1-click login for demo / dev convenience
   const quickLogin = (emp) => {
     if (!emp) return;
+    const isEmpAdmin = emp.isAdmin !== undefined
+      ? Boolean(emp.isAdmin)
+      : (emp.role || '').toLowerCase() === 'admin';
+
     const sessionUser = {
       id: emp.id,
       fullName: emp.fullName,
       email: emp.email,
       role: emp.role || 'Member',
-      avatar: emp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.fullName)}&background=0070F3&color=fff`
+      avatar: emp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.fullName)}&background=0070F3&color=fff`,
+      isAdmin: isEmpAdmin
     };
 
     const newSession = {
@@ -164,12 +174,19 @@ export const AuthProvider = ({ children }) => {
     const passwordHash = await hashPassword(password);
     const userAvatar = avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanName)}&background=0070F3&color=fff`;
 
+    // Strictly ensure self-signups cannot grant Admin role
+    let cleanRole = (role || '').trim();
+    if (cleanRole.toLowerCase() === 'admin') {
+      cleanRole = 'Software Engineer';
+    }
+
     const newEmployee = addEmployee({
       fullName: cleanName,
       email: cleanEmail,
-      role: role || 'Software Engineer',
+      role: cleanRole || 'Software Engineer',
       avatar: userAvatar,
-      passwordHash
+      passwordHash,
+      isAdmin: false
     });
 
     const sessionUser = {
@@ -177,7 +194,8 @@ export const AuthProvider = ({ children }) => {
       fullName: newEmployee.fullName,
       email: newEmployee.email,
       role: newEmployee.role,
-      avatar: newEmployee.avatar
+      avatar: newEmployee.avatar,
+      isAdmin: false
     };
 
     const newSession = {
@@ -247,16 +265,23 @@ export const AuthProvider = ({ children }) => {
     if (user && employees && employees.length > 0) {
       const activeEmp = employees.find(e => e.id === user.id || e.email?.toLowerCase() === user.email?.toLowerCase());
       if (activeEmp) {
-        if ((activeEmp.role && activeEmp.role !== user.role) || (activeEmp.avatar && activeEmp.avatar !== user.avatar)) {
+        const empIsAdmin = activeEmp.isAdmin !== undefined
+          ? Boolean(activeEmp.isAdmin)
+          : (activeEmp.role || '').toLowerCase() === 'admin';
+
+        if ((activeEmp.role && activeEmp.role !== user.role) ||
+            (activeEmp.avatar && activeEmp.avatar !== user.avatar) ||
+            (empIsAdmin !== Boolean(user.isAdmin))) {
           setUser(prev => ({
             ...prev,
             role: activeEmp.role || prev.role,
-            avatar: activeEmp.avatar || prev.avatar
+            avatar: activeEmp.avatar || prev.avatar,
+            isAdmin: empIsAdmin
           }));
         }
       }
     }
-  }, [employees, user?.id, user?.email]);
+  }, [employees, user?.id, user?.email, user?.role, user?.avatar, user?.isAdmin]);
 
   // Update profile avatar
   const updateAvatar = useCallback((newAvatar) => {
@@ -296,7 +321,7 @@ export const AuthProvider = ({ children }) => {
     return { success: true };
   }, [user, updateEmployee]);
 
-  const isAdmin = Boolean(user && (user.role || '').toLowerCase() === 'admin');
+  const isAdmin = Boolean(user && (user.isAdmin === true || (user.role || '').toLowerCase() === 'admin'));
 
   return (
     <AuthContext.Provider
