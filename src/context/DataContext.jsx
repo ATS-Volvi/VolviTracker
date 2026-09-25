@@ -161,10 +161,44 @@ export const DataProvider = ({ children }) => {
       }
     });
 
+    // Auto-cascade parent assignees to all subtasks & sub-subtasks
+    let initialTasks = Array.isArray(loaded.tasks) ? loaded.tasks : seedData.tasks;
+    if (Array.isArray(initialTasks)) {
+      let taskMap = new Map(initialTasks.map(t => [String(t.id), { ...t }]));
+      let changed = true;
+      let passes = 0;
+      while (changed && passes < 10) {
+        changed = false;
+        passes++;
+        for (const [id, task] of taskMap.entries()) {
+          if (task.parentId) {
+            const parent = taskMap.get(String(task.parentId));
+            if (parent) {
+              const pAssignees = Array.isArray(parent.assigneeIds) && parent.assigneeIds.length > 0
+                ? parent.assigneeIds
+                : (parent.assigneeId ? [parent.assigneeId] : []);
+              
+              const myAssignees = Array.isArray(task.assigneeIds) && task.assigneeIds.length > 0
+                ? task.assigneeIds
+                : (task.assigneeId ? [task.assigneeId] : []);
+
+              if (pAssignees.length > 0 && (myAssignees.length === 0 || JSON.stringify(myAssignees) !== JSON.stringify(pAssignees))) {
+                task.assigneeIds = [...pAssignees];
+                task.assigneeId = pAssignees[0] || '';
+                changed = true;
+              }
+            }
+          }
+        }
+      }
+      initialTasks = Array.from(taskMap.values());
+      saveLocalMultiple({ tasks: initialTasks });
+    }
+
     setData({
       employees: Array.isArray(loaded.employees) ? loaded.employees : seedData.employees,
       projects: Array.isArray(loaded.projects) ? loaded.projects : seedData.projects,
-      tasks: Array.isArray(loaded.tasks) ? loaded.tasks : seedData.tasks,
+      tasks: initialTasks,
       meetings: Array.isArray(loaded.meetings) ? loaded.meetings : seedData.meetings,
       docs: Array.isArray(loaded.docs) ? loaded.docs : seedDocs
     });
@@ -305,13 +339,24 @@ export const DataProvider = ({ children }) => {
       endValue: 100
     };
 
+    // Map temp IDs to permanent IDs so parentId hierarchy remains intact
+    const idMap = new Map();
+    projectTasks.forEach(t => {
+      if (!t.id || String(t.id).startsWith('temp_')) {
+        idMap.set(t.id, generateId());
+      }
+    });
+
+    const newProjectTasks = projectTasks.map(t => ({
+      ...t,
+      id: idMap.get(t.id) || t.id || generateId(),
+      parentId: t.parentId ? (idMap.get(t.parentId) || t.parentId) : null,
+      projectId: projectId
+    }));
+
     const newTasks = [
       ...data.tasks,
-      ...projectTasks.map(t => ({
-        ...t,
-        id: t.id && !t.id.startsWith('temp_') ? t.id : generateId(),
-        projectId: projectId
-      }))
+      ...newProjectTasks
     ];
 
     const nextProjects = [...data.projects, projectItem];
@@ -319,7 +364,7 @@ export const DataProvider = ({ children }) => {
     saveLocalMultiple({ projects: nextProjects, tasks: newTasks });
 
     // Sync to Neon Cloud
-    apiCreateProject(projectItem, projectTasks).catch(e => console.error('[Neon Error] addProjectWithTasks:', e));
+    apiCreateProject(projectItem, newProjectTasks).catch(e => console.error('[Neon Error] addProjectWithTasks:', e));
     return projectItem;
   };
 
@@ -348,10 +393,19 @@ export const DataProvider = ({ children }) => {
       return p;
     });
 
+    // Map temp IDs to permanent IDs so parentId hierarchy remains intact
+    const idMap = new Map();
+    projectTasks.forEach(t => {
+      if (!t.id || String(t.id).startsWith('temp_')) {
+        idMap.set(t.id, generateId());
+      }
+    });
+
     const otherTasks = data.tasks.filter(t => t.projectId !== projectId);
     const updatedProjectTasks = projectTasks.map(t => ({
       ...t,
-      id: t.id && !t.id.startsWith('temp_') ? t.id : generateId(),
+      id: idMap.get(t.id) || t.id || generateId(),
+      parentId: t.parentId ? (idMap.get(t.parentId) || t.parentId) : null,
       projectId: projectId
     }));
 
@@ -361,7 +415,7 @@ export const DataProvider = ({ children }) => {
 
     // Sync to Neon Cloud
     const targetProj = updatedProjects.find(p => p.id === projectId);
-    apiCreateProject(targetProj || { id: projectId, ...projUpdates }, projectTasks)
+    apiCreateProject(targetProj || { id: projectId, ...projUpdates }, updatedProjectTasks)
       .catch(e => console.error('[Neon Error] updateProjectWithTasks:', e));
   };
 
@@ -369,7 +423,22 @@ export const DataProvider = ({ children }) => {
   // Task CRUD with Cloud Neon Sync
   // ----------------------------------------------------
   const addTask = (task) => {
-    const item = { ...task, id: task.id || generateId() };
+    let item = { ...task, id: task.id || generateId() };
+
+    // If this is a subtask or sub-subtask and assignees are not specified, inherit from parent
+    if (item.parentId && (!item.assigneeIds || item.assigneeIds.length === 0)) {
+      const parent = data.tasks.find(t => String(t.id) === String(item.parentId));
+      if (parent) {
+        const parentAssignees = Array.isArray(parent.assigneeIds) && parent.assigneeIds.length > 0
+          ? parent.assigneeIds
+          : (parent.assigneeId ? [parent.assigneeId] : []);
+        if (parentAssignees.length > 0) {
+          item.assigneeIds = [...parentAssignees];
+          item.assigneeId = parentAssignees[0] || '';
+        }
+      }
+    }
+
     const nextTasks = [...data.tasks, item];
 
     let updatedProjects = data.projects;
@@ -387,33 +456,90 @@ export const DataProvider = ({ children }) => {
 
   const updateTask = (id, updates) => {
     if (!id) return;
-    const oldTask = data.tasks.find(t => t.id === id);
-    const nextTasks = data.tasks.map(t => t.id === id ? { ...t, ...updates } : t);
 
-    const targetProjectId = updates.projectId || oldTask?.projectId;
-    const prevProjectId = (oldTask?.projectId && updates.projectId && oldTask.projectId !== updates.projectId)
-      ? oldTask.projectId
-      : null;
+    let cascadedDescendantIds = [];
+    let cascadedAssigneeIds = [];
+    let cascadedAssigneeId = '';
 
-    let updatedProjects = data.projects;
-    if (targetProjectId) {
-      updatedProjects = syncProjectProgress(targetProjectId, nextTasks, updatedProjects);
-    }
-    if (prevProjectId) {
-      updatedProjects = syncProjectProgress(prevProjectId, nextTasks, updatedProjects);
-    }
+    setData(prev => {
+      const oldTask = prev.tasks.find(t => String(t.id) === String(id));
+      const descendants = new Set();
+      if (updates.assigneeIds !== undefined) {
+        let added = true;
+        while (added) {
+          added = false;
+          prev.tasks.forEach(t => {
+            if (t.parentId && (String(t.parentId) === String(id) || descendants.has(String(t.parentId))) && !descendants.has(String(t.id))) {
+              descendants.add(String(t.id));
+              added = true;
+            }
+          });
+        }
+      }
 
-    setData(prev => ({ ...prev, tasks: nextTasks, projects: updatedProjects }));
-    saveLocalMultiple({ tasks: nextTasks, projects: updatedProjects });
+      cascadedAssigneeIds = Array.isArray(updates.assigneeIds) ? updates.assigneeIds : [];
+      cascadedAssigneeId = updates.assigneeId || cascadedAssigneeIds[0] || '';
+      cascadedDescendantIds = Array.from(descendants);
+
+      const nextTasks = prev.tasks.map(t => {
+        if (String(t.id) === String(id)) {
+          return { ...t, ...updates };
+        }
+        if (descendants.has(String(t.id))) {
+          return {
+            ...t,
+            assigneeIds: cascadedAssigneeIds,
+            assigneeId: cascadedAssigneeId
+          };
+        }
+        return t;
+      });
+
+      const targetProjectId = updates.projectId || oldTask?.projectId;
+      const prevProjectId = (oldTask?.projectId && updates.projectId && oldTask.projectId !== updates.projectId)
+        ? oldTask.projectId
+        : null;
+
+      let updatedProjects = prev.projects;
+      if (targetProjectId) {
+        updatedProjects = syncProjectProgress(targetProjectId, nextTasks, updatedProjects);
+      }
+      if (prevProjectId) {
+        updatedProjects = syncProjectProgress(prevProjectId, nextTasks, updatedProjects);
+      }
+
+      saveLocalMultiple({ tasks: nextTasks, projects: updatedProjects });
+      return { ...prev, tasks: nextTasks, projects: updatedProjects };
+    });
 
     // Sync to Neon Cloud
     apiUpdateTask(id, updates).catch(e => console.error('[Neon Error] updateTask:', e));
+    if (cascadedDescendantIds.length > 0) {
+      cascadedDescendantIds.forEach(descId => {
+        apiUpdateTask(descId, {
+          assigneeIds: cascadedAssigneeIds,
+          assigneeId: cascadedAssigneeId
+        }).catch(e => console.error('[Neon Error] cascade updateTask:', e));
+      });
+    }
   };
 
   const removeTask = (id) => {
     if (!id) return;
     const targetTask = data.tasks.find(t => t.id === id);
-    const nextTasks = data.tasks.filter(t => t.id !== id);
+    const toDelete = new Set([id]);
+    let added = true;
+    while (added) {
+      added = false;
+      data.tasks.forEach(t => {
+        if (t.parentId && toDelete.has(t.parentId) && !toDelete.has(t.id)) {
+          toDelete.add(t.id);
+          added = true;
+        }
+      });
+    }
+
+    const nextTasks = data.tasks.filter(t => !toDelete.has(t.id));
 
     let updatedProjects = data.projects;
     if (targetTask?.projectId) {
@@ -424,7 +550,9 @@ export const DataProvider = ({ children }) => {
     saveLocalMultiple({ tasks: nextTasks, projects: updatedProjects });
 
     // Sync to Neon Cloud
-    apiDeleteTask(id).catch(e => console.error('[Neon Error] removeTask:', e));
+    toDelete.forEach(delId => {
+      apiDeleteTask(delId).catch(e => console.error('[Neon Error] removeTask:', e));
+    });
   };
 
   // ----------------------------------------------------

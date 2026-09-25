@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../widgets/Modal';
 import { sortTasks } from '../../utils/taskSort';
 import { downloadTaskTemplateExcel, parseTaskExcelFile } from '../../utils/excelTaskImport';
+import { loadFinanceData } from '../../pages/finance/financeData';
 
 const STATUSES = ['Not started', 'In progress', 'Done'];
 const PRIORITIES = ['Low', 'Medium', 'High'];
@@ -21,9 +22,27 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   const { user, isAdmin } = useAuth();
   const { addToast } = useToast();
 
+  // Load registered master entities (Clients & Suppliers)
+  const [financeData, setFinanceData] = useState(() => loadFinanceData());
+  useEffect(() => {
+    if (isOpen) {
+      setFinanceData(loadFinanceData());
+    }
+  }, [isOpen]);
+
+  const masterDirectory = financeData.masterDirectory || [];
+  const clientsList = useMemo(() => masterDirectory.filter(e => e.category === 'Client'), [masterDirectory]);
+  const suppliersList = useMemo(() => masterDirectory.filter(e => e.category === 'Supplier'), [masterDirectory]);
+
+  const [clientSearch, setClientSearch] = useState('');
+  const [supplierSearch, setSupplierSearch] = useState('');
+
   const [form, setForm] = useState({
     name: '',
     clientName: '',
+    clientId: '',
+    supplierName: '',
+    supplierId: '',
     contactDesignation: '',
     clientDesignation: '',
     pocName: '',
@@ -57,10 +76,31 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
     dueDate: '',
     assigneeIds: [],
     priority: 'Medium',
-    status: 'Not started'
+    status: 'Not started',
+    parentId: null
   });
   const [showEditAssigneeDropdown, setShowEditAssigneeDropdown] = useState(false);
   const editAssigneeDropdownRef = useRef(null);
+
+  // Subtask & Sub-subtask inline add state
+  const [addingSubtaskId, setAddingSubtaskId] = useState(null);
+  const [subtaskTitle, setSubtaskTitle] = useState('');
+  const [subtaskDeadline, setSubtaskDeadline] = useState('');
+  const [subtaskAssigneeIds, setSubtaskAssigneeIds] = useState([]);
+  const [subtaskPriority, setSubtaskPriority] = useState('Medium');
+  const [showSubtaskAssigneeDropdown, setShowSubtaskAssigneeDropdown] = useState(false);
+  const subtaskAssigneeDropdownRef = useRef(null);
+
+  // Collapsed parents set for collapsible task trees
+  const [collapsedParentIds, setCollapsedParentIds] = useState(new Set());
+  const toggleCollapseTask = (id) => {
+    setCollapsedParentIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Excel import/export state and ref
   const excelFileInputRef = useRef(null);
@@ -74,6 +114,9 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       }
       if (editAssigneeDropdownRef.current && !editAssigneeDropdownRef.current.contains(e.target)) {
         setShowEditAssigneeDropdown(false);
+      }
+      if (subtaskAssigneeDropdownRef.current && !subtaskAssigneeDropdownRef.current.contains(e.target)) {
+        setShowSubtaskAssigneeDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleDocClick);
@@ -103,7 +146,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       else if (initialStatus === 'Not started' && prog > 0) initialStatus = 'In progress';
 
       const existingTasks = getProjectTasks(initial.id) || [];
-      // Normalize task assigneeIds
+      // Normalize task assigneeIds and cascade parent assignees to subtasks if unassigned
       const normalizedTasks = existingTasks.map(t => {
         let taskAssigneeIds = [];
         if (Array.isArray(t.assigneeIds) && t.assigneeIds.length > 0) {
@@ -112,6 +155,24 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
           taskAssigneeIds = [t.assigneeId];
         }
         return { ...t, assigneeIds: taskAssigneeIds };
+      });
+
+      const taskMap = new Map(normalizedTasks.map(t => [String(t.id), t]));
+      normalizedTasks.forEach(t => {
+        if ((!t.assigneeIds || t.assigneeIds.length === 0) && t.parentId) {
+          let curr = taskMap.get(String(t.parentId));
+          while (curr) {
+            const pAssignees = Array.isArray(curr.assigneeIds) && curr.assigneeIds.length > 0
+              ? curr.assigneeIds
+              : (curr.assigneeId ? [curr.assigneeId] : []);
+            if (pAssignees.length > 0) {
+              t.assigneeIds = [...pAssignees];
+              t.assigneeId = pAssignees[0] || '';
+              break;
+            }
+            curr = curr.parentId ? taskMap.get(String(curr.parentId)) : null;
+          }
+        }
       });
 
       setProjectTasks(normalizedTasks);
@@ -124,6 +185,9 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       setForm({
         name: initial.name || '',
         clientName: initial.clientName || '',
+        clientId: initial.clientId || '',
+        supplierName: initial.supplierName || '',
+        supplierId: initial.supplierId || '',
         contactDesignation: desig,
         clientDesignation: desig,
         pocName: initial.pocName || initial.pointOfContactName || '',
@@ -156,6 +220,9 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       setForm({
         name: '',
         clientName: '',
+        clientId: '',
+        supplierName: '',
+        supplierId: '',
         contactDesignation: '',
         clientDesignation: '',
         pocName: '',
@@ -203,26 +270,90 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
+  // Filtered Clients and Suppliers for Master Data Selector Boxes
+  const filteredClients = useMemo(() => {
+    if (!clientSearch.trim()) return clientsList;
+    const q = clientSearch.toLowerCase();
+    return clientsList.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.country || '').toLowerCase().includes(q) ||
+      (c.department || '').toLowerCase().includes(q) ||
+      (c.id || '').toLowerCase().includes(q)
+    );
+  }, [clientsList, clientSearch]);
+
+  const filteredSuppliers = useMemo(() => {
+    if (!supplierSearch.trim()) return suppliersList;
+    const q = supplierSearch.toLowerCase();
+    return suppliersList.filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      (s.country || '').toLowerCase().includes(q) ||
+      (s.department || '').toLowerCase().includes(q) ||
+      (s.id || '').toLowerCase().includes(q)
+    );
+  }, [suppliersList, supplierSearch]);
+
+  const handleSelectClient = (client) => {
+    if (form.clientId === client.id) {
+      setForm(prev => ({
+        ...prev,
+        clientId: '',
+        clientName: ''
+      }));
+      return;
+    }
+
+    setForm(prev => {
+      const primaryStakeholder = Array.isArray(client.stakeholders) && client.stakeholders.length > 0
+        ? client.stakeholders[0]
+        : null;
+
+      return {
+        ...prev,
+        clientId: client.id,
+        clientName: client.name,
+        pocName: prev.pocName || client.contactPerson || primaryStakeholder?.name || '',
+        contactEmail: prev.contactEmail || client.companyMail || client.contactEmail || primaryStakeholder?.email || '',
+        contactNumber: prev.contactNumber || client.contactPhone || primaryStakeholder?.phone || '',
+        contactDesignation: prev.contactDesignation || primaryStakeholder?.role || 'Lead Commercial POC'
+      };
+    });
+  };
+
+  const handleSelectSupplier = (supplier) => {
+    if (form.supplierId === supplier.id) {
+      setForm(prev => ({
+        ...prev,
+        supplierId: '',
+        supplierName: ''
+      }));
+      return;
+    }
+
+    setForm(prev => ({
+      ...prev,
+      supplierId: supplier.id,
+      supplierName: supplier.name
+    }));
+  };
+
   const toggleAssignee = (empId) => {
-    if (!isAdmin && empId !== user?.id) return; // Non-admin members can only select themselves
     setForm(prev => {
       const exists = prev.assigneeIds.includes(empId);
       const newIds = exists
         ? prev.assigneeIds.filter(id => id !== empId)
-        : (isAdmin ? [...prev.assigneeIds, empId] : [empId]);
+        : [...prev.assigneeIds, empId];
       return { ...prev, assigneeIds: newIds };
     });
   };
 
   const toggleNewTaskAssignee = (empId) => {
-    if (!isAdmin) return;
     setNewTaskAssigneeIds(prev =>
       prev.includes(empId) ? prev.filter(id => id !== empId) : [...prev, empId]
     );
   };
 
   const toggleEditTaskAssignee = (empId) => {
-    if (!isAdmin) return;
     setEditTaskForm(prev => ({
       ...prev,
       assigneeIds: prev.assigneeIds.includes(empId)
@@ -247,9 +378,9 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
     const title = newTaskTitle.trim();
     if (!title) return;
 
-    const assignedIds = (!isAdmin && user?.id)
-      ? [user.id]
-      : (newTaskAssigneeIds.length > 0 ? [...newTaskAssigneeIds] : (form.assigneeIds.length > 0 ? [form.assigneeIds[0]] : []));
+    const assignedIds = newTaskAssigneeIds.length > 0
+      ? [...newTaskAssigneeIds]
+      : (form.assigneeIds.length > 0 ? [form.assigneeIds[0]] : []);
     const primaryAssigneeId = assignedIds[0] || (employees[0]?.id || '');
 
     const taskItem = {
@@ -260,13 +391,99 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       assigneeId: primaryAssigneeId,
       priority: newTaskPriority,
       status: 'Not started',
-      description: ''
+      description: '',
+      parentId: null
     };
 
     setProjectTasks(prev => [...prev, taskItem]);
     setNewTaskTitle('');
     setNewTaskDeadline(getLocalDateString());
   };
+
+  const handleStartAddSubtask = (parentTask) => {
+    setAddingSubtaskId(parentTask.id);
+    setSubtaskTitle('');
+    setSubtaskDeadline(parentTask.dueDate ? parentTask.dueDate.slice(0, 10) : (form.endDate || getLocalDateString()));
+    setSubtaskPriority(parentTask.priority || 'Medium');
+    const parentAssignees = Array.isArray(parentTask.assigneeIds) && parentTask.assigneeIds.length > 0
+      ? parentTask.assigneeIds
+      : (parentTask.assigneeId ? [parentTask.assigneeId] : []);
+    const defaultIds = (!isAdmin && user?.id)
+      ? [user.id]
+      : (parentAssignees.length > 0 ? [...parentAssignees] : (user?.id ? [user.id] : []));
+    setSubtaskAssigneeIds(defaultIds);
+    setShowSubtaskAssigneeDropdown(false);
+  };
+
+  const handleCancelAddSubtask = () => {
+    setAddingSubtaskId(null);
+    setSubtaskTitle('');
+    setShowSubtaskAssigneeDropdown(false);
+  };
+
+  const handleSaveSubtask = (parentTask) => {
+    const title = subtaskTitle.trim();
+    if (!title) return;
+
+    const parentAssignees = Array.isArray(parentTask.assigneeIds) && parentTask.assigneeIds.length > 0
+      ? parentTask.assigneeIds
+      : (parentTask.assigneeId ? [parentTask.assigneeId] : []);
+    const assignedIds = (!isAdmin && user?.id)
+      ? [user.id]
+      : (subtaskAssigneeIds.length > 0 ? [...subtaskAssigneeIds] : parentAssignees);
+    const primaryAssigneeId = assignedIds[0] || parentTask.assigneeId || (employees[0]?.id || '');
+
+    const newSubtask = {
+      id: 'temp_' + Date.now() + Math.random().toString(36).substr(2, 4),
+      name: title,
+      dueDate: subtaskDeadline || parentTask.dueDate || form.endDate || form.startDate,
+      assigneeIds: assignedIds,
+      assigneeId: primaryAssigneeId,
+      priority: subtaskPriority,
+      status: 'Not started',
+      description: '',
+      parentId: parentTask.id
+    };
+
+    setProjectTasks(prev => [...prev, newSubtask]);
+    setAddingSubtaskId(null);
+    setSubtaskTitle('');
+    setShowSubtaskAssigneeDropdown(false);
+    // Auto-expand parent
+    setCollapsedParentIds(prev => {
+      const next = new Set(prev);
+      next.delete(parentTask.id);
+      return next;
+    });
+    addToast(`Added subtask to "${parentTask.name}"`, 'success', 2000);
+  };
+
+  // Hierarchical tasks list with depth levels:
+  // level 0: Main task
+  // level 1: Sub-task
+  // level 2: Sub-sub-task
+  const hierarchicalTasks = useMemo(() => {
+    const list = projectTasks;
+    const mainTasks = list.filter(t => !t.parentId || !list.some(p => String(p.id) === String(t.parentId)));
+    const sortedMain = sortTasks(mainTasks);
+    const result = [];
+
+    sortedMain.forEach(mainTask => {
+      result.push({ ...mainTask, level: 0 });
+      // Children (level 1 subtasks)
+      const subTasks = sortTasks(list.filter(t => String(t.parentId) === String(mainTask.id)));
+      subTasks.forEach(subTask => {
+        result.push({ ...subTask, level: 1, parentName: mainTask.name });
+        // Grandchildren (level 2 sub-subtasks)
+        const subSubTasks = sortTasks(list.filter(t => String(t.parentId) === String(subTask.id)));
+        subSubTasks.forEach(subSubTask => {
+          result.push({ ...subSubTask, level: 2, parentName: subTask.name, grandParentName: mainTask.name });
+        });
+      });
+    });
+
+    return result;
+  }, [projectTasks]);
 
   const handleStartEditTask = (task) => {
     setEditingTaskId(task.id);
@@ -284,7 +501,8 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       dueDate: task.dueDate ? task.dueDate.slice(0, 10) : getLocalDateString(),
       assigneeIds: ids,
       priority: task.priority || 'Medium',
-      status: task.status || 'Not started'
+      status: task.status || 'Not started',
+      parentId: task.parentId || null
     });
     setShowEditAssigneeDropdown(false);
   };
@@ -292,12 +510,23 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   const handleSaveEditTask = () => {
     if (!editTaskForm.name.trim()) return;
 
-    const finalEditAssignees = (!isAdmin && user?.id)
-      ? [user.id]
-      : editTaskForm.assigneeIds;
+    const finalEditAssignees = editTaskForm.assigneeIds;
 
-    setProjectTasks(prev =>
-      prev.map(t => {
+    setProjectTasks(prev => {
+      // Find all descendant tasks (subtasks & sub-subtasks) of editingTaskId
+      const descendants = new Set();
+      let added = true;
+      while (added) {
+        added = false;
+        prev.forEach(t => {
+          if (t.parentId && (String(t.parentId) === String(editingTaskId) || descendants.has(String(t.parentId))) && !descendants.has(String(t.id))) {
+            descendants.add(String(t.id));
+            added = true;
+          }
+        });
+      }
+
+      return prev.map(t => {
         if (t.id === editingTaskId) {
           return {
             ...t,
@@ -306,15 +535,23 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
             assigneeIds: finalEditAssignees,
             assigneeId: finalEditAssignees[0] || '',
             priority: editTaskForm.priority,
-            status: editTaskForm.status
+            status: editTaskForm.status,
+            parentId: editTaskForm.parentId !== undefined ? editTaskForm.parentId : t.parentId
+          };
+        }
+        if (descendants.has(String(t.id))) {
+          return {
+            ...t,
+            assigneeIds: finalEditAssignees,
+            assigneeId: finalEditAssignees[0] || ''
           };
         }
         return t;
-      })
-    );
+      });
+    });
     setEditingTaskId(null);
     setShowEditAssigneeDropdown(false);
-    addToast('Task updated!', 'success', 2000);
+    addToast('Task & subtasks updated!', 'success', 2000);
   };
 
   const handleCancelEditTask = () => {
@@ -323,23 +560,53 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   };
 
   const handleToggleTaskStatus = (taskId) => {
-    setProjectTasks(prev =>
-      prev.map(t => {
-        if (t.id === taskId) {
-          const nextStatus = t.status === 'Done' ? 'In progress' : 'Done';
-          return { ...t, status: nextStatus };
+    setProjectTasks(prev => {
+      const target = prev.find(t => t.id === taskId);
+      if (!target) return prev;
+      const nextStatus = target.status === 'Done' ? 'In progress' : 'Done';
+
+      // If marking Done, also cascade to all child subtasks
+      const toUpdate = new Set([taskId]);
+      if (nextStatus === 'Done') {
+        let added = true;
+        while (added) {
+          added = false;
+          prev.forEach(t => {
+            if (t.parentId && toUpdate.has(t.parentId) && !toUpdate.has(t.id)) {
+              toUpdate.add(t.id);
+              added = true;
+            }
+          });
         }
-        return t;
-      })
-    );
+      }
+
+      return prev.map(t => toUpdate.has(t.id) ? { ...t, status: nextStatus } : t);
+    });
   };
 
   const handleRemoveTask = (taskId) => {
-    if (editingTaskId === taskId) {
+    const toDelete = new Set([taskId]);
+    let added = true;
+    while (added) {
+      added = false;
+      projectTasks.forEach(t => {
+        if (t.parentId && toDelete.has(t.parentId) && !toDelete.has(t.id)) {
+          toDelete.add(t.id);
+          added = true;
+        }
+      });
+    }
+
+    if (editingTaskId && toDelete.has(editingTaskId)) {
       setEditingTaskId(null);
       setShowEditAssigneeDropdown(false);
     }
-    setProjectTasks(prev => prev.filter(t => t.id !== taskId));
+    if (addingSubtaskId && toDelete.has(addingSubtaskId)) {
+      setAddingSubtaskId(null);
+      setShowSubtaskAssigneeDropdown(false);
+    }
+    setProjectTasks(prev => prev.filter(t => !toDelete.has(t.id)));
+    addToast('Task removed', 'info', 1500);
   };
 
   const handleDownloadTemplate = () => {
@@ -621,78 +888,196 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
             </div>
           </div>
 
-          {/* Right Column: Assigned Team Members */}
-          <div className="lg:col-span-6 flex flex-col">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-gray-700">
-                Team Members ({form.assigneeIds.length} selected)
-              </label>
-              {isAdmin ? (
-                <div className="flex items-center gap-2 text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => setForm(prev => ({ ...prev, assigneeIds: employees.map(e => e.id) }))}
-                    className="text-blue-600 hover:underline font-semibold"
-                  >
-                    Select all
-                  </button>
-                  <span className="text-gray-300">|</span>
-                  <button
-                    type="button"
-                    onClick={() => setForm(prev => ({ ...prev, assigneeIds: [] }))}
-                    className="text-gray-500 hover:underline"
-                  >
-                    Clear
-                  </button>
+          {/* Right Column: Client & Supplier Selection */}
+          <div className="lg:col-span-6 flex flex-col space-y-4">
+            {/* Box 1: Choose Client */}
+            <div className="flex flex-col border border-gray-200 rounded-xl bg-white p-3 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[17px] text-blue-600">domain</span>
+                  <label className="text-xs font-bold text-gray-800">
+                    Client {form.clientName ? <span className="text-blue-600 font-bold">• 1 Selected</span> : <span className="text-gray-400 font-normal">(Choose Client)</span>}
+                  </label>
                 </div>
-              ) : (
-                <span className="text-[11px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md font-medium border border-blue-100">
-                  Self-assigned only
-                </span>
-              )}
+                {form.clientName ? (
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, clientId: '', clientName: '' }))}
+                    className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition"
+                  >
+                    Clear selection
+                  </button>
+                ) : (
+                  <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-bold border border-blue-100">
+                    Select 1 Client
+                  </span>
+                )}
+              </div>
+
+              {/* Search input for Client */}
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[15px]">search</span>
+                <input
+                  type="text"
+                  placeholder="Search client by name, country, department..."
+                  value={clientSearch}
+                  onChange={(e) => setClientSearch(e.target.value)}
+                  className="w-full text-xs pl-8 pr-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-hidden focus:bg-white focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Client List */}
+              <div className="max-h-[145px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                {filteredClients.length === 0 ? (
+                  <div className="p-3 text-center text-xs text-gray-400">
+                    No matching clients found in Master Data
+                  </div>
+                ) : (
+                  filteredClients.map(client => {
+                    const isSelected = form.clientId === client.id || form.clientName === client.name;
+                    return (
+                      <div
+                        key={client.id}
+                        onClick={() => handleSelectClient(client)}
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer border transition text-xs select-none ${
+                          isSelected
+                            ? 'bg-blue-50 border-blue-400 text-blue-900 shadow-2xs font-semibold'
+                            : 'bg-white border-gray-100 text-gray-700 hover:border-gray-200 hover:bg-gray-50/60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                            isSelected ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {client.avatarText || client.name.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="truncate">
+                            <div className="truncate font-bold text-gray-900 flex items-center gap-1.5">
+                              <span>{client.name}</span>
+                              <span className="text-[10px] text-gray-400 font-mono font-normal">({client.id})</span>
+                            </div>
+                            <div className="text-[10px] text-gray-400 truncate flex items-center gap-1">
+                              <span>{client.country}</span>
+                              <span>•</span>
+                              <span className="truncate">{client.department || 'Client Entity'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                          isSelected ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300 bg-white'
+                        }`}>
+                          {isSelected && <span className="material-symbols-outlined text-[12px]">check</span>}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[260px] overflow-y-auto p-2 border border-gray-200 rounded-xl bg-gray-50/60 custom-scrollbar flex-1">
-              {(isAdmin ? employees : employees.filter(e => String(e.id) === String(user?.id))).map(emp => {
-                const isSelected = form.assigneeIds.includes(emp.id);
-                return (
-                  <div
-                    key={emp.id}
-                    onClick={() => toggleAssignee(emp.id)}
-                    className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer border transition text-xs select-none ${
-                      isSelected
-                        ? 'bg-blue-50 border-blue-400 text-blue-900 shadow-2xs font-semibold'
-                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
-                    }`}
+            {/* Box 2: Add Supplier (Optional - need not be selected all the time) */}
+            <div className="flex flex-col border border-gray-200 rounded-xl bg-white p-3 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[17px] text-emerald-600">local_shipping</span>
+                  <label className="text-xs font-bold text-gray-800">
+                    Supplier {form.supplierName ? <span className="text-emerald-600 font-bold">• {form.supplierName}</span> : <span className="text-gray-400 font-normal">(Optional)</span>}
+                  </label>
+                </div>
+                {form.supplierName ? (
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, supplierId: '', supplierName: '' }))}
+                    className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition"
                   >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => {}}
-                      className="h-4 w-4 accent-blue-600 rounded"
-                    />
-                    <img
-                      src={emp.avatar}
-                      alt={emp.fullName}
-                      className="w-6 h-6 rounded-full object-cover border border-white shrink-0"
-                      onError={(e) => {
-                        e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.fullName)}&background=0070F3&color=fff`;
-                      }}
-                    />
-                    <div className="truncate flex-1">
-                      <div className="truncate flex items-center gap-1.5">
-                        <span className="truncate">{emp.fullName}</span>
-                        {!isAdmin && (
-                          <span className="text-[9px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.2 rounded shrink-0">
-                            You
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[10px] text-gray-400 font-normal truncate">{emp.role || emp.email}</div>
-                    </div>
+                    Remove supplier
+                  </button>
+                ) : (
+                  <span className="text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded font-medium border border-gray-200">
+                    Optional
+                  </span>
+                )}
+              </div>
+
+              {/* Search input for Supplier */}
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[15px]">search</span>
+                <input
+                  type="text"
+                  placeholder="Search supplier by name, country, specialty..."
+                  value={supplierSearch}
+                  onChange={(e) => setSupplierSearch(e.target.value)}
+                  className="w-full text-xs pl-8 pr-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-hidden focus:bg-white focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Supplier List */}
+              <div className="max-h-[145px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                {/* Direct Delivery / None Option */}
+                <div
+                  onClick={() => setForm(prev => ({ ...prev, supplierId: '', supplierName: '' }))}
+                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer border transition text-xs select-none ${
+                    !form.supplierId && !form.supplierName
+                      ? 'bg-gray-100/90 border-gray-300 text-gray-800 font-semibold'
+                      : 'bg-white border-dashed border-gray-200 text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[16px] text-gray-400">block</span>
+                    <span>No Supplier Assigned (Direct Project)</span>
                   </div>
-                );
-              })}
+                  {!form.supplierId && !form.supplierName && (
+                    <span className="material-symbols-outlined text-[14px] text-gray-600">check</span>
+                  )}
+                </div>
+
+                {filteredSuppliers.length === 0 ? (
+                  <div className="p-3 text-center text-xs text-gray-400">
+                    No matching suppliers found
+                  </div>
+                ) : (
+                  filteredSuppliers.map(supplier => {
+                    const isSelected = form.supplierId === supplier.id || form.supplierName === supplier.name;
+                    return (
+                      <div
+                        key={supplier.id}
+                        onClick={() => handleSelectSupplier(supplier)}
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer border transition text-xs select-none ${
+                          isSelected
+                            ? 'bg-emerald-50 border-emerald-400 text-emerald-900 shadow-2xs font-semibold'
+                            : 'bg-white border-gray-100 text-gray-700 hover:border-gray-200 hover:bg-gray-50/60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                            isSelected ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-700'
+                          }`}>
+                            {supplier.avatarText || supplier.name.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="truncate">
+                            <div className="truncate font-bold text-gray-900 flex items-center gap-1.5">
+                              <span>{supplier.name}</span>
+                              <span className="text-[10px] text-gray-400 font-mono font-normal">({supplier.id})</span>
+                            </div>
+                            <div className="text-[10px] text-gray-400 truncate flex items-center gap-1">
+                              <span>{supplier.country}</span>
+                              <span>•</span>
+                              <span className="truncate">{supplier.department || 'Supplier Entity'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                          isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-gray-300 bg-white'
+                        }`}>
+                          {isSelected && <span className="material-symbols-outlined text-[12px]">check</span>}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1025,10 +1410,27 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
           {/* Tasks List / Checklist with Inline Edit */}
           {projectTasks.length > 0 ? (
             <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100 bg-white shadow-2xs max-h-72 overflow-y-auto custom-scrollbar">
-              {sortTasks(projectTasks).map((task, idx) => {
+              {hierarchicalTasks.map((task, idx) => {
                 const isEditing = editingTaskId === task.id;
                 const isDone = task.status === 'Done';
                 const taskAssignees = getTaskAssignees(task);
+
+                // Check if hidden because an ancestor is collapsed
+                const isHiddenByCollapse = (() => {
+                  if (task.level === 0) return false;
+                  if (collapsedParentIds.has(task.parentId)) return true;
+                  if (task.level === 2) {
+                    const parentTask = projectTasks.find(t => String(t.id) === String(task.parentId));
+                    if (parentTask && collapsedParentIds.has(parentTask.parentId)) return true;
+                  }
+                  return false;
+                })();
+
+                if (isHiddenByCollapse) return null;
+
+                const childCount = projectTasks.filter(t => String(t.parentId) === String(task.id)).length;
+                const hasChildren = childCount > 0;
+                const isCollapsed = collapsedParentIds.has(task.id);
 
                 // INLINE EDIT MODE FOR THIS TASK
                 if (isEditing) {
@@ -1265,133 +1667,435 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                   );
                 }
 
-                // NORMAL TASK ROW DISPLAY
+                // NORMAL TASK ROW DISPLAY WITH HIERARCHICAL INDENTATION & SUBTASK ACTIONS
                 return (
-                  <div
-                    key={task.id || idx}
-                    className={`flex items-center justify-between p-3 transition text-xs group ${
-                      isDone ? 'bg-emerald-50/30' : 'hover:bg-gray-50/80'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleTaskStatus(task.id)}
-                        className={`w-5 h-5 rounded-md border flex items-center justify-center transition shrink-0 ${
-                          isDone
-                            ? 'bg-emerald-500 border-emerald-600 text-white shadow-2xs'
-                            : 'border-gray-300 hover:border-emerald-500 bg-white'
-                        }`}
-                        title={isDone ? 'Mark In progress' : 'Mark as Done'}
-                      >
-                        {isDone && (
-                          <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
+                  <React.Fragment key={task.id || idx}>
+                    <div
+                      className={`flex items-center justify-between p-2.5 transition text-xs group ${
+                        isDone ? 'bg-emerald-50/30' : 'hover:bg-gray-50/80'
+                      } ${
+                        task.level === 1
+                          ? 'pl-7 bg-blue-50/15 border-l-2 border-l-blue-400'
+                          : task.level === 2
+                          ? 'pl-12 bg-purple-50/20 border-l-2 border-l-purple-400'
+                          : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {/* Collapse/Expand Toggle if has children */}
+                        {hasChildren ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleCollapseTask(task.id)}
+                            className="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-gray-700 transition shrink-0"
+                            title={isCollapsed ? 'Expand subtasks' : 'Collapse subtasks'}
+                          >
+                            <svg
+                              className={`w-3 h-3 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                        ) : (
+                          <div className="w-4 shrink-0" />
                         )}
-                      </button>
 
-                      <div className="min-w-0 flex-1 cursor-pointer" onClick={() => handleStartEditTask(task)}>
-                        <span
-                          className={`font-semibold text-gray-900 block truncate group-hover:text-blue-600 transition ${
-                            isDone ? 'line-through text-gray-400' : ''
+                        {/* Status Checkbox */}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleTaskStatus(task.id)}
+                          className={`w-4 h-4 rounded border flex items-center justify-center transition shrink-0 ${
+                            isDone
+                              ? 'bg-emerald-500 border-emerald-600 text-white shadow-2xs'
+                              : 'border-gray-300 hover:border-emerald-500 bg-white'
                           }`}
-                          title="Click to edit task"
+                          title={isDone ? 'Mark In progress' : 'Mark as Done'}
                         >
-                          {task.name}
+                          {isDone && (
+                            <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </button>
+
+                        {/* Tree Branch Symbol */}
+                        {task.level === 1 && (
+                          <span className="text-blue-500 font-bold text-xs select-none shrink-0" title="Subtask">↳</span>
+                        )}
+                        {task.level === 2 && (
+                          <span className="text-purple-500 font-bold text-xs select-none shrink-0" title="Sub-subtask">↳↳</span>
+                        )}
+
+                        {/* Level Badge */}
+                        {task.level === 1 && (
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 shrink-0">
+                            Subtask
+                          </span>
+                        )}
+                        {task.level === 2 && (
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 shrink-0">
+                            Sub-subtask
+                          </span>
+                        )}
+
+                        {/* Task Title */}
+                        <div className="min-w-0 flex-1 cursor-pointer flex items-center gap-1.5" onClick={() => handleStartEditTask(task)}>
+                          <span
+                            className={`font-semibold text-gray-900 block truncate group-hover:text-blue-600 transition ${
+                              isDone ? 'line-through text-gray-400' : ''
+                            }`}
+                            title="Click to edit task"
+                          >
+                            {task.name}
+                          </span>
+                          {hasChildren && (
+                            <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.2 rounded-full font-medium shrink-0">
+                              {childCount} {task.level === 0 ? (childCount === 1 ? 'sub' : 'subs') : (childCount === 1 ? 'sub-sub' : 'sub-subs')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        {/* + Subtask / + Sub-subtask Add Button */}
+                        {task.level === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleStartAddSubtask(task)}
+                            className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 border border-blue-200 hover:border-blue-300 px-2 py-0.5 rounded-md text-[11px] font-semibold flex items-center gap-1 transition shrink-0"
+                            title="Add a subtask under this task"
+                          >
+                            <span className="font-bold">+</span> Subtask
+                          </button>
+                        )}
+                        {task.level === 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleStartAddSubtask(task)}
+                            className="text-purple-600 hover:text-purple-800 hover:bg-purple-50 border border-purple-200 hover:border-purple-300 px-2 py-0.5 rounded-md text-[11px] font-semibold flex items-center gap-1 transition shrink-0"
+                            title="Add a sub-subtask under this subtask"
+                          >
+                            <span className="font-bold">+</span> Sub-subtask
+                          </button>
+                        )}
+
+                        {/* Priority pill */}
+                        <span
+                          className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${
+                            task.priority === 'High'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : task.priority === 'Medium'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-slate-50 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {task.priority || 'Medium'}
                         </span>
+
+                        {/* Deadline chip */}
+                        {task.dueDate && (
+                          <div className="flex items-center gap-1 text-[11px] font-medium text-gray-600 bg-gray-50 border border-gray-200/80 px-2 py-0.5 rounded-md">
+                            <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span>{task.dueDate.slice(0, 10)}</span>
+                          </div>
+                        )}
+
+                        {/* Multi-Assignee Avatars Cluster */}
+                        {taskAssignees.length > 0 ? (
+                          <div
+                            className="flex items-center gap-1.5"
+                            title={`Assigned to: ${taskAssignees.map(a => a.fullName).join(', ')}`}
+                          >
+                            <div className="flex items-center -space-x-1.5 shrink-0">
+                              {taskAssignees.slice(0, 3).map(a => (
+                                <img
+                                  key={a.id}
+                                  src={a.avatar}
+                                  alt={a.fullName}
+                                  className="w-5 h-5 rounded-full object-cover ring-1 ring-white border border-gray-200"
+                                  onError={(ev) => {
+                                    ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(a.fullName)}&background=0070F3&color=fff`;
+                                  }}
+                                />
+                              ))}
+                            </div>
+                            <span className="text-[11px] text-gray-600 hidden sm:inline max-w-[90px] truncate">
+                              {taskAssignees.length === 1
+                                ? taskAssignees[0].fullName.split(' ')[0]
+                                : `${taskAssignees.length} assignees`}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-gray-400 italic">Unassigned</span>
+                        )}
+
+                        {/* Status badge */}
+                        <span
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
+                            isDone
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : task.status === 'In progress'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {task.status || 'Not started'}
+                        </span>
+
+                        {/* Edit button */}
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditTask(task)}
+                          className="text-gray-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition"
+                          title="Edit task"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+
+                        {/* Remove button */}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTask(task.id)}
+                          className="text-gray-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition"
+                          title={hasChildren ? `Remove task and its ${childCount} child subtask(s)` : 'Remove task'}
+                        >
+                          ✕
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2.5 shrink-0 ml-3">
-                      {/* Priority pill */}
-                      <span
-                        className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${
-                          task.priority === 'High'
-                            ? 'bg-rose-50 text-rose-700 border-rose-200'
-                            : task.priority === 'Medium'
-                            ? 'bg-amber-50 text-amber-700 border-amber-200'
-                            : 'bg-slate-50 text-slate-600 border-slate-200'
+                    {/* Inline Subtask Creation Form under this task */}
+                    {addingSubtaskId === task.id && (
+                      <div
+                        className={`p-3 space-y-2.5 transition animate-slide-up border-y ${
+                          task.level === 0
+                            ? 'ml-6 pl-4 border-l-4 border-l-blue-500 bg-blue-50/70 border-blue-200'
+                            : 'ml-11 pl-4 border-l-4 border-l-purple-500 bg-purple-50/70 border-purple-200'
                         }`}
                       >
-                        {task.priority || 'Medium'}
-                      </span>
-
-                      {/* Deadline chip */}
-                      {task.dueDate && (
-                        <div className="flex items-center gap-1 text-[11px] font-medium text-gray-600 bg-gray-50 border border-gray-200/80 px-2 py-0.5 rounded-md">
-                          <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <span>{task.dueDate.slice(0, 10)}</span>
-                        </div>
-                      )}
-
-                      {/* Multi-Assignee Avatars Cluster */}
-                      {taskAssignees.length > 0 ? (
-                        <div
-                          className="flex items-center gap-1.5"
-                          title={`Assigned to: ${taskAssignees.map(a => a.fullName).join(', ')}`}
-                        >
-                          <div className="flex items-center -space-x-1.5 shrink-0">
-                            {taskAssignees.slice(0, 3).map(a => (
-                              <img
-                                key={a.id}
-                                src={a.avatar}
-                                alt={a.fullName}
-                                className="w-5 h-5 rounded-full object-cover ring-1 ring-white border border-gray-200"
-                                onError={(ev) => {
-                                  ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(a.fullName)}&background=0070F3&color=fff`;
-                                }}
-                              />
-                            ))}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded shadow-2xs ${
+                                task.level === 0 ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white'
+                              }`}
+                            >
+                              {task.level === 0 ? '↳ Add Subtask' : '↳↳ Add Sub-subtask'}
+                            </span>
+                            <span className="text-xs text-gray-600 truncate max-w-[280px]">
+                              under: <strong className="text-gray-900">{task.name}</strong>
+                            </span>
                           </div>
-                          <span className="text-[11px] text-gray-600 hidden sm:inline max-w-[90px] truncate">
-                            {taskAssignees.length === 1
-                              ? taskAssignees[0].fullName.split(' ')[0]
-                              : `${taskAssignees.length} assignees`}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={handleCancelAddSubtask}
+                            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-0.5 rounded hover:bg-gray-200/60"
+                          >
+                            Cancel
+                          </button>
                         </div>
-                      ) : (
-                        <span className="text-[10px] text-gray-400 italic">Unassigned</span>
-                      )}
 
-                      {/* Status badge */}
-                      <span
-                        className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
-                          isDone
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : task.status === 'In progress'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {task.status || 'Not started'}
-                      </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
+                          {/* Title input */}
+                          <div className="sm:col-span-4">
+                            <input
+                              type="text"
+                              value={subtaskTitle}
+                              onChange={(e) => setSubtaskTitle(e.target.value)}
+                              className="input-field text-xs h-9 bg-white font-medium"
+                              placeholder={task.level === 0 ? "Subtask title..." : "Sub-subtask title..."}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleSaveSubtask(task);
+                                } else if (e.key === 'Escape') {
+                                  handleCancelAddSubtask();
+                                }
+                              }}
+                            />
+                          </div>
 
-                      {/* Edit button */}
-                      <button
-                        type="button"
-                        onClick={() => handleStartEditTask(task)}
-                        className="text-gray-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition"
-                        title="Edit task"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                        </svg>
-                      </button>
+                          {/* Deadline */}
+                          <div className="sm:col-span-3">
+                            <input
+                              type="date"
+                              value={subtaskDeadline}
+                              onChange={(e) => setSubtaskDeadline(e.target.value)}
+                              className="input-field text-xs h-9 bg-white"
+                            />
+                            <div className="flex items-center gap-1 mt-1 text-[10px]">
+                              <button
+                                type="button"
+                                onClick={() => setSubtaskDeadline(getLocalDateString())}
+                                className={`px-1.5 py-0.5 rounded font-medium transition ${
+                                  subtaskDeadline === getLocalDateString()
+                                    ? 'bg-blue-600 text-white font-bold shadow-2xs'
+                                    : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
+                                }`}
+                              >
+                                Today
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const d = new Date();
+                                  d.setDate(d.getDate() + 3);
+                                  setSubtaskDeadline(getLocalDateString(d));
+                                }}
+                                className="text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-1 py-0.5 rounded"
+                              >
+                                +3d
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const d = new Date();
+                                  d.setDate(d.getDate() + 7);
+                                  setSubtaskDeadline(getLocalDateString(d));
+                                }}
+                                className="text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-1 py-0.5 rounded"
+                              >
+                                +1w
+                              </button>
+                            </div>
+                          </div>
 
-                      {/* Remove button */}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTask(task.id)}
-                        className="text-gray-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition"
-                        title="Remove task"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
+                          {/* Multi-Assignee selector */}
+                          <div className="sm:col-span-3 relative" ref={subtaskAssigneeDropdownRef}>
+                            {isAdmin ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowSubtaskAssigneeDropdown(!showSubtaskAssigneeDropdown)}
+                                  className="input-field text-xs h-9 bg-white flex items-center justify-between gap-1 w-full text-left"
+                                >
+                                  <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
+                                    {subtaskAssigneeIds.length === 0 ? (
+                                      <span className="text-gray-400">Assign team...</span>
+                                    ) : (
+                                      <div className="flex items-center gap-1 min-w-0 truncate">
+                                        <div className="flex items-center -space-x-1 shrink-0">
+                                          {subtaskAssigneeIds.slice(0, 2).map(id => {
+                                            const emp = employees.find(e => e.id === id);
+                                            return emp ? (
+                                              <img
+                                                key={id}
+                                                src={emp.avatar}
+                                                alt={emp.fullName}
+                                                className="w-4 h-4 rounded-full object-cover ring-1 ring-white"
+                                              />
+                                            ) : null;
+                                          })}
+                                        </div>
+                                        <span className="text-[11px] font-medium text-gray-800 truncate">
+                                          {subtaskAssigneeIds.length === 1
+                                            ? employees.find(e => e.id === subtaskAssigneeIds[0])?.fullName
+                                            : `${subtaskAssigneeIds.length} assignees`}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </button>
+
+                                {showSubtaskAssigneeDropdown && (
+                                  <div className="absolute z-30 left-0 mt-1 w-60 rounded-xl bg-white border border-gray-200 shadow-xl p-2 max-h-52 overflow-y-auto custom-scrollbar animate-slide-up text-left">
+                                    <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-gray-100 text-[11px]">
+                                      <span className="font-semibold text-gray-700">Assign Employees</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setSubtaskAssigneeIds([])}
+                                        className="text-gray-400 hover:text-gray-600 text-[10px]"
+                                      >
+                                        Clear
+                                      </button>
+                                    </div>
+                                    <div className="space-y-1">
+                                      {employees.map(e => {
+                                        const isSelected = subtaskAssigneeIds.includes(e.id);
+                                        return (
+                                          <div
+                                            key={e.id}
+                                            onClick={() => {
+                                              setSubtaskAssigneeIds(prev =>
+                                                prev.includes(e.id) ? prev.filter(id => id !== e.id) : [...prev, e.id]
+                                              );
+                                            }}
+                                            className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition select-none text-xs ${
+                                              isSelected ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-gray-50 text-gray-700'
+                                            }`}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={isSelected}
+                                              onChange={() => {}}
+                                              className="h-3.5 w-3.5 accent-blue-600 rounded"
+                                            />
+                                            <img src={e.avatar} alt={e.fullName} className="w-4 h-4 rounded-full object-cover shrink-0" />
+                                            <span className="truncate">{e.fullName}</span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div
+                                className="input-field text-xs h-9 bg-gray-50/90 border-gray-200 flex items-center justify-between gap-1 w-full text-gray-700 select-none"
+                                title="Non-admin users can only assign tasks to themselves"
+                              >
+                                <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
+                                  <img
+                                    src={user?.avatar || employees.find(e => e.id === user?.id)?.avatar}
+                                    alt={user?.fullName}
+                                    className="w-4 h-4 rounded-full object-cover ring-1 ring-white shrink-0"
+                                  />
+                                  <span className="text-[11px] font-semibold text-gray-800 truncate">
+                                    {user?.fullName || 'Self'}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 shrink-0">
+                                  Self
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Priority & Add Button */}
+                          <div className="sm:col-span-2 flex items-start gap-1.5">
+                            <select
+                              className="input-field text-xs h-9 bg-white flex-1"
+                              value={subtaskPriority}
+                              onChange={(e) => setSubtaskPriority(e.target.value)}
+                            >
+                              {PRIORITIES.map(p => (
+                                <option key={p} value={p}>{p}</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveSubtask(task)}
+                              disabled={!subtaskTitle.trim()}
+                              className="btn-primary text-xs font-semibold px-3 h-9 shrink-0 disabled:opacity-50 inline-flex items-center justify-center shadow-xs"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </div>

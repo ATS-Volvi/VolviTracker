@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { Avatar } from '../widgets/Avatar';
@@ -41,14 +41,16 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
   }, [relevantProjects, activeProjectTab]);
 
   const getProject = (pId) => allProjects.find(p => String(p.id) === String(pId));
-  const unassignedCount = tasks.filter(t => !t.projectId || !allProjects.some(p => String(p.id) === String(t.projectId))).length;
+  const unassignedCount = (allTasks || tasks).filter(t => !t.projectId || !allProjects.some(p => String(p.id) === String(t.projectId))).length;
 
-  // Tasks segregated by active project tab
+  // Tasks segregated by active project tab:
+  // When 'all', show current tasks collection (tasksProp or allTasks)
+  // When a specific project tab is selected, show all tasks for that project from allTasks
   const currentProjectTasks = activeProjectTab === 'all'
     ? tasks
     : activeProjectTab === 'unassigned'
-      ? tasks.filter(t => !t.projectId || !allProjects.some(p => String(p.id) === String(t.projectId)))
-      : tasks.filter(t => String(t.projectId) === String(activeProjectTab));
+      ? (allTasks || tasks).filter(t => !t.projectId || !allProjects.some(p => String(p.id) === String(t.projectId)))
+      : (allTasks || tasks).filter(t => String(t.projectId) === String(activeProjectTab));
 
   // Tasks sorted: incomplete on top, upcoming next, completed at the bottom
   const sortedCurrentProjectTasks = sortTasks(currentProjectTasks);
@@ -93,6 +95,46 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
     );
   };
 
+  const getTaskHierarchyInfo = (task) => {
+    if (!task?.parentId) return { level: 0, parent: null };
+    const parent = (allTasks || []).find(t => String(t.id) === String(task.parentId));
+    if (!parent) return { level: 0, parent: null };
+    if (!parent.parentId) return { level: 1, parent };
+    const grandParent = (allTasks || []).find(t => String(t.id) === String(parent.parentId));
+    return { level: 2, parent, grandParent };
+  };
+
+  // Organize displayed tasks in tree order (Main -> Subtask -> Sub-subtask) for Table & Checklist views
+  const hierarchicalDisplayedTasks = useMemo(() => {
+    const list = [...displayedTasks];
+    const mains = list.filter(t => !t.parentId || !list.some(p => String(p.id) === String(t.parentId)));
+    const sortedMains = sortTasks(mains);
+    const result = [];
+
+    sortedMains.forEach(main => {
+      const mainInfo = getTaskHierarchyInfo(main);
+      result.push({ ...main, level: mainInfo.level, parent: mainInfo.parent });
+      const subs = sortTasks(list.filter(t => String(t.parentId) === String(main.id)));
+      subs.forEach(sub => {
+        result.push({ ...sub, level: 1, parent: main });
+        const subSubs = sortTasks(list.filter(t => String(t.parentId) === String(sub.id)));
+        subSubs.forEach(subSub => {
+          result.push({ ...subSub, level: 2, parent: sub, grandParent: main });
+        });
+      });
+    });
+
+    // Fallback for any orphan tasks that weren't captured
+    list.forEach(t => {
+      if (!result.some(r => String(r.id) === String(t.id))) {
+        const info = getTaskHierarchyInfo(t);
+        result.push({ ...t, level: info.level, parent: info.parent });
+      }
+    });
+
+    return result;
+  }, [displayedTasks, allTasks]);
+
   const handleDeleteTask = (e, task) => {
     e.stopPropagation();
     if (window.confirm(`Delete task "${task.name}"?`)) {
@@ -104,6 +146,13 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
   const handleStatusChange = (taskId, newStatus, taskName) => {
     updateTask(taskId, { status: newStatus });
     if (newStatus === 'Done') {
+      // Also cascade completion to children subtasks
+      const childTasks = (allTasks || []).filter(t => String(t.parentId) === String(taskId));
+      childTasks.forEach(child => {
+        updateTask(child.id, { status: 'Done' });
+        const subSubTasks = (allTasks || []).filter(t => String(t.parentId) === String(child.id));
+        subSubTasks.forEach(subSub => updateTask(subSub.id, { status: 'Done' }));
+      });
       addToast(`Completed "${taskName}"!`, 'success');
     } else {
       addToast(`Updated status to "${newStatus}"`, 'info');
@@ -209,7 +258,7 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
 
         {/* Dynamic Project Tabs */}
         {relevantProjects.map(p => {
-          const count = tasks.filter(t => String(t.projectId) === String(p.id)).length;
+          const count = (allTasks || tasks).filter(t => String(t.projectId) === String(p.id)).length;
           const isActive = String(activeProjectTab) === String(p.id);
           const pPct = Math.round((p.progress <= 1 && p.progress > 0 ? p.progress * 100 : (p.progress || 0)));
           return (
@@ -368,6 +417,7 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
               {displayedTasks.map(t => {
                 const proj = getProject(t.projectId);
+                const info = getTaskHierarchyInfo(t);
                 return (
                   <div
                     key={t.id}
@@ -417,6 +467,16 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                         </div>
                       )}
 
+                      {/* Parent Task Hierarchy Badge */}
+                      {t.parentId && info.parent && (
+                        <div className="mt-1.5 flex items-center gap-1.5 text-[11px]">
+                          <span className={info.level === 1 ? 'text-blue-600 font-bold' : 'text-purple-600 font-bold'}>
+                            {info.level === 1 ? '↳ Subtask of:' : '↳↳ Sub-subtask of:'}
+                          </span>
+                          <span className="font-semibold text-gray-700 truncate max-w-[170px]">{info.parent.name}</span>
+                        </div>
+                      )}
+
                       <p className="mt-1.5 text-xs text-gray-500 line-clamp-2">{t.description || 'No description'}</p>
                     </div>
 
@@ -451,17 +511,37 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                   </tr>
                 </thead>
                 <tbody>
-                  {displayedTasks.map(t => {
+                  {hierarchicalDisplayedTasks.map(t => {
                     const proj = getProject(t.projectId);
                     return (
                       <tr key={t.id} className="border-b border-gray-50 hover:bg-slate-50/60 transition">
                         <Td>
-                          <button
-                            className="font-medium text-gray-800 hover:text-indigo-600 text-left"
-                            onClick={() => { setEditing(t); setOpen(true); }}
-                          >
-                            {t.name}
-                          </button>
+                          <div className={`flex items-center gap-2 ${
+                            t.level === 1 ? 'pl-5' : t.level === 2 ? 'pl-9' : ''
+                          }`}>
+                            {t.level === 1 && (
+                              <span className="text-blue-500 font-bold text-xs select-none">↳</span>
+                            )}
+                            {t.level === 2 && (
+                              <span className="text-purple-500 font-bold text-xs select-none">↳↳</span>
+                            )}
+                            {t.level === 1 && (
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 shrink-0">
+                                Subtask
+                              </span>
+                            )}
+                            {t.level === 2 && (
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 shrink-0">
+                                Sub-sub
+                              </span>
+                            )}
+                            <button
+                              className="font-medium text-gray-800 hover:text-indigo-600 text-left truncate"
+                              onClick={() => { setEditing(t); setOpen(true); }}
+                            >
+                              {t.name}
+                            </button>
+                          </div>
                         </Td>
                         {activeProjectTab === 'all' && (
                           <Td className="text-gray-600 text-xs">
@@ -489,7 +569,7 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                             title="Remove task"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M6 18L18 6M6 6l12 12" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                           </button>
                         </Td>
@@ -504,18 +584,43 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
           {/* CHECKLIST VIEW */}
           {viewMode === 'checklist' && (
             <div className="space-y-1">
-              {displayedTasks.map(t => {
+              {hierarchicalDisplayedTasks.map(t => {
                 const proj = getProject(t.projectId);
                 return (
-                  <div key={t.id} className="flex items-center justify-between gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-50 transition group">
-                    <label className="flex cursor-pointer items-center gap-3 flex-1 min-w-0">
+                  <div
+                    key={t.id}
+                    className={`flex items-center justify-between gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-50 transition group ${
+                      t.level === 1
+                        ? 'ml-5 bg-blue-50/20 border-l-2 border-l-blue-400 pl-3'
+                        : t.level === 2
+                        ? 'ml-10 bg-purple-50/25 border-l-2 border-l-purple-400 pl-3'
+                        : ''
+                    }`}
+                  >
+                    <label className="flex cursor-pointer items-center gap-2.5 flex-1 min-w-0">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 accent-emerald-600 rounded"
+                        className="h-4 w-4 accent-emerald-600 rounded shrink-0"
                         checked={t.status === 'Done'}
                         onChange={(e) => handleStatusChange(t.id, e.target.checked ? 'Done' : 'Not started', t.name)}
                       />
-                      <span className={`flex-1 text-sm truncate ${t.status === 'Done' ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                      {t.level === 1 && (
+                        <span className="text-blue-500 font-bold text-xs select-none shrink-0">↳</span>
+                      )}
+                      {t.level === 2 && (
+                        <span className="text-purple-500 font-bold text-xs select-none shrink-0">↳↳</span>
+                      )}
+                      {t.level === 1 && (
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 shrink-0">
+                          Subtask
+                        </span>
+                      )}
+                      {t.level === 2 && (
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 shrink-0">
+                          Sub-sub
+                        </span>
+                      )}
+                      <span className={`flex-1 text-sm truncate ${t.status === 'Done' ? 'text-gray-400 line-through' : 'text-gray-700 font-medium'}`}>
                         {t.name}
                       </span>
                     </label>
@@ -533,7 +638,7 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                         title="Remove task"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M6 18L18 6M6 6l12 12" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </button>
                     </div>
@@ -559,14 +664,25 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                     <div className="space-y-1.5">
                       {list.map(t => {
                         const proj = getProject(t.projectId);
+                        const info = getTaskHierarchyInfo(t);
                         return (
                           <div key={t.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 hover:bg-slate-100/80 transition">
-                            <button
-                              className="text-sm text-gray-700 hover:text-indigo-600 text-left flex-1 truncate pr-2"
-                              onClick={() => { setEditing(t); setOpen(true); }}
-                            >
-                              {t.name}
-                            </button>
+                            <div className="flex-1 min-w-0 pr-2">
+                              <button
+                                className="text-sm text-gray-700 hover:text-indigo-600 text-left block truncate font-medium"
+                                onClick={() => { setEditing(t); setOpen(true); }}
+                              >
+                                {t.name}
+                              </button>
+                              {info.parent && (
+                                <div className="text-[10px] text-gray-500 flex items-center gap-1 mt-0.5">
+                                  <span className={info.level === 1 ? 'text-blue-600 font-semibold' : 'text-purple-600 font-semibold'}>
+                                    {info.level === 1 ? '↳ Subtask of:' : '↳↳ Sub-sub of:'}
+                                  </span>
+                                  <span className="truncate max-w-[180px]">{info.parent.name}</span>
+                                </div>
+                              )}
+                            </div>
                             <div className="flex items-center gap-2 shrink-0">
                               {activeProjectTab === 'all' && proj && (
                                 <span className="badge bg-blue-50 text-blue-700 text-[10px] font-medium hidden sm:inline-block">
@@ -582,7 +698,7 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                                 title="Remove task"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M6 18L18 6M6 6l12 12" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M6 18L18 6M6 6l12 12" />
                                 </svg>
                               </button>
                             </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -31,6 +31,11 @@ export const Employee = () => {
 
   const isOwnProfile = user && String(user.id) === String(id);
 
+  // For Admin users, Planner and Personal pages are combined into the Projects page
+  if (isAdmin && isOwnProfile) {
+    return <Navigate to="/projects?tab=personal" replace />;
+  }
+
   // Gated: Only Admins can view other employees' personal profile pages
   if (!isAdmin && !isOwnProfile) {
     return (
@@ -50,10 +55,10 @@ export const Employee = () => {
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
             {isAdmin ? (
               <button
-                onClick={() => navigate('/dashboard')}
+                onClick={() => navigate('/projects')}
                 className="btn-primary w-full sm:w-auto text-xs py-2 px-4"
               >
-                Return to Dashboard
+                Return to Projects
               </button>
             ) : (
               <button
@@ -93,9 +98,9 @@ export const Employee = () => {
           Employee not found.{' '}
           <button
             className="text-blue-600 hover:underline"
-            onClick={() => navigate(isAdmin ? '/dashboard' : `/employee/${user?.id}`)}
+            onClick={() => navigate(isAdmin ? '/projects' : `/employee/${user?.id}`)}
           >
-            {isAdmin ? 'Back to dashboard' : 'Back to my profile'}
+            {isAdmin ? 'Back to Projects' : 'Back to my profile'}
           </button>
         </div>
       </div>
@@ -113,8 +118,14 @@ export const Employee = () => {
     return isProjectAssignee || hasAssignedTask;
   });
   const myTasks = (tasks || []).filter(t => {
-    if (Array.isArray(t.assigneeIds)) return t.assigneeIds.some(aid => String(aid) === String(id));
-    return String(t.assigneeId) === String(id);
+    const isDirectlyAssigned = (Array.isArray(t.assigneeIds) && t.assigneeIds.some(aid => String(aid) === String(id))) ||
+      String(t.assigneeId) === String(id);
+    if (isDirectlyAssigned) return true;
+
+    // Include unassigned tasks in employee's assigned projects so they are visible and can be picked up
+    const isUnassigned = (!t.assigneeId || t.assigneeId === '') && (!Array.isArray(t.assigneeIds) || t.assigneeIds.length === 0);
+    const isInMyProject = (myProjects || []).some(p => String(p.id) === String(t.projectId));
+    return isUnassigned && isInMyProject;
   });
   const myMeetings = (meetings || []).filter(m => {
     if (Array.isArray(m.attendeeIds)) return m.attendeeIds.some(aid => String(aid) === String(id));
@@ -203,7 +214,7 @@ export const Employee = () => {
       }
       addToast(`Account for ${emp.fullName} has been permanently deleted.`, 'info', 3000);
       setIsDeleteConfirmOpen(false);
-      navigate('/dashboard');
+      navigate('/projects');
     } catch {
       addToast('Failed to delete employee account.', 'error');
     } finally {

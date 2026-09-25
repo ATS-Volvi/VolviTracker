@@ -5,8 +5,8 @@ import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Employee from './pages/Employee';
-import Docs from './pages/Docs';
 import Finance from './pages/finance/Finance';
+import MasterData from './pages/masterData/MasterData';
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -81,7 +81,7 @@ const App = () => {
   }
 
   const defaultHome = user
-    ? (isAdmin ? '/dashboard' : `/employee/${user.id}`)
+    ? (isAdmin ? '/projects' : `/employee/${user.id}`)
     : '/login';
 
   return (
@@ -93,26 +93,40 @@ const App = () => {
           <Routes>
             <Route path="/login" element={user ? <Navigate to={defaultHome} replace /> : <Login />} />
             <Route
-              path="/dashboard"
+              path="/projects"
               element={
                 <RequireAuth>
-                  <RequireAdmin>
+                  {isAdmin ? (
                     <Dashboard />
-                  </RequireAdmin>
+                  ) : (
+                    <Navigate to={user ? `/employee/${user.id}` : '/login'} replace />
+                  )}
                 </RequireAuth>
               }
             />
             <Route
+              path="/dashboard"
+              element={<Navigate to="/projects" replace />}
+            />
+            <Route
+              path="/master-data"
+              element={<RequireAuth><MasterData /></RequireAuth>}
+            />
+            <Route
+              path="/master-data/:companyId"
+              element={<RequireAuth><MasterData /></RequireAuth>}
+            />
+            <Route
               path="/finance/*"
-              element={<RequireAuth><Finance /></RequireAuth>}
+              element={<RequireAdmin><Finance /></RequireAdmin>}
             />
             <Route
               path="/finance"
-              element={<RequireAuth><Finance /></RequireAuth>}
+              element={<RequireAdmin><Finance /></RequireAdmin>}
             />
             <Route
               path="/docs"
-              element={<Navigate to="/finance?tab=vault" replace />}
+              element={<Navigate to="/master-data" replace />}
             />
             <Route
               path="/employee/:id"

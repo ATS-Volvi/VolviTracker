@@ -81,6 +81,8 @@ const FinanceOverview = ({
         </div>
       </div>
 
+
+
       {/* SECTION 1: Top KPI Summary Cards (Bento 6-Card Grid) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
         {/* 1. Client PO Total */}

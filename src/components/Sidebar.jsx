@@ -44,38 +44,41 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
     navigate('/login');
   };
 
-  const isPlannerActive = location.pathname === '/dashboard' || location.pathname === '/';
-  const isProfileActive = Boolean(user && location.pathname === `/employee/${user.id}`);
+  const isProjectsActive = location.pathname === '/projects' || 
+    location.pathname === '/dashboard' || 
+    location.pathname === '/' || 
+    Boolean(user && location.pathname === `/employee/${user.id}`);
+  const isMasterDataActive = location.pathname.startsWith('/master-data');
   const isFinanceActive = location.pathname.startsWith('/finance') || location.pathname.startsWith('/docs');
 
   const navItems = [
-    ...(isAdmin ? [{
-      to: '/dashboard',
-      label: 'Planner',
-      active: isPlannerActive,
+    {
+      to: isAdmin ? '/projects' : `/employee/${user?.id}`,
+      label: 'Projects',
+      active: isProjectsActive,
       icon: (
         <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
         </svg>
       )
-    }] : []),
-    {
-      to: `/employee/${user?.id}`,
-      label: 'Personal',
-      active: isProfileActive,
-      icon: (
-        <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-        </svg>
-      )
     },
-    {
+    ...(isAdmin ? [{
       to: '/finance',
       label: 'Finance',
       active: isFinanceActive,
       icon: (
         <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      )
+    }] : []),
+    {
+      to: '/master-data',
+      label: 'Master Data',
+      active: isMasterDataActive,
+      icon: (
+        <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
         </svg>
       )
     }
@@ -89,7 +92,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
           collapsed ? 'justify-center px-2' : 'justify-between px-5'
         }`}>
           <Link
-            to={isAdmin ? '/dashboard' : `/employee/${user?.id}`}
+            to={isAdmin ? '/projects' : `/employee/${user?.id}`}
             className="flex items-center gap-2.5 hover:opacity-90 transition"
             title={collapsed ? "Volvitech" : undefined}
           >
@@ -312,7 +315,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <Link to={isAdmin ? '/dashboard' : `/employee/${user?.id}`}>
+          <Link to={isAdmin ? '/projects' : `/employee/${user?.id}`}>
             <img src={logo} alt="Volvitech" className="h-7 w-auto object-contain" />
           </Link>
         </div>
