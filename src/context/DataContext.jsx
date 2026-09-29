@@ -34,6 +34,39 @@ const generateId = () => {
   });
 };
 
+// Helper: Auto-cascade parent assignees to subtasks & sub-subtasks
+const cascadeParentAssignees = (tasksList) => {
+  if (!Array.isArray(tasksList)) return tasksList;
+  const taskMap = new Map(tasksList.map(t => [String(t.id), { ...t }]));
+  let changed = true;
+  let passes = 0;
+  while (changed && passes < 10) {
+    changed = false;
+    passes++;
+    for (const [, task] of taskMap.entries()) {
+      if (task.parentId) {
+        const parent = taskMap.get(String(task.parentId));
+        if (parent) {
+          const pAssignees = Array.isArray(parent.assigneeIds) && parent.assigneeIds.length > 0
+            ? parent.assigneeIds
+            : (parent.assigneeId ? [parent.assigneeId] : []);
+          
+          const myAssignees = Array.isArray(task.assigneeIds) && task.assigneeIds.length > 0
+            ? task.assigneeIds
+            : (task.assigneeId ? [task.assigneeId] : []);
+
+          if (pAssignees.length > 0 && (myAssignees.length === 0 || JSON.stringify(myAssignees) !== JSON.stringify(pAssignees))) {
+            task.assigneeIds = [...pAssignees];
+            task.assigneeId = pAssignees[0] || '';
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+  return Array.from(taskMap.values());
+};
+
 export const DataProvider = ({ children }) => {
   const [data, setData] = useState({
     employees: Array.isArray(seedData.employees) ? seedData.employees : [],
@@ -103,10 +136,11 @@ export const DataProvider = ({ children }) => {
           }
         }
 
+        const cascadedRemoteTasks = cascadeParentAssignees(remoteTasks);
         const nextData = {
           employees: remoteEmployees.length > 0 ? remoteEmployees : (seedData.employees || []),
           projects: remoteProjects,
-          tasks: remoteTasks,
+          tasks: cascadedRemoteTasks,
           meetings: remoteMeetings.length > 0 ? remoteMeetings : (seedData.meetings || []),
           docs: remoteDocs.length > 0 ? remoteDocs : (dataRef.current.docs || seedDocs || [])
         };
@@ -162,38 +196,8 @@ export const DataProvider = ({ children }) => {
     });
 
     // Auto-cascade parent assignees to all subtasks & sub-subtasks
-    let initialTasks = Array.isArray(loaded.tasks) ? loaded.tasks : seedData.tasks;
-    if (Array.isArray(initialTasks)) {
-      let taskMap = new Map(initialTasks.map(t => [String(t.id), { ...t }]));
-      let changed = true;
-      let passes = 0;
-      while (changed && passes < 10) {
-        changed = false;
-        passes++;
-        for (const [id, task] of taskMap.entries()) {
-          if (task.parentId) {
-            const parent = taskMap.get(String(task.parentId));
-            if (parent) {
-              const pAssignees = Array.isArray(parent.assigneeIds) && parent.assigneeIds.length > 0
-                ? parent.assigneeIds
-                : (parent.assigneeId ? [parent.assigneeId] : []);
-              
-              const myAssignees = Array.isArray(task.assigneeIds) && task.assigneeIds.length > 0
-                ? task.assigneeIds
-                : (task.assigneeId ? [task.assigneeId] : []);
-
-              if (pAssignees.length > 0 && (myAssignees.length === 0 || JSON.stringify(myAssignees) !== JSON.stringify(pAssignees))) {
-                task.assigneeIds = [...pAssignees];
-                task.assigneeId = pAssignees[0] || '';
-                changed = true;
-              }
-            }
-          }
-        }
-      }
-      initialTasks = Array.from(taskMap.values());
-      saveLocalMultiple({ tasks: initialTasks });
-    }
+    const initialTasks = cascadeParentAssignees(Array.isArray(loaded.tasks) ? loaded.tasks : seedData.tasks);
+    saveLocalMultiple({ tasks: initialTasks });
 
     setData({
       employees: Array.isArray(loaded.employees) ? loaded.employees : seedData.employees,

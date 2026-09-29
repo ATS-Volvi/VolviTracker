@@ -56,6 +56,7 @@ export const toTaskDto = (row) => row ? ({
   id: String(row.id),
   name: row.name || '',
   projectId: row.project_id ? String(row.project_id) : '',
+  parentId: row.parent_id ? String(row.parent_id) : null,
   status: row.status || 'Not started',
   dueDate: row.due_date || '',
   priority: row.priority || 'Medium',
@@ -164,17 +165,19 @@ export async function directCreateProject(project, tasks = []) {
     const tId = t.id && !t.id.startsWith('temp_') ? t.id : ('task_' + Date.now() + Math.random().toString(36).substring(2, 6));
     const tAssigneeIdsJson = JSON.stringify(Array.isArray(t.assigneeIds) ? t.assigneeIds : []);
     const tAssigneeId = (t.assigneeIds && t.assigneeIds[0]) || t.assigneeId || '';
+    const tParentId = t.parentId ? String(t.parentId) : null;
 
     await sql`
       INSERT INTO tasks (
-        id, name, project_id, status, due_date, priority, description, assignee_ids, assignee_id
+        id, name, project_id, parent_id, status, due_date, priority, description, assignee_ids, assignee_id
       ) VALUES (
-        ${tId}, ${t.name || 'Task'}, ${id}, ${t.status || 'Not started'}, ${t.dueDate || ''},
+        ${tId}, ${t.name || 'Task'}, ${id}, ${tParentId}, ${t.status || 'Not started'}, ${t.dueDate || ''},
         ${t.priority || 'Medium'}, ${t.description || ''}, ${tAssigneeIdsJson}::jsonb, ${tAssigneeId}
       )
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         project_id = EXCLUDED.project_id,
+        parent_id = EXCLUDED.parent_id,
         status = EXCLUDED.status,
         due_date = EXCLUDED.due_date,
         priority = EXCLUDED.priority,
@@ -249,13 +252,14 @@ export async function directCreateTask(task) {
   const assigneeIdsJson = JSON.stringify(Array.isArray(task.assigneeIds) ? task.assigneeIds : []);
   const assigneeId = (task.assigneeIds && task.assigneeIds[0]) || task.assigneeId || '';
   const projectId = task.projectId || '';
+  const parentId = task.parentId ? String(task.parentId) : null;
   const status = task.status || 'Not started';
 
   await sql`
     INSERT INTO tasks (
-      id, name, project_id, status, due_date, priority, description, assignee_ids, assignee_id
+      id, name, project_id, parent_id, status, due_date, priority, description, assignee_ids, assignee_id
     ) VALUES (
-      ${id}, ${task.name || 'Task'}, ${projectId}, ${status}, ${task.dueDate || ''},
+      ${id}, ${task.name || 'Task'}, ${projectId}, ${parentId}, ${status}, ${task.dueDate || ''},
       ${task.priority || 'Medium'}, ${task.description || ''}, ${assigneeIdsJson}::jsonb, ${assigneeId}
     );
   `;
@@ -275,6 +279,7 @@ export async function directUpdateTask(id, updates) {
   const current = existing[0];
   const name = updates.name !== undefined ? updates.name : current.name;
   const projectId = updates.projectId !== undefined ? updates.projectId : current.project_id;
+  const parentId = updates.parentId !== undefined ? (updates.parentId ? String(updates.parentId) : null) : current.parent_id;
   const status = updates.status !== undefined ? updates.status : current.status;
   const dueDate = updates.dueDate !== undefined ? updates.dueDate : current.due_date;
   const priority = updates.priority !== undefined ? updates.priority : current.priority;
@@ -287,6 +292,7 @@ export async function directUpdateTask(id, updates) {
     UPDATE tasks SET
       name = ${name},
       project_id = ${projectId},
+      parent_id = ${parentId},
       status = ${status},
       due_date = ${dueDate},
       priority = ${priority},
