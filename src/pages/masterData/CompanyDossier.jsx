@@ -1,12 +1,16 @@
 import React, { useState, useMemo } from 'react';
+import { useAuth } from '../../context/AuthContext';
 
 const CompanyDossier = ({
   company,
   onUpdateCompany,
+  onDeleteCompany,
   onBack,
   addToast,
   allVaultDocs = []
 }) => {
+  const { isAdmin } = useAuth();
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [activeTab, setActiveTab] = useState('DOCS'); // 'DOCS' | 'TEXT_INFO' | 'STAKEHOLDERS' | 'BANKING'
 
   // Documents state
@@ -173,6 +177,10 @@ const CompanyDossier = ({
   };
 
   const handleDeleteDoc = (docToDelete) => {
+    if (!isAdmin) {
+      if (addToast) addToast('Unauthorized: Only administrators have permission to delete documents.', 'error');
+      return;
+    }
     if (!window.confirm(`Are you sure you want to remove "${docToDelete.name}" from ${company.name}'s dossier?`)) return;
 
     const nextAttached = (company.attachedDocs || []).filter(d => d.name !== docToDelete.name && d.id !== docToDelete.id);
@@ -253,6 +261,10 @@ const CompanyDossier = ({
   };
 
   const handleDeleteNote = (noteId) => {
+    if (!isAdmin) {
+      if (addToast) addToast('Unauthorized: Only administrators have permission to delete notes.', 'error');
+      return;
+    }
     const nextNotes = notesList.filter(n => n.id !== noteId);
     setNotesList(nextNotes);
     const updatedCompany = {
@@ -288,6 +300,10 @@ const CompanyDossier = ({
   };
 
   const handleDeleteCustomField = (fieldId) => {
+    if (!isAdmin) {
+      if (addToast) addToast('Unauthorized: Only administrators have permission to delete fields.', 'error');
+      return;
+    }
     const nextFields = customFields.filter(f => f.id !== fieldId);
     setCustomFields(nextFields);
     const updatedCompany = {
@@ -340,6 +356,10 @@ const CompanyDossier = ({
   };
 
   const handleDeleteStakeholder = (idx) => {
+    if (!isAdmin) {
+      if (addToast) addToast('Unauthorized: Only administrators have permission to delete stakeholders.', 'error');
+      return;
+    }
     const nextStakeholders = stakeholdersList.filter((_, i) => i !== idx);
     setStakeholdersList(nextStakeholders);
     const updatedCompany = {
@@ -394,6 +414,18 @@ const CompanyDossier = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowDeleteModal(true)}
+              className="px-3.5 py-2 text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-xl shadow-2xs transition flex items-center gap-1.5 active:scale-95"
+              title="Admin only: Permanently delete this entity from Master Directory"
+            >
+              <span className="material-symbols-outlined text-[17px] text-rose-600">delete_forever</span>
+              <span>Delete Entity</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setIsUploadModalOpen(true)}
@@ -441,6 +473,17 @@ const CompanyDossier = ({
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-700 font-mono">
                   {company.id}
                 </span>
+                {company.globalEntityId && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/60 font-mono flex items-center gap-1" title="Global Legal Entity Identifier (LEI / D-U-N-S®)">
+                    <span className="material-symbols-outlined text-[13px]">corporate_fare</span>
+                    <span>LEI/DUNS: {company.globalEntityId}</span>
+                  </span>
+                )}
+                {company.taxId && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/60 font-mono" title={company.taxAuthority ? `Tax ID (${company.taxAuthority})` : 'Tax / Regulatory ID'}>
+                    Tax: {company.taxId}
+                  </span>
+                )}
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                   <span>{company.compliance || 'Active Verified'}</span>
@@ -706,14 +749,16 @@ const CompanyDossier = ({
                         >
                           <span className="material-symbols-outlined text-[17px]">download</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteDoc(doc)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
-                          title="Delete from Dossier"
-                        >
-                          <span className="material-symbols-outlined text-[17px]">delete</span>
-                        </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDoc(doc)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
+                            title="Admin only: Delete from Dossier"
+                          >
+                            <span className="material-symbols-outlined text-[17px]">delete</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -827,14 +872,16 @@ const CompanyDossier = ({
                         </span>
                         <div className="flex items-center gap-2">
                           <span className="text-gray-400 text-[10px]">{note.date}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteNote(note.id)}
-                            className="text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
-                            title="Delete note"
-                          >
-                            <span className="material-symbols-outlined text-[14px]">close</span>
-                          </button>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteNote(note.id)}
+                              className="text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
+                              title="Admin only: Delete note"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">close</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                       <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{note.text}</p>
@@ -920,14 +967,16 @@ const CompanyDossier = ({
                       <div className="text-[10px] font-bold uppercase text-gray-400">{field.label}</div>
                       <div className="font-semibold text-gray-900 mt-0.5">{field.value}</div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteCustomField(field.id)}
-                      className="p-1 rounded-md text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
-                      title="Remove field"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">delete</span>
-                    </button>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCustomField(field.id)}
+                        className="p-1 rounded-md text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
+                        title="Admin only: Remove field"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">delete</span>
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -982,12 +1031,12 @@ const CompanyDossier = ({
                     </div>
                   </div>
 
-                  {idx > 0 && (
+                  {idx > 0 && isAdmin && (
                     <button
                       type="button"
                       onClick={() => handleDeleteStakeholder(idx)}
                       className="text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
-                      title="Remove contact"
+                      title="Admin only: Remove contact"
                     >
                       <span className="material-symbols-outlined text-[16px]">close</span>
                     </button>
@@ -1164,6 +1213,7 @@ const CompanyDossier = ({
                     className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-white"
                   >
                     <option value="MSA">MSA / Contract</option>
+                    <option value="KYC">KYC & Compliance Dossier</option>
                     <option value="License">Commercial License / CR</option>
                     <option value="Tax">Tax Exemption / VAT</option>
                     <option value="Banking">Banking Mandate</option>
@@ -1392,6 +1442,61 @@ const CompanyDossier = ({
                 >
                   <span className="material-symbols-outlined text-[16px]">download</span>
                   <span>Download Document</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM DELETE ENTITY MODAL (ADMIN ONLY) */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fade-in text-left">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-rose-100 animate-slide-up">
+            <div className="p-6 space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-2xs">
+                <span className="material-symbols-outlined text-[28px]">warning</span>
+              </div>
+              <div className="text-center space-y-1.5">
+                <h3 className="text-base font-bold text-gray-900 font-display">
+                  Delete {company.category || 'Entity'} from Master Directory?
+                </h3>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Are you sure you want to permanently delete <strong className="text-gray-900">{company.name}</strong> ({company.id})? All attached documents, notes, regulatory credentials, and compliance records will be purged.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-100 text-[11px] text-rose-800 flex items-start gap-2">
+                <span className="material-symbols-outlined text-rose-600 text-[16px] shrink-0 mt-0.5">admin_panel_settings</span>
+                <span>
+                  <strong>Administrator Action:</strong> This action cannot be reversed. Only users with the Admin role can execute entity deletions.
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAdmin) {
+                      if (addToast) addToast('Unauthorized: Only administrators can delete master entities.', 'error');
+                      return;
+                    }
+                    setShowDeleteModal(false);
+                    if (onDeleteCompany) {
+                      onDeleteCompany(company.id, company.name);
+                    }
+                  }}
+                  className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md transition flex items-center gap-1.5 active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-[17px]">delete_forever</span>
+                  <span>Permanently Delete</span>
                 </button>
               </div>
             </div>

@@ -79,6 +79,7 @@ const UploadVaultModal = ({
               className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
             >
               <option value="MSA">Master Service Agreement (MSA)</option>
+              <option value="KYC">KYC & Regulatory Compliance Verification</option>
               <option value="License">Commercial Trade License / CR</option>
               <option value="Tax">Tax Exemption / VAT / GST Form</option>
               <option value="Banking">Official Bank Mandate & Remittance Details</option>

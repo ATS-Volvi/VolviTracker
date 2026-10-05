@@ -63,72 +63,51 @@ const FinanceProjects = ({
 
   return (
     <div className="space-y-6 text-left">
-      {/* Workflow Step Banner */}
-      <div className="bg-gradient-to-r from-blue-900 to-indigo-950 p-5 rounded-2xl text-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-blue-200 uppercase tracking-wider mb-1">
-            <span>Central Hub</span>
-            <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-            <span className="text-white font-bold">Financial Visibility Architecture</span>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-xl sm:text-2xl font-black font-display tracking-tight text-white">
-              Project: Central Hub for Financial Visibility
-            </h2>
-            <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-200 text-[10px] font-bold uppercase tracking-wider">
-              Dual-Sided Rollup
-            </span>
-          </div>
-          <p className="text-xs text-blue-200/80 mt-1 max-w-2xl">
-            Projects serve as the single source of truth linking Client POs to downstream Supplier POs, computing real-time margins (received - paid & invoiced - supplier-invoiced) with multi-currency conversion.
-          </p>
-        </div>
-
-        {/* Currency Switcher & Setup Project CTA */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Multi-Currency View Selector (INR, USD, AED, SAR) */}
-          <div className="bg-white/10 backdrop-blur-md p-1 rounded-xl border border-white/15 flex items-center gap-1 text-xs">
-            <span className="text-[10px] uppercase font-bold text-blue-200 px-2 flex items-center gap-1">
-              <span className="material-symbols-outlined text-[14px]">currency_exchange</span>
-              <span>Currency:</span>
-            </span>
-            {['USD', 'INR', 'AED', 'SAR'].map(curr => (
-              <button
-                key={curr}
-                onClick={() => setCurrencyMode(curr)}
-                className={`px-2.5 py-1 rounded-lg font-bold transition text-xs ${
-                  currencyMode === curr
-                    ? 'bg-white text-blue-900 shadow-sm'
-                    : 'text-blue-200 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {curr}
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={onOpenCreateProject}
-            className="px-4 py-2 text-xs font-bold bg-blue-500 hover:bg-blue-400 text-white rounded-xl transition shadow-md flex items-center gap-1.5 active:scale-95 border border-blue-400/40"
-          >
-            <span className="material-symbols-outlined text-[16px]">add_circle</span>
-            <span>+ Project Setup</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Project Dashboard & Rollup (Directly from Center Box of Diagram) */}
+      {/* Project Dashboard & Rollup */}
       <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-        <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-blue-600 text-[20px]">analytics</span>
             <h3 className="text-sm font-extrabold text-gray-900 font-display uppercase tracking-wider">
-              Project Dashboard & Rollup Metrics ({currencyMode} View)
+              Project Dashboard & Rollup Metrics
             </h3>
+            <span className="hidden md:inline text-xs text-gray-400">
+              • {projects.length} linked master projects
+            </span>
           </div>
-          <span className="text-xs text-gray-400">
-            Real-time multi-project aggregation across {projects.length} linked master projects
-          </span>
+
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Multi-Currency View Selector (USD, INR, AED, SAR) */}
+            <div className="bg-gray-100 p-0.5 rounded-xl border border-gray-200/80 flex items-center gap-0.5 text-xs">
+              <span className="text-[10px] uppercase font-bold text-gray-500 px-2 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[13px]">currency_exchange</span>
+                <span>Currency:</span>
+              </span>
+              {['USD', 'INR', 'AED', 'SAR'].map(curr => (
+                <button
+                  key={curr}
+                  type="button"
+                  onClick={() => setCurrencyMode(curr)}
+                  className={`px-2.5 py-1 rounded-lg font-bold transition text-xs ${
+                    currencyMode === curr
+                      ? 'bg-white text-blue-700 shadow-2xs font-extrabold'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/60'
+                  }`}
+                >
+                  {curr}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={onOpenCreateProject}
+              className="px-3.5 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition shadow-2xs flex items-center gap-1.5 active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[16px]">add_circle</span>
+              <span>+ Project Setup</span>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">

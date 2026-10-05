@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { Avatar } from '../widgets/Avatar';
@@ -27,9 +27,23 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
   // Project-based segregation tabs
   const [activeProjectTab, setActiveProjectTab] = useState('all'); // 'all', projectId, or 'unassigned'
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'active', 'done'
-  const [viewMode, setViewMode] = useState('cards'); // 'cards', 'table', 'checklist', 'status'
+  const [viewMode, setViewMode] = useState('table'); // 'table', 'cards', 'checklist', 'status'
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+
+  // Project Dropdown state
+  const projectDropdownRef = useRef(null);
+  const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target)) {
+        setIsProjectDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Auto-reset activeProjectTab if the selected project tab is no longer in relevantProjects
   useEffect(() => {
@@ -42,6 +56,34 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
 
   const getProject = (pId) => allProjects.find(p => String(p.id) === String(pId));
   const unassignedCount = (allTasks || tasks).filter(t => !t.projectId || !allProjects.some(p => String(p.id) === String(t.projectId))).length;
+
+  const selectedProjectInfo = useMemo(() => {
+    if (activeProjectTab === 'all') {
+      return {
+        label: 'All Tasks',
+        count: tasks.length,
+        progress: null
+      };
+    }
+    if (activeProjectTab === 'unassigned') {
+      return {
+        label: 'No Project',
+        count: unassignedCount,
+        progress: null
+      };
+    }
+    const p = relevantProjects.find(item => String(item.id) === String(activeProjectTab));
+    if (!p) {
+      return { label: 'All Tasks', count: tasks.length, progress: null };
+    }
+    const count = (allTasks || tasks).filter(t => String(t.projectId) === String(p.id)).length;
+    const pPct = Math.round((p.progress <= 1 && p.progress > 0 ? p.progress * 100 : (p.progress || 0)));
+    return {
+      label: p.name,
+      count,
+      progress: count > 0 ? pPct : null
+    };
+  }, [activeProjectTab, tasks, relevantProjects, allTasks, unassignedCount]);
 
   // Tasks segregated by active project tab:
   // When 'all', show current tasks collection (tasksProp or allTasks)
@@ -96,37 +138,66 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
   };
 
   const getTaskHierarchyInfo = (task) => {
-    if (!task?.parentId) return { level: 0, parent: null };
-    const parent = (allTasks || []).find(t => String(t.id) === String(task.parentId));
-    if (!parent) return { level: 0, parent: null };
-    if (!parent.parentId) return { level: 1, parent };
-    const grandParent = (allTasks || []).find(t => String(t.id) === String(parent.parentId));
-    return { level: 2, parent, grandParent };
+    if (!task?.parentId) return { level: 0, parent: null, ancestors: [] };
+    const taskMap = new Map((allTasks || []).map(t => [String(t.id), t]));
+    let curr = task;
+    let level = 0;
+    const ancestors = [];
+    const visited = new Set([String(task.id)]);
+
+    while (curr && curr.parentId) {
+      const parent = taskMap.get(String(curr.parentId));
+      if (!parent || visited.has(String(parent.id))) break;
+      visited.add(String(parent.id));
+      ancestors.push(parent);
+      level++;
+      curr = parent;
+    }
+
+    return {
+      level,
+      parent: ancestors[0] || null,
+      ancestors
+    };
   };
 
-  // Organize displayed tasks in tree order (Main -> Subtask -> Sub-subtask) for Table & Checklist views
+  // Organize displayed tasks in tree order for arbitrary n-level nesting
   const hierarchicalDisplayedTasks = useMemo(() => {
     const list = [...displayedTasks];
-    const mains = list.filter(t => !t.parentId || !list.some(p => String(p.id) === String(t.parentId)));
-    const sortedMains = sortTasks(mains);
-    const result = [];
+    const taskIds = new Set(list.map(t => String(t.id)));
+    const byParent = new Map();
+    const roots = [];
 
-    sortedMains.forEach(main => {
-      const mainInfo = getTaskHierarchyInfo(main);
-      result.push({ ...main, level: mainInfo.level, parent: mainInfo.parent });
-      const subs = sortTasks(list.filter(t => String(t.parentId) === String(main.id)));
-      subs.forEach(sub => {
-        result.push({ ...sub, level: 1, parent: main });
-        const subSubs = sortTasks(list.filter(t => String(t.parentId) === String(sub.id)));
-        subSubs.forEach(subSub => {
-          result.push({ ...subSub, level: 2, parent: sub, grandParent: main });
-        });
-      });
+    list.forEach(t => {
+      const pId = t.parentId ? String(t.parentId) : null;
+      if (!pId || !taskIds.has(pId)) {
+        roots.push(t);
+      } else {
+        if (!byParent.has(pId)) byParent.set(pId, []);
+        byParent.get(pId).push(t);
+      }
     });
+
+    const sortedRoots = sortTasks(roots);
+    const result = [];
+    const visited = new Set();
+
+    const traverse = (node, level, parent = null) => {
+      if (visited.has(String(node.id))) return;
+      visited.add(String(node.id));
+      result.push({ ...node, level, parent });
+
+      const children = byParent.get(String(node.id)) || [];
+      const sortedChildren = sortTasks(children);
+      sortedChildren.forEach(child => traverse(child, level + 1, node));
+    };
+
+    sortedRoots.forEach(root => traverse(root, 0, null));
 
     // Fallback for any orphan tasks that weren't captured
     list.forEach(t => {
-      if (!result.some(r => String(r.id) === String(t.id))) {
+      if (!visited.has(String(t.id))) {
+        visited.add(String(t.id));
         const info = getTaskHierarchyInfo(t);
         result.push({ ...t, level: info.level, parent: info.parent });
       }
@@ -146,13 +217,21 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
   const handleStatusChange = (taskId, newStatus, taskName) => {
     updateTask(taskId, { status: newStatus });
     if (newStatus === 'Done') {
-      // Also cascade completion to children subtasks
-      const childTasks = (allTasks || []).filter(t => String(t.parentId) === String(taskId));
-      childTasks.forEach(child => {
-        updateTask(child.id, { status: 'Done' });
-        const subSubTasks = (allTasks || []).filter(t => String(t.parentId) === String(child.id));
-        subSubTasks.forEach(subSub => updateTask(subSub.id, { status: 'Done' }));
-      });
+      // Also cascade completion to all descendant subtasks recursively
+      const descendants = [];
+      const queue = [String(taskId)];
+      const seen = new Set([String(taskId)]);
+      while (queue.length > 0) {
+        const pId = queue.shift();
+        (allTasks || []).forEach(t => {
+          if (t.parentId && String(t.parentId) === pId && !seen.has(String(t.id))) {
+            seen.add(String(t.id));
+            descendants.push(t.id);
+            queue.push(String(t.id));
+          }
+        });
+      }
+      descendants.forEach(dId => updateTask(dId, { status: 'Done' }));
       addToast(`Completed "${taskName}"!`, 'success');
     } else {
       addToast(`Updated status to "${newStatus}"`, 'info');
@@ -237,126 +316,188 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
         </button>
       </div>
 
-      {/* Project-Based Tabs */}
-      <div className="w-full flex items-center border-b border-gray-200 overflow-x-auto gap-1 scrollbar-thin">
-        {/* All Tasks Tab */}
-        <button
-          onClick={() => setActiveProjectTab('all')}
-          className={`py-2.5 px-3.5 text-xs sm:text-sm font-semibold border-b-2 text-center transition whitespace-nowrap flex items-center gap-2 shrink-0 ${
-            activeProjectTab === 'all'
-              ? 'border-blue-600 text-blue-600 bg-blue-50/30'
-              : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-          }`}
-        >
-          <span>All Tasks</span>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-            activeProjectTab === 'all' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
-          }`}>
-            {tasks.length}
-          </span>
-        </button>
-
-        {/* Dynamic Project Tabs */}
-        {relevantProjects.map(p => {
-          const count = (allTasks || tasks).filter(t => String(t.projectId) === String(p.id)).length;
-          const isActive = String(activeProjectTab) === String(p.id);
-          const pPct = Math.round((p.progress <= 1 && p.progress > 0 ? p.progress * 100 : (p.progress || 0)));
-          return (
+      {/* Sub-toolbar: Project Filter Dropdown + Status Filter Pills + View Switcher */}
+      <div className="flex flex-wrap items-center justify-between gap-3 py-3 border-b border-gray-100 mb-4 text-xs">
+        {/* Left: Project Selector Dropdown + Status Filter */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Project Dropdown */}
+          <div className="relative" ref={projectDropdownRef}>
             <button
-              key={p.id}
-              onClick={() => setActiveProjectTab(p.id)}
-              className={`py-2.5 px-3.5 text-xs sm:text-sm font-semibold border-b-2 text-center transition whitespace-nowrap flex items-center gap-2 shrink-0 ${
-                isActive
-                  ? 'border-blue-600 text-blue-600 bg-blue-50/30'
-                  : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-              }`}
+              type="button"
+              onClick={() => setIsProjectDropdownOpen(prev => !prev)}
+              className="h-8 px-3 rounded-lg border border-gray-200/90 bg-white hover:bg-gray-50/90 text-gray-800 font-medium flex items-center gap-2 text-xs shadow-2xs transition"
+              title="Filter tasks by project"
             >
-              <span className="truncate max-w-[180px]">{p.name}</span>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                isActive ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
-              }`}>
-                {count}
+              <svg className="w-3.5 h-3.5 text-blue-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              <span className="text-gray-400 font-normal">Project:</span>
+              <span className="font-semibold text-gray-900 truncate max-w-[130px] sm:max-w-[200px]">
+                {selectedProjectInfo.label}
               </span>
-              {count > 0 && (
-                <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50/80 px-1.5 py-0.5 rounded border border-emerald-100">
-                  {pPct}%
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-blue-100 text-blue-700">
+                {selectedProjectInfo.count}
+              </span>
+              {selectedProjectInfo.progress !== null && (
+                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                  {selectedProjectInfo.progress}%
                 </span>
               )}
+              <svg
+                className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isProjectDropdownOpen ? 'rotate-180 text-blue-600' : ''}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
             </button>
-          );
-        })}
 
-        {/* Unassigned Tasks Tab (if any exist) */}
-        {unassignedCount > 0 && (
-          <button
-            onClick={() => setActiveProjectTab('unassigned')}
-            className={`py-2.5 px-3.5 text-xs sm:text-sm font-semibold border-b-2 text-center transition whitespace-nowrap flex items-center gap-2 shrink-0 ${
-              activeProjectTab === 'unassigned'
-                ? 'border-blue-600 text-blue-600 bg-blue-50/30'
-                : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-            }`}
-          >
-            <span>No Project</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-              activeProjectTab === 'unassigned' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
-            }`}>
-              {unassignedCount}
-            </span>
-          </button>
-        )}
-      </div>
+            {/* Dropdown Menu Popup */}
+            {isProjectDropdownOpen && (
+              <div className="absolute left-0 mt-1.5 w-72 sm:w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-30 py-1.5 overflow-hidden animate-slide-up max-h-80 overflow-y-auto">
+                <div className="px-3 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                  <span>Filter by Project</span>
+                  <span className="text-[10px] font-normal text-gray-400">{relevantProjects.length} projects</span>
+                </div>
 
-      {/* Sub-toolbar: Status Filter Pills + View Switcher */}
-      <div className="flex flex-wrap items-center justify-between gap-3 py-3 border-b border-gray-100 mb-4 text-xs">
-        {/* Status Filter */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-gray-400 font-medium mr-1 hidden sm:inline">Status:</span>
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-2.5 py-1 rounded-lg font-medium transition ${
-              statusFilter === 'all'
-                ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
-            }`}
-          >
-            All ({currentProjectTasks.length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('active')}
-            className={`px-2.5 py-1 rounded-lg font-medium transition ${
-              statusFilter === 'active'
-                ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
-            }`}
-          >
-            Active ({activeCount})
-          </button>
-          <button
-            onClick={() => setStatusFilter('done')}
-            className={`px-2.5 py-1 rounded-lg font-medium transition flex items-center gap-1 ${
-              statusFilter === 'done'
-                ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
-            }`}
-          >
-            <span>✓</span> Done ({completedCount})
-          </button>
+                {/* All Tasks Option */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveProjectTab('all');
+                    setIsProjectDropdownOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition ${
+                    activeProjectTab === 'all'
+                      ? 'bg-blue-50 text-blue-700 font-bold'
+                      : 'text-gray-700 hover:bg-gray-50 font-medium'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-blue-600 text-sm">📋</span>
+                    <span>All Tasks</span>
+                  </div>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                    activeProjectTab === 'all' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {tasks.length}
+                  </span>
+                </button>
+
+                <div className="my-1 border-t border-gray-100" />
+
+                {/* Individual Projects */}
+                {relevantProjects.map(p => {
+                  const count = (allTasks || tasks).filter(t => String(t.projectId) === String(p.id)).length;
+                  const isActive = String(activeProjectTab) === String(p.id);
+                  const pPct = Math.round((p.progress <= 1 && p.progress > 0 ? p.progress * 100 : (p.progress || 0)));
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveProjectTab(p.id);
+                        setIsProjectDropdownOpen(false);
+                      }}
+                      className={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition ${
+                        isActive
+                          ? 'bg-blue-50 text-blue-700 font-bold'
+                          : 'text-gray-700 hover:bg-gray-50 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+                        <span className="text-gray-400 text-sm shrink-0">📁</span>
+                        <span className="truncate">{p.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                          isActive ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {count}
+                        </span>
+                        {count > 0 && (
+                          <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                            {pPct}%
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {/* Unassigned Tasks (if any) */}
+                {unassignedCount > 0 && (
+                  <>
+                    <div className="my-1 border-t border-gray-100" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveProjectTab('unassigned');
+                        setIsProjectDropdownOpen(false);
+                      }}
+                      className={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition ${
+                        activeProjectTab === 'unassigned'
+                          ? 'bg-blue-50 text-blue-700 font-bold'
+                          : 'text-gray-700 hover:bg-gray-50 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400 text-sm">📄</span>
+                        <span>No Project (Unassigned)</span>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        activeProjectTab === 'unassigned' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {unassignedCount}
+                      </span>
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="h-4 w-px bg-gray-200 hidden sm:block" />
+
+          {/* Status Filter */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-400 font-medium mr-1 hidden md:inline">Status:</span>
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition ${
+                statusFilter === 'all'
+                  ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
+              }`}
+            >
+              All ({currentProjectTasks.length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('active')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition ${
+                statusFilter === 'active'
+                  ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
+              }`}
+            >
+              Active ({activeCount})
+            </button>
+            <button
+              onClick={() => setStatusFilter('done')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition flex items-center gap-1 ${
+                statusFilter === 'done'
+                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
+              }`}
+            >
+              <span>✓</span> Done ({completedCount})
+            </button>
+          </div>
         </div>
 
         {/* View Mode Switcher */}
         <div className="flex items-center bg-gray-100/80 p-0.5 rounded-lg border border-gray-200/60 ml-auto">
-          <button
-            onClick={() => setViewMode('cards')}
-            title="Card Grid View"
-            className={`px-2 py-1 rounded-md transition flex items-center gap-1 font-medium ${
-              viewMode === 'cards' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
-            }`}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-            </svg>
-            <span className="hidden sm:inline">Cards</span>
-          </button>
           <button
             onClick={() => setViewMode('table')}
             title="Table View"
@@ -368,6 +509,18 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
             <span className="hidden sm:inline">Table</span>
+          </button>
+          <button
+            onClick={() => setViewMode('cards')}
+            title="Card Grid View"
+            className={`px-2 py-1 rounded-md transition flex items-center gap-1 font-medium ${
+              viewMode === 'cards' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+            <span className="hidden sm:inline">Cards</span>
           </button>
           <button
             onClick={() => setViewMode('checklist')}
@@ -470,8 +623,8 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                       {/* Parent Task Hierarchy Badge */}
                       {t.parentId && info.parent && (
                         <div className="mt-1.5 flex items-center gap-1.5 text-[11px]">
-                          <span className={info.level === 1 ? 'text-blue-600 font-bold' : 'text-purple-600 font-bold'}>
-                            {info.level === 1 ? '↳ Subtask of:' : '↳↳ Sub-subtask of:'}
+                          <span className={info.level === 1 ? 'text-blue-600 font-bold' : info.level === 2 ? 'text-purple-600 font-bold' : 'text-indigo-600 font-bold'}>
+                            {info.level === 1 ? '↳ Subtask of:' : info.level === 2 ? '↳↳ Sub-subtask of:' : `${'↳'.repeat(Math.min(info.level, 3))} L${info.level} Subtask of:`}
                           </span>
                           <span className="font-semibold text-gray-700 truncate max-w-[170px]">{info.parent.name}</span>
                         </div>
@@ -505,6 +658,7 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                     {activeProjectTab === 'all' && <Th>Project</Th>}
                     <Th>Assignee</Th>
                     <Th>Status</Th>
+                    <Th>Created</Th>
                     <Th>Due</Th>
                     <Th>Priority</Th>
                     <Th>Action</Th>
@@ -516,14 +670,18 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                     return (
                       <tr key={t.id} className="border-b border-gray-50 hover:bg-slate-50/60 transition">
                         <Td>
-                          <div className={`flex items-center gap-2 ${
-                            t.level === 1 ? 'pl-5' : t.level === 2 ? 'pl-9' : ''
-                          }`}>
-                            {t.level === 1 && (
-                              <span className="text-blue-500 font-bold text-xs select-none">↳</span>
-                            )}
-                            {t.level === 2 && (
-                              <span className="text-purple-500 font-bold text-xs select-none">↳↳</span>
+                          <div
+                            className="flex items-center gap-2"
+                            style={{ paddingLeft: t.level > 0 ? `${t.level * 20}px` : undefined }}
+                          >
+                            {t.level > 0 && (
+                              <span
+                                className={`font-bold text-xs select-none ${
+                                  t.level === 1 ? 'text-blue-500' : t.level === 2 ? 'text-purple-500' : 'text-indigo-500'
+                                }`}
+                              >
+                                {'↳'.repeat(Math.min(t.level, 3))}
+                              </span>
                             )}
                             {t.level === 1 && (
                               <span className="text-[9px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 shrink-0">
@@ -533,6 +691,11 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                             {t.level === 2 && (
                               <span className="text-[9px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 shrink-0">
                                 Sub-sub
+                              </span>
+                            )}
+                            {t.level >= 3 && (
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0">
+                                L{t.level} Sub
                               </span>
                             )}
                             <button
@@ -559,6 +722,7 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                         )}
                         <Td><AssigneesDisplay task={t} /></Td>
                         <Td><StatusSelect value={t.status} onChange={(s) => handleStatusChange(t.id, s, t.name)} /></Td>
+                        <Td className="text-gray-500 text-xs">{fmtDate(t.createdDate || t.createdAt)}</Td>
                         <Td className="text-gray-600 text-xs">{fmtDate(t.dueDate)}</Td>
                         <Td><PriorityPill priority={t.priority} /></Td>
                         <Td>
@@ -589,11 +753,14 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                 return (
                   <div
                     key={t.id}
+                    style={{ marginLeft: t.level > 0 ? `${t.level * 18}px` : undefined }}
                     className={`flex items-center justify-between gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-50 transition group ${
                       t.level === 1
-                        ? 'ml-5 bg-blue-50/20 border-l-2 border-l-blue-400 pl-3'
+                        ? 'bg-blue-50/20 border-l-2 border-l-blue-400 pl-3'
                         : t.level === 2
-                        ? 'ml-10 bg-purple-50/25 border-l-2 border-l-purple-400 pl-3'
+                        ? 'bg-purple-50/25 border-l-2 border-l-purple-400 pl-3'
+                        : t.level >= 3
+                        ? 'bg-indigo-50/25 border-l-2 border-l-indigo-400 pl-3'
                         : ''
                     }`}
                   >
@@ -604,11 +771,14 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                         checked={t.status === 'Done'}
                         onChange={(e) => handleStatusChange(t.id, e.target.checked ? 'Done' : 'Not started', t.name)}
                       />
-                      {t.level === 1 && (
-                        <span className="text-blue-500 font-bold text-xs select-none shrink-0">↳</span>
-                      )}
-                      {t.level === 2 && (
-                        <span className="text-purple-500 font-bold text-xs select-none shrink-0">↳↳</span>
+                      {t.level > 0 && (
+                        <span
+                          className={`font-bold text-xs select-none shrink-0 ${
+                            t.level === 1 ? 'text-blue-500' : t.level === 2 ? 'text-purple-500' : 'text-indigo-500'
+                          }`}
+                        >
+                          {'↳'.repeat(Math.min(t.level, 3))}
+                        </span>
                       )}
                       {t.level === 1 && (
                         <span className="text-[9px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 shrink-0">
@@ -618,6 +788,11 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                       {t.level === 2 && (
                         <span className="text-[9px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 shrink-0">
                           Sub-sub
+                        </span>
+                      )}
+                      {t.level >= 3 && (
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0">
+                          L{t.level} Sub
                         </span>
                       )}
                       <span className={`flex-1 text-sm truncate ${t.status === 'Done' ? 'text-gray-400 line-through' : 'text-gray-700 font-medium'}`}>
@@ -676,8 +851,8 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                               </button>
                               {info.parent && (
                                 <div className="text-[10px] text-gray-500 flex items-center gap-1 mt-0.5">
-                                  <span className={info.level === 1 ? 'text-blue-600 font-semibold' : 'text-purple-600 font-semibold'}>
-                                    {info.level === 1 ? '↳ Subtask of:' : '↳↳ Sub-sub of:'}
+                                  <span className={info.level === 1 ? 'text-blue-600 font-semibold' : info.level === 2 ? 'text-purple-600 font-semibold' : 'text-indigo-600 font-semibold'}>
+                                    {info.level === 1 ? '↳ Subtask of:' : info.level === 2 ? '↳↳ Sub-sub of:' : `${'↳'.repeat(Math.min(info.level, 3))} L${info.level} Sub of:`}
                                   </span>
                                   <span className="truncate max-w-[180px]">{info.parent.name}</span>
                                 </div>

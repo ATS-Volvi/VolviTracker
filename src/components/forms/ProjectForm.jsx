@@ -458,28 +458,44 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
     addToast(`Added subtask to "${parentTask.name}"`, 'success', 2000);
   };
 
-  // Hierarchical tasks list with depth levels:
-  // level 0: Main task
-  // level 1: Sub-task
-  // level 2: Sub-sub-task
+  // Hierarchical tasks list supporting arbitrary n levels of depth
   const hierarchicalTasks = useMemo(() => {
     const list = projectTasks;
-    const mainTasks = list.filter(t => !t.parentId || !list.some(p => String(p.id) === String(t.parentId)));
-    const sortedMain = sortTasks(mainTasks);
-    const result = [];
+    const taskIds = new Set(list.map(t => String(t.id)));
+    const byParent = new Map();
+    const roots = [];
 
-    sortedMain.forEach(mainTask => {
-      result.push({ ...mainTask, level: 0 });
-      // Children (level 1 subtasks)
-      const subTasks = sortTasks(list.filter(t => String(t.parentId) === String(mainTask.id)));
-      subTasks.forEach(subTask => {
-        result.push({ ...subTask, level: 1, parentName: mainTask.name });
-        // Grandchildren (level 2 sub-subtasks)
-        const subSubTasks = sortTasks(list.filter(t => String(t.parentId) === String(subTask.id)));
-        subSubTasks.forEach(subSubTask => {
-          result.push({ ...subSubTask, level: 2, parentName: subTask.name, grandParentName: mainTask.name });
-        });
-      });
+    list.forEach(t => {
+      const pId = t.parentId ? String(t.parentId) : null;
+      if (!pId || !taskIds.has(pId)) {
+        roots.push(t);
+      } else {
+        if (!byParent.has(pId)) byParent.set(pId, []);
+        byParent.get(pId).push(t);
+      }
+    });
+
+    const sortedRoots = sortTasks(roots);
+    const result = [];
+    const visited = new Set();
+
+    const traverse = (node, level, parent = null) => {
+      if (visited.has(String(node.id))) return;
+      visited.add(String(node.id));
+      result.push({ ...node, level, parentName: parent?.name });
+
+      const children = byParent.get(String(node.id)) || [];
+      const sortedChildren = sortTasks(children);
+      sortedChildren.forEach(child => traverse(child, level + 1, node));
+    };
+
+    sortedRoots.forEach(root => traverse(root, 0, null));
+
+    list.forEach(t => {
+      if (!visited.has(String(t.id))) {
+        visited.add(String(t.id));
+        result.push({ ...t, level: 0 });
+      }
     });
 
     return result;
@@ -697,8 +713,25 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       onClose={onClose}
       title={initial ? 'Edit Project' : 'Create New Project'}
       maxWidth="max-w-5xl xl:max-w-6xl"
+      noPadding={true}
+      containerClassName="h-[90vh]"
+      headerActions={
+        <button
+          type="submit"
+          form="project-form-modal"
+          className="btn-primary text-xs font-bold px-3.5 py-1.5 flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition"
+          title="Save project and all tasks"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+          </svg>
+          <span>{initial ? 'Save Project' : 'Create Project'}</span>
+        </button>
+      }
     >
-      <form onSubmit={submit} className="space-y-6">
+      <form id="project-form-modal" onSubmit={submit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+        {/* Scrollable Form Body */}
+        <div className="p-6 space-y-6 overflow-y-auto flex-1 min-h-0">
         {/* Top: Project Info & Team */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Core Fields */}
@@ -1722,11 +1755,15 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                         </button>
 
                         {/* Tree Branch Symbol */}
-                        {task.level === 1 && (
-                          <span className="text-blue-500 font-bold text-xs select-none shrink-0" title="Subtask">↳</span>
-                        )}
-                        {task.level === 2 && (
-                          <span className="text-purple-500 font-bold text-xs select-none shrink-0" title="Sub-subtask">↳↳</span>
+                        {task.level > 0 && (
+                          <span
+                            className={`font-bold text-xs select-none shrink-0 ${
+                              task.level === 1 ? 'text-blue-500' : task.level === 2 ? 'text-purple-500' : 'text-indigo-500'
+                            }`}
+                            title={`Level ${task.level} Subtask`}
+                          >
+                            {'↳'.repeat(Math.min(task.level, 3))}
+                          </span>
                         )}
 
                         {/* Level Badge */}
@@ -1738,6 +1775,11 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                         {task.level === 2 && (
                           <span className="text-[9px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 shrink-0">
                             Sub-subtask
+                          </span>
+                        )}
+                        {task.level >= 3 && (
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0">
+                            L{task.level} Subtask
                           </span>
                         )}
 
@@ -1753,34 +1795,28 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                           </span>
                           {hasChildren && (
                             <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.2 rounded-full font-medium shrink-0">
-                              {childCount} {task.level === 0 ? (childCount === 1 ? 'sub' : 'subs') : (childCount === 1 ? 'sub-sub' : 'sub-subs')}
+                              {childCount} {childCount === 1 ? 'sub' : 'subs'}
                             </span>
                           )}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0 ml-2">
-                        {/* + Subtask / + Sub-subtask Add Button */}
-                        {task.level === 0 && (
-                          <button
-                            type="button"
-                            onClick={() => handleStartAddSubtask(task)}
-                            className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 border border-blue-200 hover:border-blue-300 px-2 py-0.5 rounded-md text-[11px] font-semibold flex items-center gap-1 transition shrink-0"
-                            title="Add a subtask under this task"
-                          >
-                            <span className="font-bold">+</span> Subtask
-                          </button>
-                        )}
-                        {task.level === 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleStartAddSubtask(task)}
-                            className="text-purple-600 hover:text-purple-800 hover:bg-purple-50 border border-purple-200 hover:border-purple-300 px-2 py-0.5 rounded-md text-[11px] font-semibold flex items-center gap-1 transition shrink-0"
-                            title="Add a sub-subtask under this subtask"
-                          >
-                            <span className="font-bold">+</span> Sub-subtask
-                          </button>
-                        )}
+                        {/* + Subtask Add Button (any level) */}
+                        <button
+                          type="button"
+                          onClick={() => handleStartAddSubtask(task)}
+                          className={`${
+                            task.level === 0
+                              ? 'text-blue-600 hover:text-blue-800 hover:bg-blue-50 border-blue-200 hover:border-blue-300'
+                              : task.level === 1
+                              ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-50 border-purple-200 hover:border-purple-300'
+                              : 'text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 border-indigo-200 hover:border-indigo-300'
+                          } border px-2 py-0.5 rounded-md text-[11px] font-semibold flex items-center gap-1 transition shrink-0`}
+                          title={`Add subtask under "${task.name}"`}
+                        >
+                          <span className="font-bold">+</span> {task.level === 0 ? 'Subtask' : task.level === 1 ? 'Sub-subtask' : `Subtask (L${task.level + 1})`}
+                        </button>
 
                         {/* Priority pill */}
                         <span
@@ -1884,10 +1920,10 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                           <div className="flex items-center gap-1.5">
                             <span
                               className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded shadow-2xs ${
-                                task.level === 0 ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white'
+                                task.level === 0 ? 'bg-blue-600 text-white' : task.level === 1 ? 'bg-purple-600 text-white' : 'bg-indigo-600 text-white'
                               }`}
                             >
-                              {task.level === 0 ? '↳ Add Subtask' : '↳↳ Add Sub-subtask'}
+                              {'↳'.repeat(Math.min(task.level + 1, 3))} Add Subtask {task.level > 0 ? `(Level ${task.level + 1})` : ''}
                             </span>
                             <span className="text-xs text-gray-600 truncate max-w-[280px]">
                               under: <strong className="text-gray-900">{task.name}</strong>
@@ -1910,7 +1946,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                               value={subtaskTitle}
                               onChange={(e) => setSubtaskTitle(e.target.value)}
                               className="input-field text-xs h-9 bg-white font-medium"
-                              placeholder={task.level === 0 ? "Subtask title..." : "Sub-subtask title..."}
+                              placeholder="Subtask title..."
                               autoFocus
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
@@ -2112,8 +2148,10 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
           )}
         </div>
 
-        {/* Footer Actions */}
-        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+        </div>
+
+        {/* Pinned Bottom Footer Actions (Always Visible) */}
+        <div className="px-6 py-3.5 border-t border-gray-200 bg-white/95 backdrop-blur-md flex items-center justify-between shrink-0 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] z-20">
           <div className="text-xs text-gray-500">
             {hasTasks ? (
               <span>
@@ -2128,7 +2166,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
             <button type="button" className="btn-ghost text-xs px-4 py-2" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn-primary text-xs font-bold px-5 py-2">
+            <button type="submit" className="btn-primary text-xs font-bold px-5 py-2 shadow-xs">
               {initial ? 'Save Project & Tasks' : 'Create Project with Tasks'}
             </button>
           </div>

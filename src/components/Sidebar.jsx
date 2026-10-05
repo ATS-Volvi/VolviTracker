@@ -50,39 +50,17 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
     Boolean(user && location.pathname === `/employee/${user.id}`);
   const isMasterDataActive = location.pathname.startsWith('/master-data');
   const isFinanceActive = location.pathname.startsWith('/finance') || location.pathname.startsWith('/docs');
+  const isFinanceHubActive = location.pathname === '/finance' && (!location.search || location.search.includes('tab=projects'));
+  const isClientSideActive = location.pathname.startsWith('/finance/client');
+  const isSupplierSideActive = location.pathname.startsWith('/finance/supplier');
 
-  const navItems = [
-    {
-      to: isAdmin ? '/projects' : `/employee/${user?.id}`,
-      label: 'Projects',
-      active: isProjectsActive,
-      icon: (
-        <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-        </svg>
-      )
-    },
-    ...(isAdmin ? [{
-      to: '/finance',
-      label: 'Finance',
-      active: isFinanceActive,
-      icon: (
-        <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      )
-    }] : []),
-    {
-      to: '/master-data',
-      label: 'Master Data',
-      active: isMasterDataActive,
-      icon: (
-        <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-        </svg>
-      )
+  const [financeMenuOpen, setFinanceMenuOpen] = useState(() => location.pathname.startsWith('/finance'));
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/finance')) {
+      setFinanceMenuOpen(true);
     }
-  ];
+  }, [location.pathname]);
 
   const renderSidebarContent = (collapsed = false) => (
     <div className="flex flex-col h-full justify-between bg-white border-r border-gray-200/80 transition-all duration-300">
@@ -152,37 +130,203 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
               Workspace
             </div>
           )}
-          {navItems.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={`group relative flex items-center rounded-xl text-sm font-semibold transition-all duration-150 ${
-                collapsed
-                  ? 'justify-center p-3'
-                  : 'gap-3 px-3.5 py-2.5'
-              } ${
-                item.active
-                  ? 'bg-blue-50 text-blue-600 shadow-xs'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
-            >
-              <span className={item.active ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}>
-                {item.icon}
-              </span>
-              {!collapsed && <span>{item.label}</span>}
-              {!collapsed && item.active && (
-                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600"></span>
-              )}
 
-              {/* Floating Tooltip in Collapsed Mode */}
-              {collapsed && (
-                <div className="absolute left-full ml-3 px-2.5 py-1 bg-gray-900 text-white text-xs font-medium rounded-lg shadow-lg whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
-                  {item.label}
-                  <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+          {/* 1. Projects Link */}
+          <Link
+            to={isAdmin ? '/projects' : `/employee/${user?.id}`}
+            className={`group relative flex items-center rounded-xl text-sm font-semibold transition-all duration-150 ${
+              collapsed
+                ? 'justify-center p-3'
+                : 'gap-3 px-3.5 py-2.5'
+            } ${
+              isProjectsActive
+                ? 'bg-blue-50 text-blue-600 shadow-xs'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }`}
+          >
+            <span className={isProjectsActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}>
+              <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+            </span>
+            {!collapsed && <span>Projects</span>}
+            {!collapsed && isProjectsActive && (
+              <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+            )}
+            {collapsed && (
+              <div className="absolute left-full ml-3 px-2.5 py-1 bg-gray-900 text-white text-xs font-medium rounded-lg shadow-lg whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
+                Projects
+                <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+              </div>
+            )}
+          </Link>
+
+          {/* 2. Finance Section with Dropdown (Admin Only) */}
+          {isAdmin && (
+            collapsed ? (
+              /* Collapsed Flyout */
+              <div className="relative group">
+                <Link
+                  to="/finance"
+                  className={`flex items-center justify-center p-3 rounded-xl text-sm font-semibold transition-all duration-150 ${
+                    isFinanceActive
+                      ? 'bg-blue-50 text-blue-600 shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className={isFinanceActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}>
+                    <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </span>
+                </Link>
+
+                {/* Floating Flyout Menu */}
+                <div className="absolute left-full top-0 ml-3 w-52 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 z-50 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all text-left">
+                  <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Finance Operations
+                  </div>
+                  <div className="py-1 space-y-0.5">
+                    <Link
+                      to="/finance/client"
+                      className={`flex items-center justify-between px-3 py-2 text-xs rounded-xl font-semibold transition ${
+                        isClientSideActive ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[16px] text-blue-600">request_quote</span>
+                        <span>Client Side</span>
+                      </div>
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-blue-100 text-blue-700">AR</span>
+                    </Link>
+                    <Link
+                      to="/finance/supplier"
+                      className={`flex items-center justify-between px-3 py-2 text-xs rounded-xl font-semibold transition ${
+                        isSupplierSideActive ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[16px] text-indigo-600">shopping_cart_checkout</span>
+                        <span>Supplier Side</span>
+                      </div>
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-indigo-100 text-indigo-700">AP</span>
+                    </Link>
+                  </div>
                 </div>
-              )}
-            </Link>
-          ))}
+              </div>
+            ) : (
+              /* Expanded Accordion Dropdown */
+              <div className="space-y-1">
+                <div
+                  className={`group relative flex items-center justify-between rounded-xl text-sm font-semibold transition-all duration-150 px-3.5 py-2.5 ${
+                    isFinanceActive
+                      ? 'bg-blue-50/80 text-blue-600 shadow-2xs'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  <Link
+                    to="/finance"
+                    onClick={() => setFinanceMenuOpen(true)}
+                    className="flex items-center gap-3 flex-1"
+                  >
+                    <span className={isFinanceActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}>
+                      <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </span>
+                    <span>Finance</span>
+                  </Link>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setFinanceMenuOpen(prev => !prev);
+                    }}
+                    className="p-1 rounded-lg hover:bg-blue-100/60 text-gray-400 hover:text-blue-600 transition"
+                    title={financeMenuOpen ? "Collapse finance menu" : "Expand finance menu"}
+                    aria-label="Toggle finance submenu"
+                  >
+                    <svg
+                      className={`w-3.5 h-3.5 transition-transform duration-200 ${financeMenuOpen ? 'rotate-180' : ''}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Dropdown Sub-menu */}
+                {financeMenuOpen && (
+                  <div className="ml-5 pl-3 border-l-2 border-blue-100 space-y-0.5 py-1">
+                    <Link
+                      to="/finance/client"
+                      className={`flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                        isClientSideActive
+                          ? 'bg-blue-50 text-blue-600 font-bold'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className={`w-1.5 h-1.5 rounded-full ${isClientSideActive ? 'bg-blue-600' : 'bg-gray-300'}`}></span>
+                        <span>Client Side</span>
+                      </div>
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-blue-100 text-blue-700">AR</span>
+                    </Link>
+
+                    <Link
+                      to="/finance/supplier"
+                      className={`flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                        isSupplierSideActive
+                          ? 'bg-indigo-50 text-indigo-600 font-bold'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className={`w-1.5 h-1.5 rounded-full ${isSupplierSideActive ? 'bg-indigo-600' : 'bg-gray-300'}`}></span>
+                        <span>Supplier Side</span>
+                      </div>
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-indigo-100 text-indigo-700">AP</span>
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )
+          )}
+
+          {/* 3. Master Data Link */}
+          <Link
+            to="/master-data"
+            className={`group relative flex items-center rounded-xl text-sm font-semibold transition-all duration-150 ${
+              collapsed
+                ? 'justify-center p-3'
+                : 'gap-3 px-3.5 py-2.5'
+            } ${
+              isMasterDataActive
+                ? 'bg-blue-50 text-blue-600 shadow-xs'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }`}
+          >
+            <span className={isMasterDataActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}>
+              <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            </span>
+            {!collapsed && <span>Master Data</span>}
+            {!collapsed && isMasterDataActive && (
+              <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+            )}
+            {collapsed && (
+              <div className="absolute left-full ml-3 px-2.5 py-1 bg-gray-900 text-white text-xs font-medium rounded-lg shadow-lg whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
+                Master Data
+                <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+              </div>
+            )}
+          </Link>
         </div>
       </div>
 

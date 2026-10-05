@@ -6,6 +6,8 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Employee from './pages/Employee';
 import Finance from './pages/finance/Finance';
+import ClientSideFinance from './pages/finance/ClientSideFinance';
+import SupplierSideFinance from './pages/finance/SupplierSideFinance';
 import MasterData from './pages/masterData/MasterData';
 
 const ScrollToTop = () => {
@@ -117,11 +119,19 @@ const App = () => {
               element={<RequireAuth><MasterData /></RequireAuth>}
             />
             <Route
-              path="/finance/*"
-              element={<RequireAdmin><Finance /></RequireAdmin>}
+              path="/finance/client"
+              element={<RequireAdmin><ClientSideFinance /></RequireAdmin>}
+            />
+            <Route
+              path="/finance/supplier"
+              element={<RequireAdmin><SupplierSideFinance /></RequireAdmin>}
             />
             <Route
               path="/finance"
+              element={<RequireAdmin><Finance /></RequireAdmin>}
+            />
+            <Route
+              path="/finance/*"
               element={<RequireAdmin><Finance /></RequireAdmin>}
             />
             <Route

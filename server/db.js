@@ -60,6 +60,8 @@ export const toTaskDto = (row) => row ? ({
   parentId: row.parent_id ? String(row.parent_id) : null,
   status: row.status || 'Not started',
   dueDate: row.due_date || '',
+  createdDate: row.created_date || (row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : ''),
+  createdAt: row.created_at ? new Date(row.created_at).toISOString() : '',
   priority: row.priority || 'Medium',
   description: row.description || '',
   assigneeIds: parseJsonArray(row.assignee_ids),

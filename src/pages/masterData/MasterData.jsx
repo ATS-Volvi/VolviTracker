@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 import { loadFinanceData, saveFinanceData, subscribeFinanceData } from '../finance/financeData';
 import AddEntityModal from './modals/AddEntityModal';
 import UploadVaultModal from './modals/UploadVaultModal';
@@ -9,6 +10,7 @@ import CompanyDossier from './CompanyDossier';
 
 const MasterData = () => {
   const { addToast } = useToast();
+  const { isAdmin } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { companyId } = useParams();
   const navigate = useNavigate();
@@ -18,6 +20,7 @@ const MasterData = () => {
   const [addEntityOpen, setAddEntityOpen] = useState(false);
   const [addEntityCategory, setAddEntityCategory] = useState('Client');
   const [uploadVaultOpen, setUploadVaultOpen] = useState(false);
+  const [entityToDelete, setEntityToDelete] = useState(null);
   
   // Selected entity for 360 inspector
   const [selectedEntityId, setSelectedEntityId] = useState(null);
@@ -238,9 +241,27 @@ const MasterData = () => {
 
   const handleSaveEntity = (newEntity) => {
     const nextDirectory = [newEntity, ...masterDirectory];
+
+    // Syndicate attached documents to global vault if not already present
+    const newVaultItems = (newEntity.attachedDocs || []).map((doc, idx) => ({
+      id: doc.id || `DOC-V-${Date.now()}-${idx}`,
+      title: doc.name,
+      category: doc.category || 'KYC',
+      entityName: newEntity.name,
+      fileType: doc.name.toLowerCase().endsWith('.pdf') ? 'PDF' : doc.name.toLowerCase().match(/\.(png|jpg|jpeg)$/) ? 'IMG' : 'DOC',
+      size: doc.size || '1.2 MB',
+      updatedDate: doc.uploadDate || new Date().toISOString().split('T')[0],
+      expiryDate: (doc.expiry || '').replace('Valid till ', '') || '2027-12-31',
+      hash: doc.hash || `sha256:${Math.random().toString(36).substring(2, 9)}...`,
+      tags: ['KYC', newEntity.name, newEntity.category, 'Verified'],
+      url: doc.fileUrl || '#'
+    }));
+
+    const nextVault = [...newVaultItems, ...vaultDocs];
     const nextData = {
       ...data,
-      masterDirectory: nextDirectory
+      masterDirectory: nextDirectory,
+      vault: nextVault
     };
     setData(nextData);
     saveFinanceData(nextData);
@@ -407,12 +428,43 @@ const MasterData = () => {
     saveFinanceData(nextData);
   };
 
+  const handleDeleteCompany = (entityId, entityName) => {
+    if (!isAdmin) {
+      addToast('Unauthorized: Only administrators have permission to delete master entities.', 'error');
+      return;
+    }
+    const targetEntity = masterDirectory.find(e => e.id === entityId);
+    const targetName = entityName || targetEntity?.name || 'Entity';
+
+    const nextDirectory = masterDirectory.filter(e => e.id !== entityId);
+    const nextVault = vaultDocs.filter(d => (d.entityName || '').toLowerCase() !== targetName.toLowerCase());
+
+    const nextData = {
+      ...data,
+      masterDirectory: nextDirectory,
+      vault: nextVault
+    };
+    setData(nextData);
+    saveFinanceData(nextData);
+
+    if (selectedEntityId === entityId) {
+      setSelectedEntityId(null);
+    }
+    if (viewingCompanyId === entityId) {
+      setViewingCompanyId(null);
+      navigate(activeSegment === 'SUPPLIERS' ? '/master-data?tab=suppliers' : '/master-data');
+    }
+
+    addToast(`"${targetName}" has been permanently removed from Master Directory.`, 'info');
+  };
+
   // Render dedicated Company Dossier page if a company is selected for dossier view
   if (companyForDossier) {
     return (
       <CompanyDossier
         company={companyForDossier}
         onUpdateCompany={handleUpdateCompany}
+        onDeleteCompany={handleDeleteCompany}
         onBack={handleCloseCompanyDossier}
         addToast={addToast}
         allVaultDocs={vaultDocs}
@@ -849,6 +901,19 @@ const MasterData = () => {
                           {/* 6. Actions */}
                           <td className="py-3.5 px-4 text-right">
                             <div className="flex items-center justify-end gap-1">
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEntityToDelete(ent);
+                                  }}
+                                  className="p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                                  title={`Admin only: Delete ${ent.name} from Master Directory`}
+                                >
+                                  <span className="material-symbols-outlined text-[18px]">delete</span>
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -973,17 +1038,62 @@ const MasterData = () => {
                     <>
                       {/* Tax & Credentials */}
                       <div className="space-y-2">
-                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                          Tax & Regulatory Credentials
+                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                          <span>Tax & Regulatory Credentials</span>
+                          {selectedEntity.amlScreened && (
+                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                              <span className="material-symbols-outlined text-[11px]">verified</span>
+                              <span>AML Cleared</span>
+                            </span>
+                          )}
                         </div>
                         <div className="p-3 rounded-xl bg-gray-50 border border-gray-100 space-y-2">
                           <div className="flex items-center justify-between">
-                            <span className="text-gray-500">Tax ID / TRN / EIN:</span>
+                            <span className="text-gray-500">Tax ID / Sovereign ID:</span>
                             <span className="font-mono font-bold text-gray-900 flex items-center gap-1">
                               {selectedEntity.taxId}
                               <span className="material-symbols-outlined text-[13px] text-emerald-600">check_circle</span>
                             </span>
                           </div>
+                          {selectedEntity.globalEntityId && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500 flex items-center gap-1">
+                                <span className="material-symbols-outlined text-[13px] text-indigo-600">corporate_fare</span>
+                                <span>Global Entity ID:</span>
+                              </span>
+                              <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100 text-[11px]">
+                                {selectedEntity.globalEntityId}
+                              </span>
+                            </div>
+                          )}
+                          {selectedEntity.taxAuthority && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500">Issuing Authority:</span>
+                              <span className="font-semibold text-gray-800 text-[11px] truncate max-w-[170px]" title={selectedEntity.taxAuthority}>
+                                {selectedEntity.taxAuthority}
+                              </span>
+                            </div>
+                          )}
+                          {selectedEntity.registrationNumber && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500">Reg / CR / CIN:</span>
+                              <span className="font-mono font-semibold text-gray-800">{selectedEntity.registrationNumber}</span>
+                            </div>
+                          )}
+                          {selectedEntity.kycStatus && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500">KYC Standing:</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                selectedEntity.kycStatus.toLowerCase().includes('verified')
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : selectedEntity.kycStatus.toLowerCase().includes('pending')
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {selectedEntity.kycStatus}
+                              </span>
+                            </div>
+                          )}
                           {selectedEntity.department && (
                             <div className="flex items-center justify-between">
                               <span className="text-gray-500">Department:</span>
@@ -1165,6 +1275,18 @@ const MasterData = () => {
                     <span className="material-symbols-outlined text-[16px]">upload_file</span>
                     <span>Attach</span>
                   </button>
+
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setEntityToDelete(selectedEntity)}
+                      className="py-2 px-3 rounded-xl bg-rose-50 border border-rose-200 hover:bg-rose-100 font-bold text-rose-700 flex items-center justify-center gap-1 transition text-xs active:scale-95"
+                      title="Admin only: Delete Entity"
+                    >
+                      <span className="material-symbols-outlined text-[16px] text-rose-600">delete_forever</span>
+                      <span>Delete</span>
+                    </button>
+                  )}
                 </div>
               </>
             ) : (
@@ -1419,6 +1541,55 @@ const MasterData = () => {
         onUpload={handleUploadVaultDoc}
         entities={masterDirectory}
       />
+
+      {/* CONFIRM DELETE ENTITY MODAL (ADMIN ONLY) */}
+      {entityToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fade-in text-left">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-rose-100 animate-slide-up">
+            <div className="p-6 space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-2xs">
+                <span className="material-symbols-outlined text-[28px]">warning</span>
+              </div>
+              <div className="text-center space-y-1.5">
+                <h3 className="text-base font-bold text-gray-900 font-display">
+                  Delete {entityToDelete.category || 'Entity'} from Master Directory?
+                </h3>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Are you sure you want to permanently delete <strong className="text-gray-900">{entityToDelete.name}</strong> ({entityToDelete.id})? All associated dossier documents, notes, regulatory credentials, and records will be purged.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-100 text-[11px] text-rose-800 flex items-start gap-2">
+                <span className="material-symbols-outlined text-rose-600 text-[16px] shrink-0 mt-0.5">admin_panel_settings</span>
+                <span>
+                  <strong>Administrator Action:</strong> This action cannot be undone. Only users with the Admin role can delete entities from the Master Directory.
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEntityToDelete(null)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleDeleteCompany(entityToDelete.id, entityToDelete.name);
+                    setEntityToDelete(null);
+                  }}
+                  className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md transition flex items-center gap-1.5 active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-[17px]">delete_forever</span>
+                  <span>Permanently Delete</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

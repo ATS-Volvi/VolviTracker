@@ -542,11 +542,12 @@ export const Dashboard = () => {
 
           {/* Secondary Dashboard Modules (Tasks, Meetings, Employees) */}
           <div className="pt-6 border-t border-gray-200/70 space-y-6 w-full">
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 w-full">
+            <div className="w-full">
               <TasksTab tasks={allTasks} heading="Tasks Tracker" />
-              <div id="meetings-calendar-section" className="scroll-mt-24">
-                <MeetingCalendar meetings={allMeetings} />
-              </div>
+            </div>
+
+            <div id="meetings-calendar-section" className="scroll-mt-24 w-full">
+              <MeetingCalendar meetings={allMeetings} />
             </div>
 
             {isAdmin && (

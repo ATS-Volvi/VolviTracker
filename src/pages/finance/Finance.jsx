@@ -4,6 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { loadFinanceData, saveFinanceData, subscribeFinanceData } from './financeData';
 
+import FinanceNavTabs from './FinanceNavTabs';
+
 // Tab Components
 import FinanceProjects from './tabs/FinanceProjects';
 import FinanceClientPOs from './tabs/FinanceClientPOs';
@@ -45,24 +47,20 @@ export const Finance = () => {
     return unsub;
   }, []);
 
-  // Canonical tabs according to flow of data:
-  // 1. 'projects': Projects (Central Hub)
-  // 2. 'client-workflow': Client-Side Workflow (PO -> Invoice -> Payment)
-  // 3. 'supplier-workflow': Supplier-Side Workflow (PO -> Invoice -> Payment)
-  // 4. 'relationships': Key Data Relationships (1 -> * Entity Graph)
-  // 5. 'overview': Overview & Rollup (Treasury & Cash Velocity)
   const rawTab = searchParams.get('tab') || 'projects';
   
-  // If someone accessed ?tab=vault, redirect them to the dedicated Master Data page
+  // Handle redirects for dedicated separate pages and vault
   useEffect(() => {
     if (rawTab === 'vault') {
       navigate('/master-data', { replace: true });
+    } else if (rawTab === 'client-pos' || rawTab === 'client-workflow') {
+      navigate('/finance/client', { replace: true });
+    } else if (rawTab === 'supplier-pos' || rawTab === 'supplier-workflow') {
+      navigate('/finance/supplier', { replace: true });
     }
   }, [rawTab, navigate]);
 
   const activeTab = 
-    rawTab === 'client-pos' ? 'client-workflow' :
-    rawTab === 'supplier-pos' ? 'supplier-workflow' :
     rawTab === 'simulation' ? 'relationships' :
     rawTab === 'vault' ? 'projects' : rawTab;
 
@@ -328,29 +326,8 @@ export const Finance = () => {
         </div>
       </div>
 
-      {/* Main Suite Tabs Navigation (Ordered strictly by Flow of Data & Key Data Relationships) */}
-      <div className="flex items-center gap-1 sm:gap-2 border-b border-gray-200 overflow-x-auto pb-px">
-        {[
-          { id: 'projects', label: '1. Projects (Central Hub)', icon: 'account_tree', badge: 'Hub' },
-          { id: 'client-workflow', label: '2. Client-Side Workflow', icon: 'request_quote', badge: 'Proposal to Payment' },
-          { id: 'supplier-workflow', label: '3. Supplier-Side Workflow', icon: 'shopping_cart_checkout', badge: 'PO to Payment' },
-          { id: 'relationships', label: '4. Key Data Relationships', icon: 'hub', badge: '1 → * Graph' },
-          { id: 'overview', label: '5. Executive Rollup', icon: 'dashboard', badge: 'Treasury' },
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
-              activeTab === tab.id
-                ? 'border-blue-600 text-blue-600 bg-blue-50/50 rounded-t-xl'
-                : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50/50 rounded-t-xl'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
-            <span>{tab.label}</span>
-          </button>
-        ))}
-      </div>
+      {/* Main Suite Tabs Navigation */}
+      <FinanceNavTabs activeTab={activeTab} />
 
       {/* Render Active Tab strictly following Data Flow */}
       <div>
