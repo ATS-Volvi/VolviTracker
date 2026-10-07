@@ -291,11 +291,23 @@ const SubtaskTreeRow = ({
   );
 };
 
-export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
+export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: projectsProp }) => {
   const isModalOpen = isOpen !== undefined ? isOpen : open;
-  const { employees, projects = [], tasks = [], addTask, updateTask, removeTask } = useData();
-  const { user, isAdmin } = useAuth();
+  const { employees, projects: dataProjects = [], tasks = [], addTask, updateTask, removeTask } = useData();
+  const { user, isAdmin, isProjectManager } = useAuth();
+  const canAssignAnyone = Boolean(isAdmin || isProjectManager);
   const { addToast } = useToast();
+
+  const accessibleProjects = useMemo(() => {
+    if (projectsProp && Array.isArray(projectsProp)) return projectsProp;
+    if (isAdmin) return dataProjects;
+    if (isProjectManager) return dataProjects.filter(p => String(p.createdBy || '') === String(user?.id));
+    return dataProjects.filter(p =>
+      (Array.isArray(p.assigneeIds) && p.assigneeIds.some(aid => String(aid) === String(user?.id))) ||
+      String(p.assigneeId) === String(user?.id)
+    );
+  }, [projectsProp, dataProjects, isAdmin, isProjectManager, user?.id]);
+
   const [form, setForm] = useState({
     name: '',
     projectId: '',
@@ -394,7 +406,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
         parentId: initial.parentId || ''
       });
     } else {
-      const defaultAssignees = user?.id ? [user.id] : (employees[0] ? [employees[0].id] : []);
+      const defaultAssignees = !canAssignAnyone && user?.id ? [user.id] : [];
       setForm({
         name: '',
         projectId: '',
@@ -498,7 +510,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
       ? parentObj.assigneeIds
       : (parentObj?.assigneeId ? [parentObj.assigneeId] : (form.assigneeIds || []));
 
-    const effectiveAssignees = (!isAdmin && user?.id)
+    const effectiveAssignees = (!canAssignAnyone && user?.id)
       ? [user.id]
       : (parentAssignees.length > 0 ? [...parentAssignees] : (user?.id ? [user.id] : []));
 
@@ -641,7 +653,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
             <label className="mb-1 block text-xs font-semibold text-gray-700">Project (Optional)</label>
             <select className="input-field text-sm bg-white" value={form.projectId} onChange={set('projectId')}>
               <option value="">Select project (Optional)</option>
-              {projects.map(p => (
+              {accessibleProjects.map(p => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
@@ -703,42 +715,75 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null }) => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2 border border-gray-200 rounded-xl bg-gray-50/60 custom-scrollbar">
-              {employees.map(emp => {
-                const isSelected = form.assigneeIds.includes(emp.id);
-                return (
-                  <div
-                    key={emp.id}
-                    onClick={() => toggleAssignee(emp.id)}
-                    className={`flex items-center gap-2.5 p-1.5 rounded-lg cursor-pointer border transition text-xs select-none ${
-                      isSelected
-                        ? 'bg-blue-50 border-blue-400 text-blue-900 shadow-2xs font-semibold'
-                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        toggleAssignee(emp.id);
-                      }}
-                      className="h-3.5 w-3.5 accent-blue-600 rounded cursor-pointer"
-                    />
-                    <img
-                      src={emp.avatar}
-                      alt={emp.fullName}
-                      className="w-5 h-5 rounded-full object-cover shrink-0"
-                      onError={(ev) => {
-                        ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.fullName)}&background=0070F3&color=fff`;
-                      }}
-                    />
-                    <div className="truncate flex-1">
-                      <div className="truncate">{emp.fullName}</div>
-                      <div className="text-[10px] text-gray-400 font-normal truncate">{emp.role || emp.email}</div>
+              {(() => {
+                const selectedProj = accessibleProjects.find(p => p.id === form.projectId);
+                const projAssigneeIds = Array.isArray(selectedProj?.assigneeIds)
+                  ? selectedProj.assigneeIds
+                  : (selectedProj?.assigneeId ? [selectedProj.assigneeId] : []);
+
+                const sorted = [...employees].sort((a, b) => {
+                  const aTask = form.assigneeIds.includes(a.id);
+                  const bTask = form.assigneeIds.includes(b.id);
+                  const aProj = projAssigneeIds.includes(a.id);
+                  const bProj = projAssigneeIds.includes(b.id);
+
+                  const aChosen = aTask || aProj;
+                  const bChosen = bTask || bProj;
+                  if (aChosen && !bChosen) return -1;
+                  if (!aChosen && bChosen) return 1;
+
+                  if (aTask && !bTask) return -1;
+                  if (!aTask && bTask) return 1;
+
+                  return (a.fullName || '').localeCompare(b.fullName || '');
+                });
+
+                return sorted.map(emp => {
+                  const isSelected = form.assigneeIds.includes(emp.id);
+                  const isProjectMember = projAssigneeIds.includes(emp.id);
+
+                  return (
+                    <div
+                      key={emp.id}
+                      onClick={() => toggleAssignee(emp.id)}
+                      className={`flex items-center gap-2.5 p-1.5 rounded-lg cursor-pointer border transition text-xs select-none ${
+                        isSelected
+                          ? 'bg-blue-50 border-blue-400 text-blue-900 shadow-2xs font-semibold'
+                          : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          toggleAssignee(emp.id);
+                        }}
+                        className="h-3.5 w-3.5 accent-blue-600 rounded cursor-pointer"
+                      />
+                      <img
+                        src={emp.avatar}
+                        alt={emp.fullName}
+                        className="w-5 h-5 rounded-full object-cover shrink-0"
+                        onError={(ev) => {
+                          ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.fullName)}&background=0070F3&color=fff`;
+                        }}
+                      />
+                      <div className="truncate flex-1">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="truncate">{emp.fullName}</span>
+                          {isProjectMember && (
+                            <span className="text-[9px] font-medium text-purple-700 bg-purple-50 px-1 py-0.2 rounded border border-purple-200 shrink-0">
+                              Project Team
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-gray-400 font-normal truncate">{emp.role || emp.email}</div>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           </div>
 

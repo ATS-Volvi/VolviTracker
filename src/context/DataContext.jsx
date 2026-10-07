@@ -196,15 +196,43 @@ export const DataProvider = ({ children }) => {
     });
 
     // Auto-cascade parent assignees to all subtasks & sub-subtasks
-    const initialTasks = cascadeParentAssignees(Array.isArray(loaded.tasks) ? loaded.tasks : seedData.tasks);
-    saveLocalMultiple({ tasks: initialTasks });
+    const rawLoadedTasks = Array.isArray(loaded.tasks) && loaded.tasks.length > 0 ? loaded.tasks : seedData.tasks;
+    const initialTasks = cascadeParentAssignees(rawLoadedTasks);
+
+    // Merge seed employees (e.g. Rachel Vance) if not present
+    const loadedEmployees = Array.isArray(loaded.employees) ? [...loaded.employees] : [...seedData.employees];
+    (seedData.employees || []).forEach(se => {
+      if (!loadedEmployees.some(le => le.id === se.id || (le.email && le.email.toLowerCase() === se.email.toLowerCase()))) {
+        loadedEmployees.push(se);
+      }
+    });
+
+    // Merge seed projects and ensure createdBy field
+    const rawProjects = Array.isArray(loaded.projects) && loaded.projects.length > 0 ? loaded.projects : seedData.projects;
+    const loadedProjects = rawProjects.map(p => ({
+      ...p,
+      createdBy: p.createdBy !== undefined && p.createdBy !== '' ? p.createdBy : (p.id === 'p4' ? '5' : '1')
+    }));
+    (seedData.projects || []).forEach(sp => {
+      if (!loadedProjects.some(lp => lp.id === sp.id)) {
+        loadedProjects.push({ ...sp, createdBy: sp.createdBy || (sp.id === 'p4' ? '5' : '1') });
+      }
+    });
+
+    (seedData.tasks || []).forEach(st => {
+      if (!initialTasks.some(lt => lt.id === st.id)) {
+        initialTasks.push(st);
+      }
+    });
+
+    saveLocalMultiple({ employees: loadedEmployees, projects: loadedProjects, tasks: initialTasks });
 
     setData({
-      employees: Array.isArray(loaded.employees) ? loaded.employees : seedData.employees,
-      projects: Array.isArray(loaded.projects) ? loaded.projects : seedData.projects,
+      employees: loadedEmployees,
+      projects: loadedProjects,
       tasks: initialTasks,
-      meetings: Array.isArray(loaded.meetings) ? loaded.meetings : seedData.meetings,
-      docs: Array.isArray(loaded.docs) ? loaded.docs : seedDocs
+      meetings: Array.isArray(loaded.meetings) && loaded.meetings.length > 0 ? loaded.meetings : seedData.meetings,
+      docs: Array.isArray(loaded.docs) && loaded.docs.length > 0 ? loaded.docs : seedDocs
     });
 
     // In local dev: stay strictly on local storage. In production on Vercel: hydrate & poll Neon DB.
@@ -264,6 +292,7 @@ export const DataProvider = ({ children }) => {
     const item = {
       ...proj,
       id: proj.id || generateId(),
+      createdBy: proj.createdBy !== undefined && proj.createdBy !== '' ? proj.createdBy : '',
       progress: finalProg,
       status: finalStatus,
       startValue: 0,
@@ -284,7 +313,11 @@ export const DataProvider = ({ children }) => {
     let nextUpdatedItem = null;
     const updated = data.projects.map(p => {
       if (p.id === id) {
-        const merged = { ...p, ...updates };
+        const merged = {
+          ...p,
+          ...updates,
+          createdBy: updates.createdBy !== undefined ? updates.createdBy : (p.createdBy || '')
+        };
         if (updates.progress !== undefined) {
           const pVal = Number(updates.progress);
           if (pVal === 0) merged.status = 'Not started';
@@ -335,6 +368,7 @@ export const DataProvider = ({ children }) => {
     const projectItem = {
       ...proj,
       id: projectId,
+      createdBy: proj.createdBy !== undefined && proj.createdBy !== '' ? proj.createdBy : '',
       progress: computedProgress,
       status: computedProgress === 0
         ? 'Not started'
@@ -388,6 +422,7 @@ export const DataProvider = ({ children }) => {
         return {
           ...p,
           ...projUpdates,
+          createdBy: projUpdates.createdBy !== undefined ? projUpdates.createdBy : (p.createdBy || ''),
           progress: computedProgress,
           status: finalStatus,
           startValue: 0,

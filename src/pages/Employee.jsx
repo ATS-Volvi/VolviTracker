@@ -21,7 +21,7 @@ export const Employee = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { getEmployee, employees = [], projects = [], tasks, meetings, updateEmployee, removeEmployee } = useData();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isProjectManager } = useAuth();
   const { addToast } = useToast();
   const [comment, setComment] = useState('');
   const [props, setProps] = useState([]);
@@ -31,8 +31,8 @@ export const Employee = () => {
 
   const isOwnProfile = user && String(user.id) === String(id);
 
-  // For Admin users, Planner and Personal pages are combined into the Projects page
-  if (isAdmin && isOwnProfile) {
+  // For Admin and Project Manager users, Planner and Personal pages are combined into the Projects page
+  if ((isAdmin || isProjectManager) && isOwnProfile) {
     return <Navigate to="/projects?tab=personal" replace />;
   }
 
@@ -98,9 +98,9 @@ export const Employee = () => {
           Employee not found.{' '}
           <button
             className="text-blue-600 hover:underline"
-            onClick={() => navigate(isAdmin ? '/projects' : `/employee/${user?.id}`)}
+            onClick={() => navigate((isAdmin || isProjectManager) ? '/projects' : `/employee/${user?.id}`)}
           >
-            {isAdmin ? 'Back to Projects' : 'Back to my profile'}
+            {(isAdmin || isProjectManager) ? 'Back to Projects' : 'Back to my profile'}
           </button>
         </div>
       </div>

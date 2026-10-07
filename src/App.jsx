@@ -54,8 +54,27 @@ const RequireAdmin = ({ children }) => {
   return children;
 };
 
+const RequireProjectAccess = ({ children }) => {
+  const { user, isAdmin, isProjectManager, canManageProjects, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  const hasAccess = Boolean(isAdmin || isProjectManager || canManageProjects);
+  if (!hasAccess) {
+    return <Navigate to={user ? `/employee/${user.id}` : '/login'} replace />;
+  }
+
+  return children;
+};
+
 const App = () => {
-  const { user, isAdmin, loading } = useAuth();
+  const { user, isAdmin, isProjectManager, canManageProjects, loading } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
       return localStorage.getItem('volvitech_sidebar_collapsed') === 'true';
@@ -82,8 +101,9 @@ const App = () => {
     );
   }
 
+  const hasProjectAccess = Boolean(isAdmin || isProjectManager || canManageProjects);
   const defaultHome = user
-    ? (isAdmin ? '/projects' : `/employee/${user.id}`)
+    ? (hasProjectAccess ? '/projects' : `/employee/${user.id}`)
     : '/login';
 
   return (
@@ -98,11 +118,9 @@ const App = () => {
               path="/projects"
               element={
                 <RequireAuth>
-                  {isAdmin ? (
+                  <RequireProjectAccess>
                     <Dashboard />
-                  ) : (
-                    <Navigate to={user ? `/employee/${user.id}` : '/login'} replace />
-                  )}
+                  </RequireProjectAccess>
                 </RequireAuth>
               }
             />

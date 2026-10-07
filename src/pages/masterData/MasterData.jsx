@@ -777,8 +777,6 @@ const MasterData = () => {
                   <tr>
                     <th className="py-3 px-4">Legal Entity / Company Name</th>
                     <th className="py-3 px-4">Country & Sovereign Jurisdiction</th>
-                    <th className="py-3 px-4">Department</th>
-                    <th className="py-3 px-4">Company Mail</th>
                     <th className="py-3 px-4">Designated Key Stakeholders</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
@@ -786,7 +784,7 @@ const MasterData = () => {
                 <tbody className="divide-y divide-gray-100 font-medium">
                   {filteredEntities.length === 0 ? (
                     <tr>
-                      <td colSpan="6" className="py-12 text-center text-gray-400">
+                      <td colSpan="4" className="py-12 text-center text-gray-400">
                         <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">folder_off</span>
                         <p className="text-sm font-semibold text-gray-700">No {activeSegment === 'SUPPLIERS' ? 'suppliers' : 'clients'} found</p>
                         <p className="text-xs text-gray-400 mt-1">Try clearing filters or register a new {activeSegment === 'SUPPLIERS' ? 'supplier' : 'client'}</p>
@@ -800,8 +798,6 @@ const MasterData = () => {
                       const contactRole = primaryStakeholder?.role || 'Primary Contact';
                       const contactPhone = ent.contactPhone || primaryStakeholder?.phone || '';
                       const contactEmail = ent.contactEmail || primaryStakeholder?.email || '';
-                      const compMail = ent.companyMail || contactEmail || `contact@${ent.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`;
-                      const dept = ent.department || (ent.category === 'Client' ? 'Procurement & Strategic Sourcing' : 'Platform & Technical Operations');
 
                       return (
                         <tr
@@ -851,28 +847,7 @@ const MasterData = () => {
                             </div>
                           </td>
 
-                          {/* 3. Department */}
-                          <td className="py-3.5 px-4">
-                            <div className="font-semibold text-gray-900">
-                              {dept}
-                            </div>
-                            <div className="text-[10px] text-emerald-600 font-medium mt-0.5 flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                              <span>Active Department</span>
-                            </div>
-                          </td>
 
-                          {/* 4. Company Mail */}
-                          <td className="py-3.5 px-4 font-mono text-[11px]">
-                            <a
-                              href={`mailto:${compMail}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1.5 font-medium font-sans text-xs"
-                            >
-                              <span className="material-symbols-outlined text-[15px] text-gray-400">mail</span>
-                              <span>{compMail}</span>
-                            </a>
-                          </td>
 
                           {/* 5. Designated Key Stakeholders */}
                           <td className="py-3.5 px-4">
@@ -1094,20 +1069,7 @@ const MasterData = () => {
                               </span>
                             </div>
                           )}
-                          {selectedEntity.department && (
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-500">Department:</span>
-                              <span className="font-semibold text-gray-900">{selectedEntity.department}</span>
-                            </div>
-                          )}
-                          {selectedEntity.companyMail && (
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-500">Company Mail:</span>
-                              <a href={`mailto:${selectedEntity.companyMail}`} className="text-blue-600 hover:underline font-medium">
-                                {selectedEntity.companyMail}
-                              </a>
-                            </div>
-                          )}
+
                           <div className="flex items-center justify-between">
                             <span className="text-gray-500">Regulatory Status:</span>
                             <span className="font-medium text-gray-800">{selectedEntity.taxDescription || 'Active Verified'}</span>

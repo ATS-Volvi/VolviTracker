@@ -124,33 +124,6 @@ export const AuthProvider = ({ children }) => {
     return { success: true, user: sessionUser };
   };
 
-  // Quick 1-click login for demo / dev convenience
-  const quickLogin = (emp) => {
-    if (!emp) return;
-    const isEmpAdmin = emp.isAdmin !== undefined
-      ? Boolean(emp.isAdmin)
-      : (emp.role || '').toLowerCase() === 'admin';
-
-    const sessionUser = {
-      id: emp.id,
-      fullName: emp.fullName,
-      email: emp.email,
-      role: emp.role || 'Member',
-      avatar: emp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.fullName)}&background=0070F3&color=fff`,
-      isAdmin: isEmpAdmin
-    };
-
-    const newSession = {
-      token: 'volvi_demo_' + Math.random().toString(36).substring(2) + Date.now().toString(36),
-      user: sessionUser,
-      rememberMe: true,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000
-    };
-
-    persistSession(newSession, true);
-  };
-
   // Sign up new user
   const signup = async ({ fullName, email, password, role, avatar }) => {
     const cleanName = (fullName || '').trim();
@@ -322,16 +295,19 @@ export const AuthProvider = ({ children }) => {
   }, [user, updateEmployee]);
 
   const isAdmin = Boolean(user && (user.isAdmin === true || (user.role || '').toLowerCase() === 'admin'));
+  const isProjectManager = Boolean(user && !isAdmin && (user.role || '').toLowerCase().trim() === 'project manager');
+  const canManageProjects = Boolean(isAdmin || isProjectManager);
 
   return (
     <AuthContext.Provider
       value={{
         user,
         isAdmin,
+        isProjectManager,
+        canManageProjects,
         session,
         loading,
         login,
-        quickLogin,
         signup,
         resetPassword,
         changePassword,

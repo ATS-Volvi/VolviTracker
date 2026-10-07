@@ -44,7 +44,7 @@ const ALL_STATUSES = ['Not started', 'In progress', 'Done'];
 
 export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
   const { employees, addProject, updateProject, removeProject, getEmployee, addTask, tasks } = useData();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isProjectManager } = useAuth();
   const { addToast } = useToast();
 
   // Active View: 'table', 'board', 'timeline', 'cards'
@@ -165,16 +165,19 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
   const handleInlineSubmit = (e) => {
     if (e) e.preventDefault();
     if (!inlineNewName.trim()) return;
+    const isUserPM = Boolean(isProjectManager || (user?.role || '').toLowerCase().includes('project manager'));
+    const pmAssignees = (isUserPM && user?.id) ? [user.id] : [];
     addProject({
       name: inlineNewName.trim(),
       status: 'Not started',
-      assigneeIds: [],
-      assigneeId: '',
+      assigneeIds: pmAssignees,
+      assigneeId: pmAssignees[0] || '',
       startDate: new Date().toISOString().slice(0, 10),
       endDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
       startValue: 0,
       endValue: 100,
-      progress: 0
+      progress: 0,
+      createdBy: user?.id || ''
     });
     addToast(`Project "${inlineNewName.trim()}" created!`, 'success');
     setInlineNewName('');
@@ -260,7 +263,8 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
     addProject({
       ...project,
       name: `${project.name} (Copy)`,
-      id: undefined
+      id: undefined,
+      createdBy: user?.id || project.createdBy || ''
     });
     addToast(`Duplicated "${project.name}"`, 'success');
   };
@@ -290,14 +294,16 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
   const applyAiTasks = () => {
     if (!aiGeneratedTasks.length) return;
     const assignees = getProjectAssignees(aiSelectedProject || {});
-    const defaultAssigneeId = (!isAdmin && user?.id)
+    const canAssignAnyone = Boolean(isAdmin || isProjectManager);
+    const defaultAssigneeId = (!canAssignAnyone && user?.id)
       ? user.id
-      : (assignees[0]?.id || employees[0]?.id || '');
+      : (assignees[0]?.id || '');
     const defaultAssigneeIds = defaultAssigneeId ? [defaultAssigneeId] : [];
 
     aiGeneratedTasks.forEach(task => {
       addTask({
         name: task.name,
+        projectId: aiSelectedProject?.id || '',
         assigneeId: defaultAssigneeId,
         assigneeIds: defaultAssigneeIds,
         status: 'Not started',
@@ -980,16 +986,19 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                   </div>
                   <button
                     onClick={() => {
+                      const isUserPM = Boolean(isProjectManager || (user?.role || '').toLowerCase().includes('project manager'));
+                      const pmAssignees = (isUserPM && user?.id) ? [user.id] : [];
                       addProject({
                         name: `New ${status} Project`,
                         status: status,
-                        assigneeIds: [],
-                        assigneeId: '',
+                        assigneeIds: pmAssignees,
+                        assigneeId: pmAssignees[0] || '',
                         startDate: new Date().toISOString().slice(0, 10),
                         endDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
                         startValue: 0,
                         endValue: 100,
-                        progress: status === 'Done' ? 1 : 0
+                        progress: status === 'Done' ? 1 : 0,
+                        createdBy: user?.id || ''
                       });
                       addToast(`Added project to ${status}`, 'success');
                     }}

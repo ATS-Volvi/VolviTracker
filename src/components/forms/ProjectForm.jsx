@@ -19,7 +19,8 @@ const getLocalDateString = (d = new Date()) => {
 
 export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   const { employees, addProjectWithTasks, updateProjectWithTasks, getProjectTasks } = useData();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isProjectManager } = useAuth();
+  const canAssignAnyone = Boolean(isAdmin || isProjectManager);
   const { addToast } = useToast();
 
   // Load registered master entities (Clients & Suppliers)
@@ -132,8 +133,8 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
         initialAssigneeIds = [initial.assigneeId];
       }
 
-      // Non-admins can only assign projects to themselves
-      if (!isAdmin && user?.id) {
+      // Non-admins / non-PMs can only assign projects to themselves
+      if (!canAssignAnyone && user?.id) {
         initialAssigneeIds = initialAssigneeIds.includes(user.id) ? [user.id] : [user.id];
       }
 
@@ -204,10 +205,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       });
 
       setNewTaskDeadline(today);
-      const defaultNewAssignees = (!isAdmin && user?.id)
-        ? [user.id]
-        : (initialAssigneeIds.length > 0 ? [initialAssigneeIds[0]] : (employees[0] ? [employees[0].id] : []));
-      setNewTaskAssigneeIds(defaultNewAssignees);
+      setNewTaskAssigneeIds([]);
       setEditingTaskId(null);
     } else {
       const today = getLocalDateString();
@@ -215,7 +213,14 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       twoWeeksLaterDate.setDate(twoWeeksLaterDate.getDate() + 14);
       const twoWeeksLater = getLocalDateString(twoWeeksLaterDate);
 
-      const defaultProjectAssignees = (!isAdmin && user?.id) ? [user.id] : [];
+      const isUserProjectManager = Boolean(
+        isProjectManager ||
+        (user?.role || '').toLowerCase().trim() === 'project manager' ||
+        (user?.role || '').toLowerCase().includes('project manager')
+      );
+      const defaultProjectAssignees = (isUserProjectManager && user?.id)
+        ? [user.id]
+        : ((!canAssignAnyone && user?.id) ? [user.id] : []);
 
       setForm({
         name: '',
@@ -241,14 +246,11 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       setProjectTasks([]);
       setNewTaskTitle('');
       setNewTaskDeadline(today);
-      const defaultNewAssignees = (!isAdmin && user?.id)
-        ? [user.id]
-        : (employees[0] ? [employees[0].id] : []);
-      setNewTaskAssigneeIds(defaultNewAssignees);
+      setNewTaskAssigneeIds([]);
       setNewTaskPriority('Medium');
       setEditingTaskId(null);
     }
-  }, [initial, isOpen, employees, isAdmin, user?.id]);
+  }, [initial, isOpen, employees, isAdmin, isProjectManager, canAssignAnyone, user?.id]);
 
   // Recalculate progress whenever projectTasks change
   const totalTasks = projectTasks.length;
@@ -373,15 +375,35 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
     return [];
   };
 
+  // Sort employees so chosen team members (project assignees or selected task assignees) come to the top
+  const sortEmployeesWithChosenFirst = (empList = [], selectedIds = [], projectAssigneeIds = []) => {
+    return [...empList].sort((a, b) => {
+      const aProj = projectAssigneeIds.includes(a.id);
+      const bProj = projectAssigneeIds.includes(b.id);
+      const aTask = selectedIds.includes(a.id);
+      const bTask = selectedIds.includes(b.id);
+
+      const aChosen = aProj || aTask;
+      const bChosen = bProj || bTask;
+
+      if (aChosen && !bChosen) return -1;
+      if (!aChosen && bChosen) return 1;
+
+      // Within chosen, prioritize those explicitly selected for the current task
+      if (aTask && !bTask) return -1;
+      if (!aTask && bTask) return 1;
+
+      return (a.fullName || '').localeCompare(b.fullName || '');
+    });
+  };
+
   const handleAddTask = (e) => {
     if (e) e.preventDefault();
     const title = newTaskTitle.trim();
     if (!title) return;
 
-    const assignedIds = newTaskAssigneeIds.length > 0
-      ? [...newTaskAssigneeIds]
-      : (form.assigneeIds.length > 0 ? [form.assigneeIds[0]] : []);
-    const primaryAssigneeId = assignedIds[0] || (employees[0]?.id || '');
+    const assignedIds = [...newTaskAssigneeIds];
+    const primaryAssigneeId = assignedIds[0] || '';
 
     const taskItem = {
       id: 'temp_' + Date.now() + Math.random().toString(36).substr(2, 4),
@@ -398,6 +420,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
     setProjectTasks(prev => [...prev, taskItem]);
     setNewTaskTitle('');
     setNewTaskDeadline(getLocalDateString());
+    setNewTaskAssigneeIds([]);
   };
 
   const handleStartAddSubtask = (parentTask) => {
@@ -405,13 +428,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
     setSubtaskTitle('');
     setSubtaskDeadline(parentTask.dueDate ? parentTask.dueDate.slice(0, 10) : (form.endDate || getLocalDateString()));
     setSubtaskPriority(parentTask.priority || 'Medium');
-    const parentAssignees = Array.isArray(parentTask.assigneeIds) && parentTask.assigneeIds.length > 0
-      ? parentTask.assigneeIds
-      : (parentTask.assigneeId ? [parentTask.assigneeId] : []);
-    const defaultIds = (!isAdmin && user?.id)
-      ? [user.id]
-      : (parentAssignees.length > 0 ? [...parentAssignees] : (user?.id ? [user.id] : []));
-    setSubtaskAssigneeIds(defaultIds);
+    setSubtaskAssigneeIds([]);
     setShowSubtaskAssigneeDropdown(false);
   };
 
@@ -425,13 +442,10 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
     const title = subtaskTitle.trim();
     if (!title) return;
 
-    const parentAssignees = Array.isArray(parentTask.assigneeIds) && parentTask.assigneeIds.length > 0
-      ? parentTask.assigneeIds
-      : (parentTask.assigneeId ? [parentTask.assigneeId] : []);
-    const assignedIds = (!isAdmin && user?.id)
+    const assignedIds = (!canAssignAnyone && user?.id)
       ? [user.id]
-      : (subtaskAssigneeIds.length > 0 ? [...subtaskAssigneeIds] : parentAssignees);
-    const primaryAssigneeId = assignedIds[0] || parentTask.assigneeId || (employees[0]?.id || '');
+      : [...subtaskAssigneeIds];
+    const primaryAssigneeId = assignedIds[0] || '';
 
     const newSubtask = {
       id: 'temp_' + Date.now() + Math.random().toString(36).substr(2, 4),
@@ -448,6 +462,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
     setProjectTasks(prev => [...prev, newSubtask]);
     setAddingSubtaskId(null);
     setSubtaskTitle('');
+    setSubtaskAssigneeIds([]);
     setShowSubtaskAssigneeDropdown(false);
     // Auto-expand parent
     setCollapsedParentIds(prev => {
@@ -504,7 +519,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   const handleStartEditTask = (task) => {
     setEditingTaskId(task.id);
     let ids = [];
-    if (!isAdmin && user?.id) {
+    if (!canAssignAnyone && user?.id) {
       ids = [user.id];
     } else if (Array.isArray(task.assigneeIds) && task.assigneeIds.length > 0) {
       ids = [...task.assigneeIds];
@@ -650,7 +665,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       if (count === 0) {
         addToast('No tasks found in the uploaded file.', 'warning', 4000);
       } else {
-        const finalTasks = (!isAdmin && user?.id)
+        const finalTasks = (!canAssignAnyone && user?.id)
           ? tasks.map(t => ({ ...t, assigneeIds: [user.id], assigneeId: user.id }))
           : tasks;
         setProjectTasks(prev => [...prev, ...finalTasks]);
@@ -676,7 +691,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
     else if (progVal === 100) finalStatus = 'Done';
     else if (finalStatus === 'Not started' && progVal > 0) finalStatus = 'In progress';
 
-    const finalAssigneeIds = (!isAdmin && user?.id)
+    const finalAssigneeIds = (!canAssignAnyone && user?.id)
       ? (form.assigneeIds.includes(user.id) ? [user.id] : (form.assigneeIds.length > 0 ? [user.id] : []))
       : form.assigneeIds;
 
@@ -687,7 +702,8 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       startValue: 0,
       endValue: 100,
       progress: effectiveProgress,
-      status: finalStatus
+      status: finalStatus,
+      createdBy: initial?.createdBy || user?.id || ''
     };
 
     // Ensure each task in projectTasks has both assigneeIds and assigneeId
@@ -918,6 +934,46 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                   required
                 />
               </div>
+            </div>
+
+            {/* Project Team Members (Assignees) */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-gray-700">
+                  Project Team Members {canAssignAnyone ? '(Assign any team member)' : ''}
+                </label>
+                <span className="text-[11px] font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-100">
+                  {form.assigneeIds.length} assigned
+                </span>
+              </div>
+              {canAssignAnyone ? (
+                <div className="flex flex-wrap gap-1.5 p-2 bg-gray-50 border border-gray-200 rounded-lg max-h-28 overflow-y-auto custom-scrollbar">
+                  {employees.map(emp => {
+                    const isSelected = form.assigneeIds.includes(emp.id);
+                    return (
+                      <button
+                        key={emp.id}
+                        type="button"
+                        onClick={() => toggleAssignee(emp.id)}
+                        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-purple-600 text-white shadow-2xs font-bold'
+                            : 'bg-white text-gray-700 border border-gray-200 hover:border-purple-300 hover:bg-purple-50/50'
+                        }`}
+                      >
+                        <img src={emp.avatar} alt={emp.fullName} className="w-4 h-4 rounded-full object-cover" />
+                        <span className="truncate max-w-[110px]">{emp.fullName}</span>
+                        {isSelected && <span className="text-[10px] font-bold">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-2 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 flex items-center gap-2">
+                  <span className="font-semibold">{user?.fullName || 'You'}</span>
+                  <span className="text-[10px] text-gray-400">(Self assigned)</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1185,9 +1241,9 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                 <svg className="w-3.5 h-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                <span>{isAdmin ? 'Add Task with Deadlines & Multiple Assignees' : 'Add Task (Self-assigned)'}</span>
+                <span>{canAssignAnyone ? 'Add Task with Deadlines & Multiple Assignees' : 'Add Task (Self-assigned)'}</span>
               </div>
-              {isAdmin ? (
+              {canAssignAnyone ? (
                 newTaskAssigneeIds.length > 0 && (
                   <span className="text-[11px] font-medium text-blue-600">
                     {newTaskAssigneeIds.length} employee{newTaskAssigneeIds.length > 1 ? 's' : ''} assigned
@@ -1280,7 +1336,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
 
               {/* Assignee Selection in Quick Task Adder */}
               <div className="sm:col-span-3 relative" ref={assigneeDropdownRef}>
-                {isAdmin ? (
+                {canAssignAnyone ? (
                   <>
                     <button
                       type="button"
@@ -1357,37 +1413,65 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                         </div>
 
                         <div className="space-y-1">
-                          {employees.map(e => {
-                            const isSelected = newTaskAssigneeIds.includes(e.id);
-                            return (
-                              <div
-                                key={e.id}
-                                onClick={() => toggleNewTaskAssignee(e.id)}
-                                className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition select-none text-xs ${
-                                  isSelected ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-gray-50 text-gray-700'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => {}}
-                                  className="h-3.5 w-3.5 accent-blue-600 rounded"
-                                />
-                                <img
-                                  src={e.avatar}
-                                  alt={e.fullName}
-                                  className="w-5 h-5 rounded-full object-cover shrink-0"
-                                  onError={(ev) => {
-                                    ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(e.fullName)}&background=0070F3&color=fff`;
-                                  }}
-                                />
-                                <div className="min-w-0 flex-1 truncate">
-                                  <div className="truncate">{e.fullName}</div>
-                                  <div className="text-[10px] text-gray-400 font-normal truncate">{e.role || 'Member'}</div>
-                                </div>
-                              </div>
-                            );
-                          })}
+                          {(() => {
+                            const sorted = sortEmployeesWithChosenFirst(employees, newTaskAssigneeIds, form.assigneeIds);
+                            const chosenCount = sorted.filter(e => form.assigneeIds.includes(e.id) || newTaskAssigneeIds.includes(e.id)).length;
+
+                            return sorted.map((e, idx) => {
+                              const isSelected = newTaskAssigneeIds.includes(e.id);
+                              const isProjectMember = form.assigneeIds.includes(e.id);
+
+                              return (
+                                <React.Fragment key={e.id}>
+                                  {idx === 0 && chosenCount > 0 && (
+                                    <div className="text-[10px] font-bold text-purple-700 uppercase tracking-wider px-1 pt-1 pb-0.5 flex items-center justify-between">
+                                      <span>Chosen Team Members</span>
+                                      <span className="text-[9px] bg-purple-100 text-purple-800 px-1.5 py-0.2 rounded-full font-medium">
+                                        {chosenCount}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {idx === chosenCount && chosenCount > 0 && chosenCount < sorted.length && (
+                                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1 pt-2 pb-0.5 border-t border-gray-100 mt-1">
+                                      <span>Other Team Members</span>
+                                    </div>
+                                  )}
+                                  <div
+                                    onClick={() => toggleNewTaskAssignee(e.id)}
+                                    className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition select-none text-xs ${
+                                      isSelected ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-gray-50 text-gray-700'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => {}}
+                                      className="h-3.5 w-3.5 accent-blue-600 rounded"
+                                    />
+                                    <img
+                                      src={e.avatar}
+                                      alt={e.fullName}
+                                      className="w-5 h-5 rounded-full object-cover shrink-0"
+                                      onError={(ev) => {
+                                        ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(e.fullName)}&background=0070F3&color=fff`;
+                                      }}
+                                    />
+                                    <div className="min-w-0 flex-1 truncate">
+                                      <div className="flex items-center gap-1.5 truncate">
+                                        <span className="truncate">{e.fullName}</span>
+                                        {isProjectMember && (
+                                          <span className="text-[9px] font-medium text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 shrink-0">
+                                            Project Team
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[10px] text-gray-400 font-normal truncate">{e.role || 'Member'}</div>
+                                    </div>
+                                  </div>
+                                </React.Fragment>
+                              );
+                            });
+                          })()}
                         </div>
                       </div>
                     )}
@@ -1583,7 +1667,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
 
                         {/* Assignee selector in edit */}
                         <div className="sm:col-span-3 relative" ref={editAssigneeDropdownRef}>
-                          {isAdmin ? (
+                          {canAssignAnyone ? (
                             <>
                               <button
                                 type="button"
@@ -1629,27 +1713,58 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                                     </button>
                                   </div>
                                   <div className="space-y-1">
-                                    {employees.map(e => {
-                                      const isSelected = editTaskForm.assigneeIds.includes(e.id);
-                                      return (
-                                        <div
-                                          key={e.id}
-                                          onClick={() => toggleEditTaskAssignee(e.id)}
-                                          className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition select-none text-xs ${
-                                            isSelected ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-gray-50 text-gray-700'
-                                          }`}
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={isSelected}
-                                            onChange={() => {}}
-                                            className="h-3.5 w-3.5 accent-blue-600 rounded"
-                                          />
-                                          <img src={e.avatar} alt={e.fullName} className="w-4 h-4 rounded-full object-cover shrink-0" />
-                                          <span className="truncate">{e.fullName}</span>
-                                        </div>
-                                      );
-                                    })}
+                                    {(() => {
+                                      const sorted = sortEmployeesWithChosenFirst(employees, editTaskForm.assigneeIds, form.assigneeIds);
+                                      const chosenCount = sorted.filter(e => form.assigneeIds.includes(e.id) || editTaskForm.assigneeIds.includes(e.id)).length;
+
+                                      return sorted.map((e, idx) => {
+                                        const isSelected = editTaskForm.assigneeIds.includes(e.id);
+                                        const isProjectMember = form.assigneeIds.includes(e.id);
+
+                                        return (
+                                          <React.Fragment key={e.id}>
+                                            {idx === 0 && chosenCount > 0 && (
+                                              <div className="text-[10px] font-bold text-purple-700 uppercase tracking-wider px-1 pt-1 pb-0.5 flex items-center justify-between">
+                                                <span>Chosen Team Members</span>
+                                                <span className="text-[9px] bg-purple-100 text-purple-800 px-1.5 py-0.2 rounded-full font-medium">
+                                                  {chosenCount}
+                                                </span>
+                                              </div>
+                                            )}
+                                            {idx === chosenCount && chosenCount > 0 && chosenCount < sorted.length && (
+                                              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1 pt-2 pb-0.5 border-t border-gray-100 mt-1">
+                                                <span>Other Team Members</span>
+                                              </div>
+                                            )}
+                                            <div
+                                              onClick={() => toggleEditTaskAssignee(e.id)}
+                                              className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition select-none text-xs ${
+                                                isSelected ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-gray-50 text-gray-700'
+                                              }`}
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => {}}
+                                                className="h-3.5 w-3.5 accent-blue-600 rounded"
+                                              />
+                                              <img src={e.avatar} alt={e.fullName} className="w-4 h-4 rounded-full object-cover shrink-0" />
+                                              <div className="min-w-0 flex-1 truncate">
+                                                <div className="flex items-center gap-1.5 truncate">
+                                                  <span className="truncate">{e.fullName}</span>
+                                                  {isProjectMember && (
+                                                    <span className="text-[9px] font-medium text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 shrink-0">
+                                                      Project Team
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <div className="text-[10px] text-gray-400 font-normal truncate">{e.role || 'Member'}</div>
+                                              </div>
+                                            </div>
+                                          </React.Fragment>
+                                        );
+                                      });
+                                    })()}
                                   </div>
                                 </div>
                               )}
@@ -2006,7 +2121,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
 
                           {/* Multi-Assignee selector */}
                           <div className="sm:col-span-3 relative" ref={subtaskAssigneeDropdownRef}>
-                            {isAdmin ? (
+                            {canAssignAnyone ? (
                               <>
                                 <button
                                   type="button"
@@ -2057,31 +2172,63 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                                       </button>
                                     </div>
                                     <div className="space-y-1">
-                                      {employees.map(e => {
-                                        const isSelected = subtaskAssigneeIds.includes(e.id);
-                                        return (
-                                          <div
-                                            key={e.id}
-                                            onClick={() => {
-                                              setSubtaskAssigneeIds(prev =>
-                                                prev.includes(e.id) ? prev.filter(id => id !== e.id) : [...prev, e.id]
-                                              );
-                                            }}
-                                            className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition select-none text-xs ${
-                                              isSelected ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-gray-50 text-gray-700'
-                                            }`}
-                                          >
-                                            <input
-                                              type="checkbox"
-                                              checked={isSelected}
-                                              onChange={() => {}}
-                                              className="h-3.5 w-3.5 accent-blue-600 rounded"
-                                            />
-                                            <img src={e.avatar} alt={e.fullName} className="w-4 h-4 rounded-full object-cover shrink-0" />
-                                            <span className="truncate">{e.fullName}</span>
-                                          </div>
-                                        );
-                                      })}
+                                      {(() => {
+                                        const sorted = sortEmployeesWithChosenFirst(employees, subtaskAssigneeIds, form.assigneeIds);
+                                        const chosenCount = sorted.filter(e => form.assigneeIds.includes(e.id) || subtaskAssigneeIds.includes(e.id)).length;
+
+                                        return sorted.map((e, idx) => {
+                                          const isSelected = subtaskAssigneeIds.includes(e.id);
+                                          const isProjectMember = form.assigneeIds.includes(e.id);
+
+                                          return (
+                                            <React.Fragment key={e.id}>
+                                              {idx === 0 && chosenCount > 0 && (
+                                                <div className="text-[10px] font-bold text-purple-700 uppercase tracking-wider px-1 pt-1 pb-0.5 flex items-center justify-between">
+                                                  <span>Chosen Team Members</span>
+                                                  <span className="text-[9px] bg-purple-100 text-purple-800 px-1.5 py-0.2 rounded-full font-medium">
+                                                    {chosenCount}
+                                                  </span>
+                                                </div>
+                                              )}
+                                              {idx === chosenCount && chosenCount > 0 && chosenCount < sorted.length && (
+                                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1 pt-2 pb-0.5 border-t border-gray-100 mt-1">
+                                                  <span>Other Team Members</span>
+                                                </div>
+                                              )}
+                                              <div
+                                                key={e.id}
+                                                onClick={() => {
+                                                  setSubtaskAssigneeIds(prev =>
+                                                    prev.includes(e.id) ? prev.filter(id => id !== e.id) : [...prev, e.id]
+                                                  );
+                                                }}
+                                                className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition select-none text-xs ${
+                                                  isSelected ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-gray-50 text-gray-700'
+                                                }`}
+                                              >
+                                                <input
+                                                  type="checkbox"
+                                                  checked={isSelected}
+                                                  onChange={() => {}}
+                                                  className="h-3.5 w-3.5 accent-blue-600 rounded"
+                                                />
+                                                <img src={e.avatar} alt={e.fullName} className="w-4 h-4 rounded-full object-cover shrink-0" />
+                                                <div className="min-w-0 flex-1 truncate">
+                                                  <div className="flex items-center gap-1.5 truncate">
+                                                    <span className="truncate">{e.fullName}</span>
+                                                    {isProjectMember && (
+                                                      <span className="text-[9px] font-medium text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 shrink-0">
+                                                        Project Team
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  <div className="text-[10px] text-gray-400 font-normal truncate">{e.role || 'Member'}</div>
+                                                </div>
+                                              </div>
+                                            </React.Fragment>
+                                          );
+                                        });
+                                      })()}
                                     </div>
                                   </div>
                                 )}

@@ -138,8 +138,9 @@ const Login = () => {
 
 
   const getRedirectPath = (u) => {
-    const isUserAdmin = (u?.role || '').toLowerCase() === 'admin';
-    return isUserAdmin ? '/projects' : `/employee/${u?.id}`;
+    const isUserAdmin = Boolean(u?.isAdmin || (u?.role || '').toLowerCase() === 'admin');
+    const isUserPM = (u?.role || '').toLowerCase().trim() === 'project manager';
+    return (isUserAdmin || isUserPM) ? '/projects' : `/employee/${u?.id}`;
   };
 
   const handleSignIn = async (e) => {

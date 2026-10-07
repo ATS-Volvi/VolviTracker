@@ -9,7 +9,7 @@ import logo from '../assets/volvitech-logo.png';
 import iconLogo from '../assets/volvitech-icon.png';
 
 const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
-  const { user, isAdmin, logout } = useAuth();
+  const { user, isAdmin, isProjectManager, canManageProjects, logout } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -47,7 +47,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
   const isProjectsActive = location.pathname === '/projects' || 
     location.pathname === '/dashboard' || 
     location.pathname === '/' || 
-    Boolean(user && location.pathname === `/employee/${user.id}`);
+    Boolean(user && !canManageProjects && location.pathname === `/employee/${user.id}`);
   const isMasterDataActive = location.pathname.startsWith('/master-data');
   const isFinanceActive = location.pathname.startsWith('/finance') || location.pathname.startsWith('/docs');
   const isFinanceHubActive = location.pathname === '/finance' && (!location.search || location.search.includes('tab=projects'));
@@ -70,7 +70,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
           collapsed ? 'justify-center px-2' : 'justify-between px-5'
         }`}>
           <Link
-            to={isAdmin ? '/projects' : `/employee/${user?.id}`}
+            to={canManageProjects ? '/projects' : `/employee/${user?.id}`}
             className="flex items-center gap-2.5 hover:opacity-90 transition"
             title={collapsed ? "Volvitech" : undefined}
           >
@@ -133,7 +133,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
 
           {/* 1. Projects Link */}
           <Link
-            to={isAdmin ? '/projects' : `/employee/${user?.id}`}
+            to={canManageProjects ? '/projects' : `/employee/${user?.id}`}
             className={`group relative flex items-center rounded-xl text-sm font-semibold transition-all duration-150 ${
               collapsed
                 ? 'justify-center p-3'
@@ -345,10 +345,12 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                 className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
                   isAdmin
                     ? 'bg-purple-50 text-purple-700 border-purple-200'
-                    : 'bg-blue-50 text-blue-700 border-blue-100'
+                    : isProjectManager
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-slate-50 text-slate-700 border-slate-200'
                 }`}
               >
-                {user?.role || (isAdmin ? 'Admin' : 'Member')}
+                {user?.role || (isAdmin ? 'Admin' : isProjectManager ? 'Project Manager' : 'Member')}
               </span>
             </div>
 

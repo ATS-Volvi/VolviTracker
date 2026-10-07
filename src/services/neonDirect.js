@@ -35,6 +35,7 @@ const parseJsonArray = (val) => {
 export const toProjectDto = (row) => row ? ({
   id: String(row.id),
   name: row.name || '',
+  createdBy: row.created_by ? String(row.created_by) : (row.createdBy ? String(row.createdBy) : ''),
   clientName: row.client_name || '',
   contactDesignation: row.contact_designation || row.client_designation || '',
   clientDesignation: row.contact_designation || row.client_designation || '',
@@ -138,16 +139,18 @@ export async function directCreateProject(project, tasks = []) {
   const refererName = project.refererName || '';
   const contactNumber = project.contactNumber || project.contactPhone || '';
   const contactEmail = project.contactEmail || '';
+  const createdBy = project.createdBy || project.creatorId || '';
 
   await sql`
     INSERT INTO projects (
-      id, name, client_name, contact_designation, client_designation, poc_name, referer_name, contact_number, contact_email, status, start_date, end_date, start_value, end_value, progress, assignee_ids, assignee_id
+      id, name, created_by, client_name, contact_designation, client_designation, poc_name, referer_name, contact_number, contact_email, status, start_date, end_date, start_value, end_value, progress, assignee_ids, assignee_id
     ) VALUES (
-      ${id}, ${project.name || 'Untitled Project'}, ${clientName}, ${contactDesignation}, ${contactDesignation}, ${pocName}, ${refererName}, ${contactNumber}, ${contactEmail}, ${status}, ${project.startDate || ''}, ${project.endDate || ''},
+      ${id}, ${project.name || 'Untitled Project'}, ${createdBy}, ${clientName}, ${contactDesignation}, ${contactDesignation}, ${pocName}, ${refererName}, ${contactNumber}, ${contactEmail}, ${status}, ${project.startDate || ''}, ${project.endDate || ''},
       0, 100, ${progress}, ${assigneeIdsJson}::jsonb, ${assigneeId}
     )
     ON CONFLICT (id) DO UPDATE SET
       name = EXCLUDED.name,
+      created_by = COALESCE(NULLIF(EXCLUDED.created_by, ''), projects.created_by),
       client_name = EXCLUDED.client_name,
       contact_designation = EXCLUDED.contact_designation,
       client_designation = EXCLUDED.client_designation,
@@ -199,6 +202,7 @@ export async function directUpdateProject(id, updates) {
 
   const current = existing[0];
   const name = updates.name !== undefined ? updates.name : current.name;
+  const createdBy = updates.createdBy !== undefined ? updates.createdBy : (current.created_by || '');
   let progress = updates.progress !== undefined ? Number(updates.progress) : Number(current.progress);
   let status = updates.status !== undefined ? updates.status : current.status;
 
@@ -222,6 +226,7 @@ export async function directUpdateProject(id, updates) {
   await sql`
     UPDATE projects SET
       name = ${name},
+      created_by = ${createdBy},
       client_name = ${clientName},
       contact_designation = ${contactDesignation},
       client_designation = ${contactDesignation},

@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { loadFinanceData, saveFinanceData, subscribeFinanceData } from './financeData';
 
-import FinanceNavTabs from './FinanceNavTabs';
+
 import FinanceSupplierPOs from './tabs/FinanceSupplierPOs';
 
 // Modals
@@ -184,8 +184,27 @@ export const SupplierSideFinance = () => {
         </div>
       </div>
 
-      {/* Main Suite Tabs Navigation */}
-      <FinanceNavTabs activeTab="supplier-workflow" />
+      {/* Dedicated Page Breadcrumb Navigation */}
+      <div className="flex items-center justify-between text-xs pb-1">
+        <div className="flex items-center gap-2 text-gray-500 font-medium">
+          <Link to="/finance" className="hover:text-blue-600 transition flex items-center gap-1 font-semibold text-gray-600">
+            <span className="material-symbols-outlined text-[16px] text-blue-600">account_tree</span>
+            <span>Finance Hub</span>
+          </Link>
+          <span className="text-gray-300">/</span>
+          <span className="text-gray-900 font-bold flex items-center gap-1.5">
+            <span>Supplier-Side Workflow</span>
+            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-indigo-100 text-indigo-700">AP</span>
+          </span>
+        </div>
+        <Link
+          to="/finance/client"
+          className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+        >
+          <span>Switch to Client Side (AR)</span>
+          <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+        </Link>
+      </div>
 
       {/* Supplier-Side Workflow Component */}
       <FinanceSupplierPOs

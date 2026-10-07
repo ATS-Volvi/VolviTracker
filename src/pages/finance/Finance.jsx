@@ -8,8 +8,6 @@ import FinanceNavTabs from './FinanceNavTabs';
 
 // Tab Components
 import FinanceProjects from './tabs/FinanceProjects';
-import FinanceClientPOs from './tabs/FinanceClientPOs';
-import FinanceSupplierPOs from './tabs/FinanceSupplierPOs';
 import FinanceDataRelationships from './tabs/FinanceDataRelationships';
 import FinanceOverview from './tabs/FinanceOverview';
 import FinanceSimulationPOC from './tabs/FinanceSimulationPOC';
@@ -336,29 +334,6 @@ export const Finance = () => {
             projects={data.projects}
             exchangeRates={data.exchangeRates}
             onOpenCreateProject={() => setCreateProjectOpen(true)}
-          />
-        )}
-
-        {activeTab === 'client-workflow' && (
-          <FinanceClientPOs
-            clientPos={data.clientPos}
-            invoices={data.invoices}
-            paymentsReceived={data.paymentsReceived || []}
-            onOpenRegisterClientPo={() => setRegisterClientPoOpen(true)}
-            onOpenGenerateInvoice={() => setGenerateInvoiceOpen(true)}
-            onOpenRecordPayment={() => setRecordClientPaymentOpen(true)}
-            onViewSampleInvoice={openSampleInvoice}
-          />
-        )}
-
-        {activeTab === 'supplier-workflow' && (
-          <FinanceSupplierPOs
-            supplierPos={data.supplierPos}
-            paymentsMade={data.paymentsMade || []}
-            onOpenIssueSupplierPo={() => setIssueSupplierPoOpen(true)}
-            onOpenThreeWayMatch={openThreeWayMatch}
-            onOpenRecordSupplierPayment={() => setRecordSupplierPaymentOpen(true)}
-            onViewSampleSupplierPo={openSampleSupplierPo}
           />
         )}
 

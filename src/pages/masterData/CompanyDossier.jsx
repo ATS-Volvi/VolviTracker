@@ -496,17 +496,12 @@ const CompanyDossier = ({
                   <span>{company.country}</span>
                 </span>
                 <span>•</span>
-                <span className="flex items-center gap-1 font-medium text-gray-700">
-                  <span className="material-symbols-outlined text-[15px] text-gray-400">domain</span>
-                  <span>{company.department || 'Enterprise Accounts'}</span>
-                </span>
-                <span>•</span>
                 <a
-                  href={`mailto:${company.companyMail || company.contactEmail}`}
+                  href={`mailto:${company.contactEmail || company.companyMail}`}
                   className="flex items-center gap-1 text-blue-600 hover:underline font-medium"
                 >
                   <span className="material-symbols-outlined text-[15px] text-gray-400">mail</span>
-                  <span>{company.companyMail || company.contactEmail || `contact@${company.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`}</span>
+                  <span>{company.contactEmail || company.companyMail || `contact@${company.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`}</span>
                 </a>
               </div>
             </div>

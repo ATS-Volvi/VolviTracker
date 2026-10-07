@@ -27,122 +27,6 @@ const FinanceSupplierPOs = ({
 
   return (
     <div className="space-y-6 text-left">
-      {/* Workflow Step Banner */}
-      <div className="bg-gradient-to-r from-emerald-900 to-teal-950 p-5 rounded-2xl text-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-200 uppercase tracking-wider mb-1">
-            <span>Supplier-Side Architecture</span>
-            <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-            <span className="text-white font-bold">From PO to Payment</span>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-xl sm:text-2xl font-black font-display tracking-tight text-white">
-              Supplier-Side Workflow
-            </h2>
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-[10px] font-bold uppercase tracking-wider">
-              Procurement & AP Stream
-            </span>
-          </div>
-          <p className="text-xs text-emerald-200/80 mt-1 max-w-2xl">
-            Sequential disbursement pipeline: Supplier Master onboarding ➔ Project-linked PO issuance (optionally mapped to Client PO) ➔ Bill intake & 3-way match audit ➔ Disbursed supplier payments.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <Link
-            to="/master-data"
-            className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white font-bold text-xs transition flex items-center gap-1.5"
-          >
-            <span className="material-symbols-outlined text-[16px]">domain_add</span>
-            <span>Step 1: Supplier Master</span>
-          </Link>
-          <button
-            onClick={onOpenIssueSupplierPo}
-            className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-xs"
-          >
-            <span className="material-symbols-outlined text-[16px]">add_shopping_cart</span>
-            <span>Step 2: + Issue PO</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 4-Step Connected Flow Visualizer */}
-      <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-          {/* Step 1 */}
-          <Link
-            to="/master-data"
-            className="p-3.5 rounded-xl bg-gray-50 hover:bg-emerald-50/60 border border-gray-100 hover:border-emerald-200 transition group flex flex-col justify-between"
-          >
-            <div className="flex items-center justify-between">
-              <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-[10px]">1</span>
-              <span className="material-symbols-outlined text-[16px] text-gray-400 group-hover:text-emerald-600">open_in_new</span>
-            </div>
-            <div className="mt-2">
-              <div className="font-bold text-gray-900 group-hover:text-emerald-700">Supplier Master</div>
-              <div className="text-[10px] text-gray-500 mt-0.5">Domestic / Int'l, Tax & Bank Details</div>
-            </div>
-          </Link>
-
-          {/* Step 2 */}
-          <button
-            onClick={() => setActiveSubTab('POS')}
-            className={`p-3.5 rounded-xl border text-left transition flex flex-col justify-between ${
-              activeSubTab === 'POS'
-                ? 'bg-emerald-50/80 border-emerald-400 ring-1 ring-emerald-400/30'
-                : 'bg-gray-50 hover:bg-gray-100/80 border-gray-100'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[10px]">2</span>
-              <span className="material-symbols-outlined text-[16px] text-emerald-600">shopping_cart_checkout</span>
-            </div>
-            <div className="mt-2">
-              <div className="font-bold text-gray-900">Create Supplier PO</div>
-              <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">Project Linked & Optional Client PO Map</div>
-            </div>
-          </button>
-
-          {/* Step 3 */}
-          <button
-            onClick={() => setActiveSubTab('BILLS')}
-            className={`p-3.5 rounded-xl border text-left transition flex flex-col justify-between ${
-              activeSubTab === 'BILLS'
-                ? 'bg-emerald-50/80 border-emerald-400 ring-1 ring-emerald-400/30'
-                : 'bg-gray-50 hover:bg-gray-100/80 border-gray-100'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[10px]">3</span>
-              <span className="material-symbols-outlined text-[16px] text-teal-600">fact_check</span>
-            </div>
-            <div className="mt-2">
-              <div className="font-bold text-gray-900">Supplier Invoice (AP)</div>
-              <div className="text-[10px] text-teal-600 font-semibold mt-0.5">Bill Intake & 3-Way Match Verification</div>
-            </div>
-          </button>
-
-          {/* Step 4 */}
-          <button
-            onClick={() => setActiveSubTab('PAYMENTS')}
-            className={`p-3.5 rounded-xl border text-left transition flex flex-col justify-between ${
-              activeSubTab === 'PAYMENTS'
-                ? 'bg-indigo-50/80 border-indigo-400 ring-1 ring-indigo-400/30'
-                : 'bg-gray-50 hover:bg-gray-100/80 border-gray-100'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-[10px]">4</span>
-              <span className="material-symbols-outlined text-[16px] text-indigo-600">account_balance_wallet</span>
-            </div>
-            <div className="mt-2">
-              <div className="font-bold text-gray-900">Payment Made</div>
-              <div className="text-[10px] text-indigo-600 font-semibold mt-0.5">Disbursement & PO Consumption</div>
-            </div>
-          </button>
-        </div>
-      </div>
-
       {/* Top Action & Sub-tab Bar */}
       <div className="bg-white p-4.5 rounded-2xl border border-gray-100 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex items-center gap-2 flex-wrap">
@@ -153,7 +37,7 @@ const FinanceSupplierPOs = ({
                 activeSubTab === 'POS' ? 'bg-white text-emerald-700 shadow-xs font-bold' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              Step 2. Supplier POs ({supplierPos.length})
+              Supplier POs ({supplierPos.length})
             </button>
             <button
               onClick={() => setActiveSubTab('BILLS')}
@@ -161,7 +45,7 @@ const FinanceSupplierPOs = ({
                 activeSubTab === 'BILLS' ? 'bg-white text-emerald-700 shadow-xs font-bold' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              Step 3. Supplier Invoices & 3-Way Match
+              Supplier Invoices & 3-Way Match
             </button>
             <button
               onClick={() => setActiveSubTab('PAYMENTS')}
@@ -169,7 +53,7 @@ const FinanceSupplierPOs = ({
                 activeSubTab === 'PAYMENTS' ? 'bg-white text-indigo-700 shadow-xs font-bold' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              Step 4. Payments Made ({paymentsMade.length})
+              Payments Made ({paymentsMade.length})
             </button>
           </div>
         </div>

@@ -100,8 +100,8 @@ const CountrySearchSelect = ({ value, onChange }) => {
     const q = searchQuery.toLowerCase().trim();
     return countries.filter(
       c => c.name.toLowerCase().includes(q) ||
-           c.code.toLowerCase().includes(q) ||
-           c.display.toLowerCase().includes(q)
+        c.code.toLowerCase().includes(q) ||
+        c.display.toLowerCase().includes(q)
     );
   }, [countries, searchQuery]);
 
@@ -152,8 +152,8 @@ const CountrySearchSelect = ({ value, onChange }) => {
     if (!value) return countries[0];
     return countries.find(
       c => c.display === value ||
-           c.name.toLowerCase() === value.toLowerCase() ||
-           value.toLowerCase().includes(c.name.toLowerCase())
+        c.name.toLowerCase() === value.toLowerCase() ||
+        value.toLowerCase().includes(c.name.toLowerCase())
     ) || {
       name: value,
       flag: '🌐',
@@ -175,11 +175,10 @@ const CountrySearchSelect = ({ value, onChange }) => {
           setIsOpen(!isOpen);
           setSearchQuery('');
         }}
-        className={`w-full px-3.5 py-2.5 border rounded-xl flex items-center justify-between text-left transition font-medium bg-white text-xs ${
-          isOpen
+        className={`w-full px-3.5 py-2.5 border rounded-xl flex items-center justify-between text-left transition font-medium bg-white text-xs ${isOpen
             ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-xs'
             : 'border-gray-200 hover:border-gray-300 shadow-2xs'
-        }`}
+          }`}
       >
         <div className="flex items-center gap-2 truncate">
           <span className="text-base leading-none">{currentSelection.flag || '🌐'}</span>
@@ -258,11 +257,10 @@ const CountrySearchSelect = ({ value, onChange }) => {
                   key={`${c.name}-${index}`}
                   type="button"
                   onClick={() => handleSelectCountry(c)}
-                  className={`w-full px-3 py-2 rounded-xl text-left text-xs transition flex items-center justify-between ${
-                    isSelected
+                  className={`w-full px-3 py-2 rounded-xl text-left text-xs transition flex items-center justify-between ${isSelected
                       ? 'bg-blue-50 text-blue-700 font-bold'
                       : 'hover:bg-gray-50 text-gray-700'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-2.5 truncate">
                     <span className="text-base leading-none">{c.flag}</span>
@@ -331,8 +329,6 @@ const AddEntityModal = ({
     if (isOpen) {
       setCategory(defaultCategory || 'Client');
       setName('');
-      setDepartment('');
-      setCompanyMail('');
       setTaxScheme('AUTO');
       setTaxIdInput('');
       setRegistrationNumber('');
@@ -355,6 +351,8 @@ const AddEntityModal = ({
           name: '',
           email: '',
           phone: '',
+          dept: '',
+          department: '',
           role: 'Primary Contact'
         }
       ]);
@@ -363,13 +361,13 @@ const AddEntityModal = ({
   const [classification, setClassification] = useState('Domestic'); // 'Domestic' | 'International'
   const [name, setName] = useState('');
   const [country, setCountry] = useState('India 🇮🇳');
-  const [department, setDepartment] = useState('');
-  const [companyMail, setCompanyMail] = useState('');
   const [stakeholders, setStakeholders] = useState([
     {
       name: '',
       email: '',
       phone: '',
+      dept: '',
+      department: '',
       role: 'Primary Contact'
     }
   ]);
@@ -740,6 +738,8 @@ const AddEntityModal = ({
         name: '',
         email: '',
         phone: '',
+        dept: '',
+        department: '',
         role: prev.length === 1 ? 'Billing / Finance' : prev.length === 2 ? 'Technical POC' : 'Commercial Stakeholder'
       }
     ]);
@@ -753,14 +753,18 @@ const AddEntityModal = ({
   const handleStakeholderChange = (index, field, value) => {
     setStakeholders(prev => {
       const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
+      if (field === 'dept' || field === 'department') {
+        next[index] = { ...next[index], dept: value, department: value };
+      } else {
+        next[index] = { ...next[index], [field]: value };
+      }
       return next;
     });
   };
   const [currency, setCurrency] = useState('USD');
   const [creditTerms, setCreditTerms] = useState('Net 30');
   const [creditLimit, setCreditLimit] = useState('$250,000');
-  
+
   // Bank details
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -808,19 +812,25 @@ const AddEntityModal = ({
     const leadContactPhone = firstNonEmpty.phone?.trim() || '+1 555-0100';
 
     const cleanStakeholders = stakeholders
-      .filter(s => s.name?.trim() || s.email?.trim() || s.phone?.trim())
+      .filter(s => s.name?.trim() || s.email?.trim() || s.phone?.trim() || s.dept?.trim() || s.department?.trim())
       .map((s, idx) => ({
         name: s.name?.trim() || `Stakeholder #${idx + 1}`,
         email: s.email?.trim() || leadContactEmail,
         phone: s.phone?.trim() || leadContactPhone,
+        dept: s.dept?.trim() || s.department?.trim() || '',
+        department: s.department?.trim() || s.dept?.trim() || '',
         role: s.role?.trim() || (idx === 0 ? 'Primary Contact' : 'Commercial Stakeholder')
       }));
+
+    const leadDept = cleanStakeholders[0]?.dept || cleanStakeholders[0]?.department || '';
 
     const finalStakeholders = cleanStakeholders.length > 0 ? cleanStakeholders : [
       {
         name: leadContactPerson,
         email: leadContactEmail,
         phone: leadContactPhone,
+        dept: '',
+        department: '',
         role: 'Primary Contact'
       }
     ];
@@ -869,8 +879,8 @@ const AddEntityModal = ({
       classification,
       country,
       avatarText,
-      department: department.trim() || 'Procurement & Strategic Sourcing',
-      companyMail: companyMail.trim() || `contact@${name.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
+      department: leadDept || (category === 'Client' ? 'Procurement & Strategic Sourcing' : 'Platform & Technical Operations'),
+      companyMail: `contact@${name.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
       taxId: finalTaxId,
       registrationNumber: registrationNumber.trim(),
       globalEntityId: globalEntityId.trim(),
@@ -949,763 +959,746 @@ const AddEntityModal = ({
 
           {/* Scrollable Form Body */}
           <div className="p-7 sm:p-8 overflow-y-auto flex-1 space-y-6 text-left text-xs modal-scrollbar">
-          {/* Entity Type & Classification Toggle */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 bg-gray-50/70 rounded-2xl border border-gray-200/70">
-            <div>
-              <label className="block text-gray-700 font-semibold mb-1.5">Entity Type *</label>
-              <div className="grid grid-cols-2 gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-2xs">
-                <button
-                  type="button"
-                  onClick={() => setCategory('Client')}
-                  className={`py-2 px-3 rounded-lg font-bold transition flex items-center justify-center gap-1.5 ${
-                    category === 'Client'
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[16px]">account_circle</span>
-                  <span>Client (Sales)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCategory('Supplier')}
-                  className={`py-2 px-3 rounded-lg font-bold transition flex items-center justify-center gap-1.5 ${
-                    category === 'Supplier'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[16px]">local_shipping</span>
-                  <span>Supplier (Vendor)</span>
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-semibold mb-1.5">Geographic Classification *</label>
-              <div className="grid grid-cols-2 gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-2xs">
-                <button
-                  type="button"
-                  onClick={() => setClassification('Domestic')}
-                  className={`py-2 px-3 rounded-lg font-bold transition flex items-center justify-center gap-1.5 ${
-                    classification === 'Domestic'
-                      ? 'bg-gray-900 text-white shadow-xs'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[16px]">home</span>
-                  <span>Domestic</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setClassification('International')}
-                  className={`py-2 px-3 rounded-lg font-bold transition flex items-center justify-center gap-1.5 ${
-                    classification === 'International'
-                      ? 'bg-gray-900 text-white shadow-xs'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[16px]">public</span>
-                  <span>International</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Basic Entity Info */}
-          <div className="space-y-3">
-            <h3 className="font-bold text-gray-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-blue-600 text-[16px]">corporate_fare</span>
-              <span>General Entity Details</span>
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Entity Type & Classification Toggle */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 bg-gray-50/70 rounded-2xl border border-gray-200/70">
               <div>
-                <label className="block text-gray-700 font-medium mb-1">Legal Entity / Company Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder={category === 'Client' ? "e.g. Apex Corporation LLC" : "e.g. CloudTech Systems FZ-LLC"}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white"
-                />
-              </div>
-
-              <CountrySearchSelect
-                value={country}
-                onChange={setCountry}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-gray-700 font-medium mb-1">Department</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Procurement & Strategic Sourcing"
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-gray-700 font-medium mb-1">Company Mail</label>
-                <input
-                  type="email"
-                  placeholder="e.g. corporate@company.com"
-                  value={companyMail}
-                  onChange={(e) => setCompanyMail(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* KYC & Regulatory Credentials & Document Upload Section */}
-          <div className="space-y-4 pt-3 border-t border-gray-100">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-blue-600 text-[18px]">verified_user</span>
-                <div>
-                  <h3 className="font-bold text-gray-900 uppercase tracking-wider text-[11px]">
-                    KYC & Regulatory Compliance
-                  </h3>
-                  <p className="text-[10px] text-gray-400">Fill in regulatory registration details or upload KYC verification documents</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                  {uploadedKycDocs.length} {uploadedKycDocs.length === 1 ? 'Doc Attached' : 'Docs Attached'}
-                </span>
-              </div>
-            </div>
-
-            {/* KYC Input Fields (Spot to fill it out) */}
-            <div className="p-4 bg-gray-50/80 rounded-2xl border border-gray-200/80 space-y-3.5">
-              {/* Global Tax Regime / Identifier Standard Selector */}
-              <div className="flex flex-col gap-1.5 pb-2 border-b border-gray-200/60">
-                <div className="flex flex-wrap items-center justify-between gap-1">
-                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[13px] text-blue-600">public</span>
-                    <span>Regulatory Standard & Jurisdiction Format</span>
-                  </span>
-                  <span className="text-[10px] text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200/60 font-mono">
-                    {taxInfo.standardName}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-1 p-1 bg-white rounded-xl border border-gray-200 shadow-2xs">
-                  {[
-                    { id: 'AUTO', label: 'Auto (Country Detect)', icon: 'auto_awesome' },
-                    { id: 'VAT', label: 'VAT / VIES / TRN', icon: 'receipt_long' },
-                    { id: 'EIN', label: 'US EIN / W-9 / W-8', icon: 'gavel' },
-                    { id: 'GST', label: 'GST / HST / ABN', icon: 'payments' },
-                    { id: 'CR', label: 'Commercial Reg. / Kbis', icon: 'store' },
-                    { id: 'LEI', label: 'Global LEI / D-U-N-S®', icon: 'corporate_fare' },
-                    { id: 'CUSTOM', label: 'Custom Sovereign ID', icon: 'pin' },
-                  ].map(scheme => (
-                    <button
-                      key={scheme.id}
-                      type="button"
-                      onClick={() => setTaxScheme(scheme.id)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
-                        taxScheme === scheme.id
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                <label className="block text-gray-700 font-semibold mb-1.5">Entity Type *</label>
+                <div className="grid grid-cols-2 gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setCategory('Client')}
+                    className={`py-2 px-3 rounded-lg font-bold transition flex items-center justify-center gap-1.5 ${category === 'Client'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
                       }`}
-                    >
-                      <span className="material-symbols-outlined text-[12px]">{scheme.icon}</span>
-                      <span>{scheme.label}</span>
-                    </button>
-                  ))}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">account_circle</span>
+                    <span>Client (Sales)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCategory('Supplier')}
+                    className={`py-2 px-3 rounded-lg font-bold transition flex items-center justify-center gap-1.5 ${category === 'Supplier'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">local_shipping</span>
+                    <span>Supplier (Vendor)</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Row 1: Primary Tax Identifier & Commercial Registration */}
+              <div>
+                <label className="block text-gray-700 font-semibold mb-1.5">Geographic Classification *</label>
+                <div className="grid grid-cols-2 gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setClassification('Domestic')}
+                    className={`py-2 px-3 rounded-lg font-bold transition flex items-center justify-center gap-1.5 ${classification === 'Domestic'
+                        ? 'bg-gray-900 text-white shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">home</span>
+                    <span>Domestic</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClassification('International')}
+                    className={`py-2 px-3 rounded-lg font-bold transition flex items-center justify-center gap-1.5 ${classification === 'International'
+                        ? 'bg-gray-900 text-white shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">public</span>
+                    <span>International</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Basic Entity Info */}
+            <div className="space-y-3">
+              <h3 className="font-bold text-gray-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-blue-600 text-[16px]">corporate_fare</span>
+                <span>General Entity Details</span>
+              </h3>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-gray-700 font-medium text-[11px] flex items-center gap-1">
-                      <span>{taxInfo.label}</span>
-                    </label>
-                    <span className="text-[9px] font-bold uppercase tracking-wider bg-blue-100/70 text-blue-700 px-1.5 py-0.2 rounded font-mono">
-                      {taxInfo.badge}
-                    </span>
-                  </div>
+                  <label className="block text-gray-700 font-medium mb-1">Legal Entity / Company Name *</label>
                   <input
                     type="text"
-                    placeholder={taxInfo.placeholder}
-                    value={taxIdInput}
-                    onChange={(e) => setTaxIdInput(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white font-mono text-xs"
+                    required
+                    placeholder={category === 'Client' ? "e.g. Apex Corporation LLC" : "e.g. CloudTech Systems FZ-LLC"}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white"
                   />
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-gray-700 font-medium text-[11px]">
-                      {taxInfo.regLabel}
-                    </label>
-                    <span className="text-[9px] text-gray-400">Registry / License</span>
+                <CountrySearchSelect
+                  value={country}
+                  onChange={setCountry}
+                />
+              </div>
+            </div>
+
+            {/* KYC & Regulatory Credentials & Document Upload Section */}
+            <div className="space-y-4 pt-3 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-blue-600 text-[18px]">verified_user</span>
+                  <div>
+                    <h3 className="font-bold text-gray-900 uppercase tracking-wider text-[11px]">
+                      KYC & Regulatory Compliance
+                    </h3>
+                    <p className="text-[10px] text-gray-400">Fill in regulatory registration details or upload KYC verification documents</p>
                   </div>
-                  <input
-                    type="text"
-                    placeholder={taxInfo.regPlaceholder}
-                    value={registrationNumber}
-                    onChange={(e) => setRegistrationNumber(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white font-mono text-xs"
-                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                    {uploadedKycDocs.length} {uploadedKycDocs.length === 1 ? 'Doc Attached' : 'Docs Attached'}
+                  </span>
                 </div>
               </div>
 
-              {/* Row 2: Global Corporate Identifiers & Sovereign Tax Authority */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-gray-700 font-medium text-[11px] flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[14px] text-indigo-600">corporate_fare</span>
-                      <span>Global Entity ID (LEI / D-U-N-S®)</span>
-                    </label>
-                    <span className="text-[9px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-1.5 py-0.2 rounded border border-indigo-200/50">
-                      ISO 17442 / D&B
+              {/* KYC Input Fields (Spot to fill it out) */}
+              <div className="p-4 bg-gray-50/80 rounded-2xl border border-gray-200/80 space-y-3.5">
+                {/* Global Tax Regime / Identifier Standard Selector */}
+                <div className="flex flex-col gap-1.5 pb-2 border-b border-gray-200/60">
+                  <div className="flex flex-wrap items-center justify-between gap-1">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[13px] text-blue-600">public</span>
+                      <span>Regulatory Standard & Jurisdiction Format</span>
+                    </span>
+                    <span className="text-[10px] text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200/60 font-mono">
+                      {taxInfo.standardName}
                     </span>
                   </div>
-                  <input
-                    type="text"
-                    placeholder="e.g. 5493006MHB84DD0ZWV18 or 12-345-6789"
-                    value={globalEntityId}
-                    onChange={(e) => setGlobalEntityId(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white font-mono text-xs"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-gray-700 font-medium text-[11px] flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[14px] text-blue-600">account_balance</span>
-                      <span>Issuing Sovereign Tax Authority</span>
-                    </label>
-                    <span className="text-[9px] text-gray-400">Jurisdiction Body</span>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder={taxInfo.defaultAuthority}
-                    value={taxAuthority}
-                    onChange={(e) => setTaxAuthority(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white text-xs"
-                  />
-                </div>
-              </div>
-
-              {/* Row 3: Status and Validity */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0.5">
-                <div>
-                  <label className="block text-gray-700 font-medium mb-1.5 text-[11px]">
-                    KYC Verification Standing
-                  </label>
-                  <div className="grid grid-cols-3 gap-1.5 p-1 bg-white rounded-xl border border-gray-200">
-                    <button
-                      type="button"
-                      onClick={() => setKycStatus('Verified')}
-                      className={`py-1.5 px-2 rounded-lg font-bold text-[10px] transition flex items-center justify-center gap-1 ${
-                        kycStatus === 'Verified'
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      <span className="material-symbols-outlined text-[13px]">check_circle</span>
-                      <span>Verified</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setKycStatus('Pending Verification')}
-                      className={`py-1.5 px-2 rounded-lg font-bold text-[10px] transition flex items-center justify-center gap-1 ${
-                        kycStatus === 'Pending Verification'
-                          ? 'bg-amber-500 text-white shadow-xs'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      <span className="material-symbols-outlined text-[13px]">hourglass_empty</span>
-                      <span>Pending</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setKycStatus('Under Review')}
-                      className={`py-1.5 px-2 rounded-lg font-bold text-[10px] transition flex items-center justify-center gap-1 ${
-                        kycStatus === 'Under Review'
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      <span className="material-symbols-outlined text-[13px]">sync</span>
-                      <span>Review</span>
-                    </button>
+                  <div className="flex flex-wrap gap-1 p-1 bg-white rounded-xl border border-gray-200 shadow-2xs">
+                    {[
+                      { id: 'AUTO', label: 'Auto (Country Detect)', icon: 'auto_awesome' },
+                      { id: 'VAT', label: 'VAT / VIES / TRN', icon: 'receipt_long' },
+                      { id: 'EIN', label: 'US EIN / W-9 / W-8', icon: 'gavel' },
+                      { id: 'GST', label: 'GST / HST / ABN', icon: 'payments' },
+                      { id: 'CR', label: 'Commercial Reg. / Kbis', icon: 'store' },
+                      { id: 'LEI', label: 'Global LEI / D-U-N-S®', icon: 'corporate_fare' },
+                      { id: 'CUSTOM', label: 'Custom Sovereign ID', icon: 'pin' },
+                    ].map(scheme => (
+                      <button
+                        key={scheme.id}
+                        type="button"
+                        onClick={() => setTaxScheme(scheme.id)}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${taxScheme === scheme.id
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                          }`}
+                      >
+                        <span className="material-symbols-outlined text-[12px]">{scheme.icon}</span>
+                        <span>{scheme.label}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-gray-700 font-medium text-[11px]">
-                      Document Expiry / Validity
+                {/* Row 1: Primary Tax Identifier & Commercial Registration */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-gray-700 font-medium text-[11px] flex items-center gap-1">
+                        <span>{taxInfo.label}</span>
+                      </label>
+                      <span className="text-[9px] font-bold uppercase tracking-wider bg-blue-100/70 text-blue-700 px-1.5 py-0.2 rounded font-mono">
+                        {taxInfo.badge}
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder={taxInfo.placeholder}
+                      value={taxIdInput}
+                      onChange={(e) => setTaxIdInput(e.target.value)}
+                      className="w-full px-3.5 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-gray-700 font-medium text-[11px]">
+                        {taxInfo.regLabel}
+                      </label>
+                      <span className="text-[9px] text-gray-400">Registry / License</span>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder={taxInfo.regPlaceholder}
+                      value={registrationNumber}
+                      onChange={(e) => setRegistrationNumber(e.target.value)}
+                      className="w-full px-3.5 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 2: Global Corporate Identifiers & Sovereign Tax Authority */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-gray-700 font-medium text-[11px] flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[14px] text-indigo-600">corporate_fare</span>
+                        <span>Global Entity ID (LEI / D-U-N-S®)</span>
+                      </label>
+                      <span className="text-[9px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 px-1.5 py-0.2 rounded border border-indigo-200/50">
+                        ISO 17442 / D&B
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. 5493006MHB84DD0ZWV18 or 12-345-6789"
+                      value={globalEntityId}
+                      onChange={(e) => setGlobalEntityId(e.target.value)}
+                      className="w-full px-3.5 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-gray-700 font-medium text-[11px] flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[14px] text-blue-600">account_balance</span>
+                        <span>Issuing Sovereign Tax Authority</span>
+                      </label>
+                      <span className="text-[9px] text-gray-400">Jurisdiction Body</span>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder={taxInfo.defaultAuthority}
+                      value={taxAuthority}
+                      onChange={(e) => setTaxAuthority(e.target.value)}
+                      className="w-full px-3.5 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 3: Status and Validity */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0.5">
+                  <div>
+                    <label className="block text-gray-700 font-medium mb-1.5 text-[11px]">
+                      KYC Verification Standing
                     </label>
-                    <label className="flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer select-none">
+                    <div className="grid grid-cols-3 gap-1.5 p-1 bg-white rounded-xl border border-gray-200">
+                      <button
+                        type="button"
+                        onClick={() => setKycStatus('Verified')}
+                        className={`py-1.5 px-2 rounded-lg font-bold text-[10px] transition flex items-center justify-center gap-1 ${kycStatus === 'Verified'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                      >
+                        <span className="material-symbols-outlined text-[13px]">check_circle</span>
+                        <span>Verified</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setKycStatus('Pending Verification')}
+                        className={`py-1.5 px-2 rounded-lg font-bold text-[10px] transition flex items-center justify-center gap-1 ${kycStatus === 'Pending Verification'
+                            ? 'bg-amber-500 text-white shadow-xs'
+                            : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                      >
+                        <span className="material-symbols-outlined text-[13px]">hourglass_empty</span>
+                        <span>Pending</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setKycStatus('Under Review')}
+                        className={`py-1.5 px-2 rounded-lg font-bold text-[10px] transition flex items-center justify-center gap-1 ${kycStatus === 'Under Review'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                      >
+                        <span className="material-symbols-outlined text-[13px]">sync</span>
+                        <span>Review</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-gray-700 font-medium text-[11px]">
+                        Document Expiry / Validity
+                      </label>
+                      <label className="flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={isPermanentKyc}
+                          onChange={(e) => setIsPermanentKyc(e.target.checked)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3 h-3"
+                        />
+                        <span>No Expiry / Permanent</span>
+                      </label>
+                    </div>
+                    {isPermanentKyc ? (
+                      <div className="w-full px-3 py-1.5 bg-emerald-50/70 border border-emerald-200/70 rounded-xl text-emerald-800 text-[11px] font-medium flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-emerald-600 text-[15px]">all_inclusive</span>
+                        <span>Permanent Valid Regulatory Credential</span>
+                      </div>
+                    ) : (
+                      <input
+                        type="date"
+                        value={kycExpiry}
+                        onChange={(e) => setKycExpiry(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white text-xs"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Row 4: International Compliance & Sanctions Screening */}
+                <div className="p-2.5 bg-white rounded-xl border border-gray-200/80 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1">
+                      <span className="material-symbols-outlined text-emerald-600 text-[13px]">policy</span>
+                      <span>International Compliance & Screening</span>
+                    </span>
+                    <span className="text-[9px] text-emerald-700 bg-emerald-50 px-2 py-0.2 rounded font-bold border border-emerald-200/60">
+                      Global Standards (OFAC / UN / EU)
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-0.5">
+                    <label className="flex items-center gap-2 p-1.5 rounded-lg bg-gray-50/80 hover:bg-gray-100/70 border border-gray-200/60 cursor-pointer transition select-none text-[11px]">
                       <input
                         type="checkbox"
-                        checked={isPermanentKyc}
-                        onChange={(e) => setIsPermanentKyc(e.target.checked)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3 h-3"
+                        checked={amlScreened}
+                        onChange={(e) => setAmlScreened(e.target.checked)}
+                        className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5 shrink-0"
                       />
-                      <span>No Expiry / Permanent</span>
+                      <div className="flex flex-col truncate">
+                        <span className="font-semibold text-gray-800 truncate">AML & Sanctions Cleared</span>
+                        <span className="text-[9px] text-gray-400 truncate">OFAC / EU / UN check</span>
+                      </div>
+                    </label>
+                    <label className="flex items-center gap-2 p-1.5 rounded-lg bg-gray-50/80 hover:bg-gray-100/70 border border-gray-200/60 cursor-pointer transition select-none text-[11px]">
+                      <input
+                        type="checkbox"
+                        checked={uboVerified}
+                        onChange={(e) => setUboVerified(e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 shrink-0"
+                      />
+                      <div className="flex flex-col truncate">
+                        <span className="font-semibold text-gray-800 truncate">UBO Documented</span>
+                        <span className="text-[9px] text-gray-400 truncate">Beneficial ownership</span>
+                      </div>
+                    </label>
+                    <label className="flex items-center gap-2 p-1.5 rounded-lg bg-gray-50/80 hover:bg-gray-100/70 border border-gray-200/60 cursor-pointer transition select-none text-[11px]">
+                      <input
+                        type="checkbox"
+                        checked={taxResidencyActive}
+                        onChange={(e) => setTaxResidencyActive(e.target.checked)}
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 w-3.5 h-3.5 shrink-0"
+                      />
+                      <div className="flex flex-col truncate">
+                        <span className="font-semibold text-gray-800 truncate">Tax Treaty / TRC Form</span>
+                        <span className="text-[9px] text-gray-400 truncate">W-8 / W-9 / Residency</span>
+                      </div>
                     </label>
                   </div>
-                  {isPermanentKyc ? (
-                    <div className="w-full px-3 py-1.5 bg-emerald-50/70 border border-emerald-200/70 rounded-xl text-emerald-800 text-[11px] font-medium flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-emerald-600 text-[15px]">all_inclusive</span>
-                      <span>Permanent Valid Regulatory Credential</span>
-                    </div>
-                  ) : (
-                    <input
-                      type="date"
-                      value={kycExpiry}
-                      onChange={(e) => setKycExpiry(e.target.value)}
-                      className="w-full px-3 py-1.5 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white text-xs"
-                    />
-                  )}
                 </div>
               </div>
 
-              {/* Row 4: International Compliance & Sanctions Screening */}
-              <div className="p-2.5 bg-white rounded-xl border border-gray-200/80 space-y-1.5">
+              {/* KYC Document Upload Option */}
+              <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1">
-                    <span className="material-symbols-outlined text-emerald-600 text-[13px]">policy</span>
-                    <span>International Compliance & Screening</span>
+                  <span className="text-[11px] font-bold text-gray-700 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-blue-600 text-[15px]">upload_file</span>
+                    <span>Upload KYC Documents</span>
                   </span>
-                  <span className="text-[9px] text-emerald-700 bg-emerald-50 px-2 py-0.2 rounded font-bold border border-emerald-200/60">
-                    Global Standards (OFAC / UN / EU)
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-0.5">
-                  <label className="flex items-center gap-2 p-1.5 rounded-lg bg-gray-50/80 hover:bg-gray-100/70 border border-gray-200/60 cursor-pointer transition select-none text-[11px]">
-                    <input
-                      type="checkbox"
-                      checked={amlScreened}
-                      onChange={(e) => setAmlScreened(e.target.checked)}
-                      className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5 shrink-0"
-                    />
-                    <div className="flex flex-col truncate">
-                      <span className="font-semibold text-gray-800 truncate">AML & Sanctions Cleared</span>
-                      <span className="text-[9px] text-gray-400 truncate">OFAC / EU / UN check</span>
-                    </div>
-                  </label>
-                  <label className="flex items-center gap-2 p-1.5 rounded-lg bg-gray-50/80 hover:bg-gray-100/70 border border-gray-200/60 cursor-pointer transition select-none text-[11px]">
-                    <input
-                      type="checkbox"
-                      checked={uboVerified}
-                      onChange={(e) => setUboVerified(e.target.checked)}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 shrink-0"
-                    />
-                    <div className="flex flex-col truncate">
-                      <span className="font-semibold text-gray-800 truncate">UBO Documented</span>
-                      <span className="text-[9px] text-gray-400 truncate">Beneficial ownership</span>
-                    </div>
-                  </label>
-                  <label className="flex items-center gap-2 p-1.5 rounded-lg bg-gray-50/80 hover:bg-gray-100/70 border border-gray-200/60 cursor-pointer transition select-none text-[11px]">
-                    <input
-                      type="checkbox"
-                      checked={taxResidencyActive}
-                      onChange={(e) => setTaxResidencyActive(e.target.checked)}
-                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 w-3.5 h-3.5 shrink-0"
-                    />
-                    <div className="flex flex-col truncate">
-                      <span className="font-semibold text-gray-800 truncate">Tax Treaty / TRC Form</span>
-                      <span className="text-[9px] text-gray-400 truncate">W-8 / W-9 / Residency</span>
-                    </div>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            {/* KYC Document Upload Option */}
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-gray-700 flex items-center gap-1">
-                  <span className="material-symbols-outlined text-blue-600 text-[15px]">upload_file</span>
-                  <span>Upload KYC Documents</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setIsManualDocEntryOpen(!isManualDocEntryOpen)}
-                  className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-0.5 hover:underline"
-                >
-                  <span className="material-symbols-outlined text-[13px]">
-                    {isManualDocEntryOpen ? 'remove' : 'add'}
-                  </span>
-                  <span>{isManualDocEntryOpen ? 'Close Manual Entry' : 'Manual Document Entry'}</span>
-                </button>
-              </div>
-
-              {/* Hidden File Input */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xlsx"
-                onChange={handleFileInputChange}
-                className="hidden"
-              />
-
-              {/* Drag & Drop Upload Dropzone */}
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragOver(true);
-                }}
-                onDragLeave={() => setIsDragOver(false)}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`p-4 rounded-2xl border-2 border-dashed transition text-center cursor-pointer flex flex-col items-center justify-center gap-1.5 group ${
-                  isDragOver
-                    ? 'border-blue-500 bg-blue-50/80 scale-[1.01]'
-                    : 'border-gray-300 hover:border-blue-400 bg-white hover:bg-blue-50/20 shadow-2xs'
-                }`}
-              >
-                <div className="w-10 h-10 rounded-2xl bg-blue-50 group-hover:bg-blue-100 text-blue-600 flex items-center justify-center transition shadow-2xs">
-                  <span className="material-symbols-outlined text-[22px]">cloud_upload</span>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-gray-800 group-hover:text-blue-700">
-                    Click to browse files or drag & drop here
-                  </p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">
-                    Supports PDF, Images (PNG, JPG), Word documents up to 25MB
-                  </p>
-                </div>
-              </div>
-
-              {/* Universal Quick Template Presets for International Documents */}
-              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                <span className="text-[10px] font-semibold text-gray-400 mr-1">Global Templates:</span>
-                <button
-                  type="button"
-                  onClick={() => handleQuickAddTemplate('Tax Residency / W-8 / W-9', 'Tax_Residency_TRC_W8_Certificate')}
-                  className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-blue-50 hover:text-blue-700 text-gray-700 font-semibold text-[10px] transition border border-gray-200/80 flex items-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-[12px] text-blue-600">add</span>
-                  <span>TRC / W-8BEN-E / W-9</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickAddTemplate('Certificate of Incorporation', 'Certificate_of_Incorporation_Kbis')}
-                  className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-purple-50 hover:text-purple-700 text-gray-700 font-semibold text-[10px] transition border border-gray-200/80 flex items-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-[12px] text-purple-600">add</span>
-                  <span>COI / Kbis / ACRA</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickAddTemplate('Commercial Trade License', 'Commercial_Register_Trade_License')}
-                  className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-emerald-50 hover:text-emerald-700 text-gray-700 font-semibold text-[10px] transition border border-gray-200/80 flex items-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-[12px] text-emerald-600">add</span>
-                  <span>Trade License / CR</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickAddTemplate('Global LEI / D-U-N-S Report', 'Global_LEI_DUNS_Verification')}
-                  className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-indigo-50 hover:text-indigo-700 text-gray-700 font-semibold text-[10px] transition border border-gray-200/80 flex items-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-[12px] text-indigo-600">add</span>
-                  <span>Global LEI / D-U-N-S</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickAddTemplate('AML & Sanctions Screening', 'AML_Sanctions_UBO_Screening_Report')}
-                  className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-amber-50 hover:text-amber-700 text-gray-700 font-semibold text-[10px] transition border border-gray-200/80 flex items-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-[12px] text-amber-600">add</span>
-                  <span>AML / UBO Dossier</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickAddTemplate('VAT / GST Registration', 'VAT_GST_Registration_Certificate')}
-                  className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-teal-50 hover:text-teal-700 text-gray-700 font-semibold text-[10px] transition border border-gray-200/80 flex items-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-[12px] text-teal-600">add</span>
-                  <span>VAT / GST Certificate</span>
-                </button>
-              </div>
-
-              {/* Manual Document Fill-out Drawer */}
-              {isManualDocEntryOpen && (
-                <div className="p-3.5 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-2.5 animate-slide-up">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-blue-900">
-                    <span className="flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[15px] text-blue-600">edit_document</span>
-                      <span>Fill Out Document Details Manually</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsManualDocEntryOpen(!isManualDocEntryOpen)}
+                    className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-0.5 hover:underline"
+                  >
+                    <span className="material-symbols-outlined text-[13px]">
+                      {isManualDocEntryOpen ? 'remove' : 'add'}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsManualDocEntryOpen(false)}
-                      className="text-gray-400 hover:text-gray-600 text-[14px]"
-                    >
-                      <span className="material-symbols-outlined text-[15px]">close</span>
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div>
-                      <label className="block text-gray-600 text-[10px] font-semibold mb-0.5">Document Title / Name</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Tax_Residency_Certificate.pdf"
-                        value={manualDocTitle}
-                        onChange={(e) => setManualDocTitle(e.target.value)}
-                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-gray-600 text-[10px] font-semibold mb-0.5">Category</label>
-                      <select
-                        value={manualDocCategory}
-                        onChange={(e) => setManualDocCategory(e.target.value)}
-                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-xs font-medium"
-                      >
-                        <option value="KYC / Regulatory Filing">KYC / Regulatory Filing</option>
-                        <option value="Tax Residency Certificate (TRC / W-8 / W-9)">Tax Residency Certificate (TRC / W-8 / W-9)</option>
-                        <option value="VAT / GST Registration Certificate">VAT / GST Registration Certificate</option>
-                        <option value="Certificate of Incorporation / Kbis / ACRA">Certificate of Incorporation / Kbis / ACRA</option>
-                        <option value="Commercial Registry / Trade License">Commercial Registry / Trade License (CR)</option>
-                        <option value="Global LEI / D-U-N-S Extract">Global LEI / D-U-N-S Extract</option>
-                        <option value="AML & Sanctions Screening Dossier">AML & Sanctions Screening Dossier</option>
-                        <option value="Ultimate Beneficial Owner (UBO) Declaration">Ultimate Beneficial Owner (UBO) Declaration</option>
-                        <option value="Bank Mandate / Letter">Bank Confirmation Letter</option>
-                        <option value="Power of Attorney / Board Resolution">Power of Attorney / Board Resolution</option>
-                        <option value="MSA / Contract">MSA / Master Agreement</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-gray-600 text-[10px] font-semibold mb-0.5">Ref / Document Number</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. REF-2025-9910"
-                        value={manualDocRef}
-                        onChange={(e) => setManualDocRef(e.target.value)}
-                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-xs"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-end gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setIsManualDocEntryOpen(false)}
-                      className="px-3 py-1 rounded-lg text-gray-500 hover:bg-gray-100 text-[11px] font-semibold"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleAddManualDoc}
-                      className="px-3.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] shadow-2xs transition flex items-center gap-1"
-                    >
-                      <span className="material-symbols-outlined text-[13px]">add_circle</span>
-                      <span>+ Attach Document Record</span>
-                    </button>
-                  </div>
+                    <span>{isManualDocEntryOpen ? 'Close Manual Entry' : 'Manual Document Entry'}</span>
+                  </button>
                 </div>
-              )}
 
-              {/* Uploaded / Attached Documents Preview List */}
-              {uploadedKycDocs.length > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                    Attached Verification Documents ({uploadedKycDocs.length})
-                  </div>
-                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                    {uploadedKycDocs.map((doc) => {
-                      const isPdf = doc.name.toLowerCase().endsWith('.pdf');
-                      const isImg = doc.name.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/);
-                      return (
-                        <div
-                          key={doc.id}
-                          className="p-2.5 bg-white rounded-xl border border-gray-200/90 shadow-2xs flex items-center justify-between gap-2 transition hover:border-blue-200"
-                        >
-                          <div className="flex items-center gap-2.5 truncate min-w-0">
-                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                              isPdf ? 'bg-red-50 text-red-600' : isImg ? 'bg-indigo-50 text-indigo-600' : 'bg-blue-50 text-blue-600'
-                            }`}>
-                              <span className="material-symbols-outlined text-[16px]">
-                                {isPdf ? 'picture_as_pdf' : isImg ? 'image' : 'description'}
-                              </span>
-                            </div>
-                            <div className="truncate min-w-0 text-left">
-                              <div className="font-bold text-gray-900 text-xs truncate" title={doc.name}>
-                                {doc.name}
-                              </div>
-                              <div className="text-[10px] text-gray-400 flex items-center gap-1.5">
-                                <span className="font-semibold text-blue-600">{doc.category}</span>
-                                <span>•</span>
-                                <span>{doc.size}</span>
-                                <span>•</span>
-                                <span className="text-emerald-700 font-medium">{doc.expiry}</span>
-                              </div>
-                            </div>
-                          </div>
+                {/* Hidden File Input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xlsx"
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                />
 
-                          <div className="flex items-center gap-1 shrink-0">
-                            {doc.fileUrl && (
-                              <a
-                                href={doc.fileUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-1 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-gray-100 transition"
-                                title="Preview Document"
-                              >
-                                <span className="material-symbols-outlined text-[16px]">visibility</span>
-                              </a>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveKycDoc(doc.id)}
-                              className="p-1 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
-                              title="Remove document"
-                            >
-                              <span className="material-symbols-outlined text-[16px]">delete</span>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Designated Key Stakeholders */}
-          <div className="space-y-3 pt-2 border-t border-gray-100">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-blue-600 text-[16px]">contacts</span>
-                <span>Designated Key Stakeholders</span>
-                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                  {stakeholders.length}
-                </span>
-              </h3>
-              <button
-                type="button"
-                onClick={handleAddStakeholder}
-                className="flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-700 font-bold bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl border border-blue-200 transition shadow-2xs active:scale-95"
-              >
-                <span className="material-symbols-outlined text-[15px]">person_add</span>
-                <span>Add Stakeholder</span>
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {stakeholders.map((s, idx) => (
+                {/* Drag & Drop Upload Dropzone */}
                 <div
-                  key={idx}
-                  className="p-4 bg-gray-50/80 rounded-2xl border border-gray-200/80 space-y-3 transition hover:border-gray-300 shadow-2xs"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragOver(true);
+                  }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`p-4 rounded-2xl border-2 border-dashed transition text-center cursor-pointer flex flex-col items-center justify-center gap-1.5 group ${isDragOver
+                      ? 'border-blue-500 bg-blue-50/80 scale-[1.01]'
+                      : 'border-gray-300 hover:border-blue-400 bg-white hover:bg-blue-50/20 shadow-2xs'
+                    }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-white border border-gray-200 text-gray-700 text-[10px] font-bold flex items-center justify-center shadow-2xs">
-                        {idx + 1}
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 group-hover:bg-blue-100 text-blue-600 flex items-center justify-center transition shadow-2xs">
+                    <span className="material-symbols-outlined text-[22px]">cloud_upload</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-800 group-hover:text-blue-700">
+                      Click to browse files or drag & drop here
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      Supports PDF, Images (PNG, JPG), Word documents up to 25MB
+                    </p>
+                  </div>
+                </div>
+
+                {/* Universal Quick Template Presets for International Documents */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  <span className="text-[10px] font-semibold text-gray-400 mr-1">Global Templates:</span>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickAddTemplate('Tax Residency / W-8 / W-9', 'Tax_Residency_TRC_W8_Certificate')}
+                    className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-blue-50 hover:text-blue-700 text-gray-700 font-semibold text-[10px] transition border border-gray-200/80 flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[12px] text-blue-600">add</span>
+                    <span>TRC / W-8BEN-E / W-9</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickAddTemplate('Certificate of Incorporation', 'Certificate_of_Incorporation_Kbis')}
+                    className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-purple-50 hover:text-purple-700 text-gray-700 font-semibold text-[10px] transition border border-gray-200/80 flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[12px] text-purple-600">add</span>
+                    <span>COI / Kbis / ACRA</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickAddTemplate('Commercial Trade License', 'Commercial_Register_Trade_License')}
+                    className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-emerald-50 hover:text-emerald-700 text-gray-700 font-semibold text-[10px] transition border border-gray-200/80 flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[12px] text-emerald-600">add</span>
+                    <span>Trade License / CR</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickAddTemplate('Global LEI / D-U-N-S Report', 'Global_LEI_DUNS_Verification')}
+                    className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-indigo-50 hover:text-indigo-700 text-gray-700 font-semibold text-[10px] transition border border-gray-200/80 flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[12px] text-indigo-600">add</span>
+                    <span>Global LEI / D-U-N-S</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickAddTemplate('AML & Sanctions Screening', 'AML_Sanctions_UBO_Screening_Report')}
+                    className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-amber-50 hover:text-amber-700 text-gray-700 font-semibold text-[10px] transition border border-gray-200/80 flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[12px] text-amber-600">add</span>
+                    <span>AML / UBO Dossier</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickAddTemplate('VAT / GST Registration', 'VAT_GST_Registration_Certificate')}
+                    className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-teal-50 hover:text-teal-700 text-gray-700 font-semibold text-[10px] transition border border-gray-200/80 flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[12px] text-teal-600">add</span>
+                    <span>VAT / GST Certificate</span>
+                  </button>
+                </div>
+
+                {/* Manual Document Fill-out Drawer */}
+                {isManualDocEntryOpen && (
+                  <div className="p-3.5 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-2.5 animate-slide-up">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-blue-900">
+                      <span className="flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[15px] text-blue-600">edit_document</span>
+                        <span>Fill Out Document Details Manually</span>
                       </span>
-                      <span className="text-[11px] font-bold text-gray-800">
-                        {idx === 0 ? 'Lead Stakeholder (Primary POC)' : `Additional Stakeholder #${idx + 1}`}
-                      </span>
-                      {idx === 0 ? (
-                        <span className="text-[9px] font-extrabold uppercase tracking-wider bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full border border-blue-200">
-                          Primary
+                      <button
+                        type="button"
+                        onClick={() => setIsManualDocEntryOpen(false)}
+                        className="text-gray-400 hover:text-gray-600 text-[14px]"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">close</span>
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-gray-600 text-[10px] font-semibold mb-0.5">Document Title / Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Tax_Residency_Certificate.pdf"
+                          value={manualDocTitle}
+                          onChange={(e) => setManualDocTitle(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-gray-600 text-[10px] font-semibold mb-0.5">Category</label>
+                        <select
+                          value={manualDocCategory}
+                          onChange={(e) => setManualDocCategory(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-xs font-medium"
+                        >
+                          <option value="KYC / Regulatory Filing">KYC / Regulatory Filing</option>
+                          <option value="Tax Residency Certificate (TRC / W-8 / W-9)">Tax Residency Certificate (TRC / W-8 / W-9)</option>
+                          <option value="VAT / GST Registration Certificate">VAT / GST Registration Certificate</option>
+                          <option value="Certificate of Incorporation / Kbis / ACRA">Certificate of Incorporation / Kbis / ACRA</option>
+                          <option value="Commercial Registry / Trade License">Commercial Registry / Trade License (CR)</option>
+                          <option value="Global LEI / D-U-N-S Extract">Global LEI / D-U-N-S Extract</option>
+                          <option value="AML & Sanctions Screening Dossier">AML & Sanctions Screening Dossier</option>
+                          <option value="Ultimate Beneficial Owner (UBO) Declaration">Ultimate Beneficial Owner (UBO) Declaration</option>
+                          <option value="Bank Mandate / Letter">Bank Confirmation Letter</option>
+                          <option value="Power of Attorney / Board Resolution">Power of Attorney / Board Resolution</option>
+                          <option value="MSA / Contract">MSA / Master Agreement</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-gray-600 text-[10px] font-semibold mb-0.5">Ref / Document Number</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. REF-2025-9910"
+                          value={manualDocRef}
+                          onChange={(e) => setManualDocRef(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-xs"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsManualDocEntryOpen(false)}
+                        className="px-3 py-1 rounded-lg text-gray-500 hover:bg-gray-100 text-[11px] font-semibold"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddManualDoc}
+                        className="px-3.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] shadow-2xs transition flex items-center gap-1"
+                      >
+                        <span className="material-symbols-outlined text-[13px]">add_circle</span>
+                        <span>+ Attach Document Record</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Uploaded / Attached Documents Preview List */}
+                {uploadedKycDocs.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                      Attached Verification Documents ({uploadedKycDocs.length})
+                    </div>
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                      {uploadedKycDocs.map((doc) => {
+                        const isPdf = doc.name.toLowerCase().endsWith('.pdf');
+                        const isImg = doc.name.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/);
+                        return (
+                          <div
+                            key={doc.id}
+                            className="p-2.5 bg-white rounded-xl border border-gray-200/90 shadow-2xs flex items-center justify-between gap-2 transition hover:border-blue-200"
+                          >
+                            <div className="flex items-center gap-2.5 truncate min-w-0">
+                              <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isPdf ? 'bg-red-50 text-red-600' : isImg ? 'bg-indigo-50 text-indigo-600' : 'bg-blue-50 text-blue-600'
+                                }`}>
+                                <span className="material-symbols-outlined text-[16px]">
+                                  {isPdf ? 'picture_as_pdf' : isImg ? 'image' : 'description'}
+                                </span>
+                              </div>
+                              <div className="truncate min-w-0 text-left">
+                                <div className="font-bold text-gray-900 text-xs truncate" title={doc.name}>
+                                  {doc.name}
+                                </div>
+                                <div className="text-[10px] text-gray-400 flex items-center gap-1.5">
+                                  <span className="font-semibold text-blue-600">{doc.category}</span>
+                                  <span>•</span>
+                                  <span>{doc.size}</span>
+                                  <span>•</span>
+                                  <span className="text-emerald-700 font-medium">{doc.expiry}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              {doc.fileUrl && (
+                                <a
+                                  href={doc.fileUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="p-1 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-gray-100 transition"
+                                  title="Preview Document"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">visibility</span>
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveKycDoc(doc.id)}
+                                className="p-1 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
+                                title="Remove document"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">delete</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Designated Key Stakeholders */}
+            <div className="space-y-3 pt-2 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-gray-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-blue-600 text-[16px]">contacts</span>
+                  <span>Designated Key Stakeholders</span>
+                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                    {stakeholders.length}
+                  </span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleAddStakeholder}
+                  className="flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-700 font-bold bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl border border-blue-200 transition shadow-2xs active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-[15px]">person_add</span>
+                  <span>Add Stakeholder</span>
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {stakeholders.map((s, idx) => (
+                  <div
+                    key={idx}
+                    className="p-4 bg-gray-50/80 rounded-2xl border border-gray-200/80 space-y-3 transition hover:border-gray-300 shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-white border border-gray-200 text-gray-700 text-[10px] font-bold flex items-center justify-center shadow-2xs">
+                          {idx + 1}
                         </span>
-                      ) : (
-                        <span className="text-[9px] font-bold uppercase tracking-wider bg-gray-200 text-gray-600 px-2.5 py-0.5 rounded-full">
-                          Secondary
+                        <span className="text-[11px] font-bold text-gray-800">
+                          {idx === 0 ? 'Lead Stakeholder (Primary POC)' : `Additional Stakeholder #${idx + 1}`}
                         </span>
+                        {idx === 0 ? (
+                          <span className="text-[9px] font-extrabold uppercase tracking-wider bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full border border-blue-200">
+                            Primary
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-bold uppercase tracking-wider bg-gray-200 text-gray-600 px-2.5 py-0.5 rounded-full">
+                            Secondary
+                          </span>
+                        )}
+                      </div>
+
+                      {stakeholders.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveStakeholder(idx)}
+                          className="text-gray-400 hover:text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg transition flex items-center gap-1 text-[10px] font-semibold"
+                          title="Remove Stakeholder"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">delete</span>
+                          <span>Remove</span>
+                        </button>
                       )}
                     </div>
 
-                    {stakeholders.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveStakeholder(idx)}
-                        className="text-gray-400 hover:text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg transition flex items-center gap-1 text-[10px] font-semibold"
-                        title="Remove Stakeholder"
-                      >
-                        <span className="material-symbols-outlined text-[15px]">delete</span>
-                        <span>Remove</span>
-                      </button>
-                    )}
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-gray-700 font-medium mb-1 text-[11px]">
+                            Contact Person Name {idx === 0 && '*'}
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Marcus Vance"
+                            value={s.name}
+                            onChange={(e) => handleStakeholderChange(idx, 'name', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white font-medium"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-gray-700 font-medium mb-1 text-[11px]">
+                            Direct Phone / Mobile
+                          </label>
+                          <input
+                            type="tel"
+                            placeholder="e.g. +1 415 555-0192"
+                            value={s.phone}
+                            onChange={(e) => handleStakeholderChange(idx, 'phone', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-gray-700 font-medium mb-1 text-[11px]">
+                            Role / Designation
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Procurement Lead"
+                            value={s.role}
+                            onChange={(e) => handleStakeholderChange(idx, 'role', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-gray-700 font-medium mb-1 text-[11px]">
+                            Business Email Address
+                          </label>
+                          <input
+                            type="email"
+                            placeholder="e.g. m.vance@company.com"
+                            value={s.email}
+                            onChange={(e) => handleStakeholderChange(idx, 'email', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-gray-700 font-medium mb-1 text-[11px]">
+                            Department
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Procurement & Sourcing"
+                            value={s.dept || s.department || ''}
+                            onChange={(e) => handleStakeholderChange(idx, 'dept', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
+                ))}
+              </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-gray-700 font-medium mb-1 text-[11px]">
-                        Contact Person Name {idx === 0 && '*'}
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Marcus Vance"
-                        value={s.name}
-                        onChange={(e) => handleStakeholderChange(idx, 'name', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white font-medium"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-gray-700 font-medium mb-1 text-[11px]">
-                        Business Email Address
-                      </label>
-                      <input
-                        type="email"
-                        placeholder="e.g. m.vance@company.com"
-                        value={s.email}
-                        onChange={(e) => handleStakeholderChange(idx, 'email', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-gray-700 font-medium mb-1 text-[11px]">
-                        Direct Phone / Mobile
-                      </label>
-                      <input
-                        type="tel"
-                        placeholder="e.g. +1 415 555-0192"
-                        value={s.phone}
-                        onChange={(e) => handleStakeholderChange(idx, 'phone', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-gray-700 font-medium mb-1 text-[11px]">
-                        Role / Designation
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Procurement Lead"
-                        value={s.role}
-                        onChange={(e) => handleStakeholderChange(idx, 'role', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
+              <button
+                type="button"
+                onClick={handleAddStakeholder}
+                className="w-full py-3 border-2 border-dashed border-blue-200 hover:border-blue-400 rounded-2xl text-blue-600 hover:text-blue-700 bg-blue-50/30 hover:bg-blue-50/70 transition flex items-center justify-center gap-1.5 font-bold text-xs shadow-2xs"
+              >
+                <span className="material-symbols-outlined text-[16px]">add_circle</span>
+                <span>+ Add Another Key Stakeholder</span>
+              </button>
             </div>
-
-            <button
-              type="button"
-              onClick={handleAddStakeholder}
-              className="w-full py-3 border-2 border-dashed border-blue-200 hover:border-blue-400 rounded-2xl text-blue-600 hover:text-blue-700 bg-blue-50/30 hover:bg-blue-50/70 transition flex items-center justify-center gap-1.5 font-bold text-xs shadow-2xs"
-            >
-              <span className="material-symbols-outlined text-[16px]">add_circle</span>
-              <span>+ Add Another Key Stakeholder</span>
-            </button>
-          </div>
 
           </div>
 
@@ -1720,9 +1713,8 @@ const AddEntityModal = ({
             </button>
             <button
               type="submit"
-              className={`px-6 py-2.5 text-xs font-bold text-white rounded-xl shadow-md transition flex items-center gap-1.5 active:scale-95 ${
-                category === 'Client' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'
-              }`}
+              className={`px-6 py-2.5 text-xs font-bold text-white rounded-xl shadow-md transition flex items-center gap-1.5 active:scale-95 ${category === 'Client' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
             >
               <span className="material-symbols-outlined text-[18px]">verified</span>
               <span>Register new {category}</span>

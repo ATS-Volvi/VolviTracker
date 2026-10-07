@@ -105,7 +105,6 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
                 {showCurrent ? 'Hide' : 'Show'}
               </button>
             </div>
-            <p className="text-[11px] text-gray-400 mt-1">Default password for demo accounts is <code className="font-mono text-gray-600">password123</code></p>
           </div>
 
           <div>

@@ -14,7 +14,7 @@ import Avatar from '../components/widgets/Avatar';
 import { exportToCsv, exportToJson } from '../utils/export';
 
 export const Dashboard = () => {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isProjectManager } = useAuth();
   const {
     projects: rawProjects,
     tasks: rawTasks,
@@ -29,6 +29,23 @@ export const Dashboard = () => {
   const allMeetings = Array.isArray(rawMeetings) ? rawMeetings : [];
   const allEmployees = Array.isArray(rawEmployees) ? rawEmployees : [];
   const { addToast } = useToast();
+
+  // Base projects accessible to this user:
+  // - Admin has access to all projects
+  // - Project Manager only has access to the projects they create
+  // - Regular employees see assigned projects
+  const baseProjects = isAdmin
+    ? allProjects
+    : (isProjectManager
+      ? allProjects.filter(p => String(p.createdBy || '') === String(user?.id))
+      : allProjects.filter(p => (Array.isArray(p.assigneeIds) && p.assigneeIds.some(aid => String(aid) === String(user?.id))) || String(p.assigneeId) === String(user?.id)));
+
+  // Subsequent tasks which come under those accessible projects
+  const baseTasks = isAdmin
+    ? allTasks
+    : (isProjectManager
+      ? allTasks.filter(t => baseProjects.some(p => String(p.id) === String(t.projectId)))
+      : allTasks.filter(t => (Array.isArray(t.assigneeIds) && t.assigneeIds.some(aid => String(aid) === String(user?.id))) || String(t.assigneeId) === String(user?.id)));
 
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTabParam = searchParams.get('tab');
@@ -45,7 +62,7 @@ export const Dashboard = () => {
   const [exportType, setExportType] = useState(null);
   const [quickFilter, setQuickFilter] = useState('all');
 
-  // Admin's own employee record & custom properties
+  // Admin's / Project Manager's own employee record & custom properties
   const currentEmp = getEmployee(user?.id) || user;
   const [props, setProps] = useState([]);
   const [comment, setComment] = useState('');
@@ -89,19 +106,19 @@ export const Dashboard = () => {
     }
   };
 
-  // Filter personal items assigned to the current admin
-  const myProjects = allProjects.filter(p => {
+  // Filter personal items assigned to the current user (within their accessible scope)
+  const myProjects = baseProjects.filter(p => {
     const isProjectAssignee =
       (Array.isArray(p.assigneeIds) && p.assigneeIds.some(aid => String(aid) === String(user?.id))) ||
       String(p.assigneeId) === String(user?.id);
-    const hasAssignedTask = allTasks.some(
+    const hasAssignedTask = baseTasks.some(
       t => String(t.projectId) === String(p.id) &&
       ((Array.isArray(t.assigneeIds) && t.assigneeIds.some(aid => String(aid) === String(user?.id))) || String(t.assigneeId) === String(user?.id))
     );
     return isProjectAssignee || hasAssignedTask;
   });
 
-  const myTasks = allTasks.filter(t => {
+  const myTasks = baseTasks.filter(t => {
     const isDirectlyAssigned = (Array.isArray(t.assigneeIds) && t.assigneeIds.some(aid => String(aid) === String(user?.id))) ||
       String(t.assigneeId) === String(user?.id);
     if (isDirectlyAssigned) return true;
@@ -118,25 +135,25 @@ export const Dashboard = () => {
   });
 
   // Filter projects by quick filter pill
-  let filteredProjects = allProjects;
+  let filteredProjects = baseProjects;
   if (quickFilter === 'active') {
-    filteredProjects = allProjects.filter(p => p.status === 'In progress');
+    filteredProjects = baseProjects.filter(p => p.status === 'In progress');
   } else if (quickFilter === 'done') {
-    filteredProjects = allProjects.filter(p => p.status === 'Done');
+    filteredProjects = baseProjects.filter(p => p.status === 'Done');
   } else if (quickFilter === 'mine') {
     filteredProjects = myProjects;
   }
 
-  // Company-wide Stats
-  const completedProjectsCount = allProjects.filter(p => p.status === 'Done').length;
-  const inProgressProjectsCount = allProjects.filter(p => p.status === 'In progress').length;
-  const notStartedProjectsCount = allProjects.filter(p => p.status === 'Not started').length;
+  // Workspace Stats (scoped to user's authorized projects & tasks)
+  const completedProjectsCount = baseProjects.filter(p => p.status === 'Done').length;
+  const inProgressProjectsCount = baseProjects.filter(p => p.status === 'In progress').length;
+  const notStartedProjectsCount = baseProjects.filter(p => p.status === 'Not started').length;
 
-  const completedTasksCount = allTasks.filter(t => t.status === 'Done').length;
-  const inProgressTasksCount = allTasks.filter(t => t.status === 'In progress').length;
-  const notStartedTasksCount = allTasks.filter(t => t.status === 'Not started').length;
-  const taskCompletionRate = allTasks.length > 0
-    ? Math.round((completedTasksCount / allTasks.length) * 100)
+  const completedTasksCount = baseTasks.filter(t => t.status === 'Done').length;
+  const inProgressTasksCount = baseTasks.filter(t => t.status === 'In progress').length;
+  const notStartedTasksCount = baseTasks.filter(t => t.status === 'Not started').length;
+  const taskCompletionRate = baseTasks.length > 0
+    ? Math.round((completedTasksCount / baseTasks.length) * 100)
     : 0;
 
   // Personal Stats
@@ -203,7 +220,7 @@ export const Dashboard = () => {
             Projects
           </h1>
           <p className="text-xs text-gray-500 mt-1">
-            Live enterprise workspace, project planner & personal management
+            {isProjectManager ? 'Project Manager workspace • Projects and tasks created by you' : 'Live enterprise workspace, project planner & personal management'}
           </p>
         </div>
 
@@ -223,9 +240,9 @@ export const Dashboard = () => {
               <svg className="w-3.5 h-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
               </svg>
-              <span>All Projects (Planner)</span>
+              <span>{isProjectManager ? 'Managed Projects' : 'All Projects (Planner)'}</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-50 text-blue-700 font-bold">
-                {allProjects.length}
+                {baseProjects.length}
               </span>
             </button>
 
@@ -255,7 +272,7 @@ export const Dashboard = () => {
                 onClick={() => { setQuickFilter('all'); addToast('Viewing all projects', 'info'); }}
                 className={`px-3 py-1.5 rounded-md transition ${quickFilter === 'all' ? 'bg-white text-gray-900 shadow-xs' : 'hover:text-gray-900'}`}
               >
-                All ({allProjects.length})
+                All ({baseProjects.length})
               </button>
               <button
                 onClick={() => { setQuickFilter('active'); addToast('Filtered: Active in progress', 'info'); }}
@@ -318,7 +335,9 @@ export const Dashboard = () => {
           <div className="w-full bg-[#F8F9FA] border border-gray-200/70 rounded-xl px-4 py-3 flex items-center justify-between text-sm text-[#4B5563] shadow-xs">
             <div className="flex items-center gap-2.5">
               <span className="text-base" role="img" aria-label="briefcase">💼</span>
-              <span className="font-normal text-gray-700">Company-wide project planner & tracking overview</span>
+              <span className="font-normal text-gray-700">
+                {isProjectManager ? 'Project Manager workspace • Viewing only projects and tasks created by you' : 'Company-wide project planner & tracking overview'}
+              </span>
             </div>
             <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
               <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -537,17 +556,17 @@ export const Dashboard = () => {
 
           {/* Primary Projects Section */}
           <section className="w-full">
-            <ProjectsTable projects={filteredProjects} />
+            <ProjectsTable projects={filteredProjects} title={isProjectManager ? 'Managed Projects' : 'Projects'} />
           </section>
 
           {/* Secondary Dashboard Modules (Tasks, Meetings, Employees) */}
           <div className="pt-6 border-t border-gray-200/70 space-y-6 w-full">
             <div className="w-full">
-              <TasksTab tasks={allTasks} heading="Tasks Tracker" />
+              <TasksTab tasks={baseTasks} projects={baseProjects} heading={isProjectManager ? 'Project Tasks Tracker' : 'Tasks Tracker'} />
             </div>
 
             <div id="meetings-calendar-section" className="scroll-mt-24 w-full">
-              <MeetingCalendar meetings={allMeetings} />
+              <MeetingCalendar meetings={isAdmin ? allMeetings : myMeetings} />
             </div>
 
             {isAdmin && (
@@ -580,7 +599,7 @@ export const Dashboard = () => {
                     </h2>
                     <span className="badge bg-indigo-100 text-indigo-700">You</span>
                     <span className="badge bg-purple-100 text-purple-700 border border-purple-200 font-bold">
-                      Admin
+                      {isAdmin ? 'Admin' : (isProjectManager ? 'Project Manager' : (currentEmp?.role || 'Employee'))}
                     </span>
                     <button
                       type="button"
