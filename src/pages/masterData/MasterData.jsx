@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useParams, useNavigate, Link } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
@@ -21,6 +21,7 @@ const MasterData = () => {
   const [addEntityCategory, setAddEntityCategory] = useState('Client');
   const [uploadVaultOpen, setUploadVaultOpen] = useState(false);
   const [entityToDelete, setEntityToDelete] = useState(null);
+  const [poToDelete, setPoToDelete] = useState(null);
   
   // Selected entity for 360 inspector
   const [selectedEntityId, setSelectedEntityId] = useState(null);
@@ -37,9 +38,10 @@ const MasterData = () => {
   // Filters state from URL or default
   const paramTab = searchParams.get('tab')?.toUpperCase();
   const initialSegment = paramTab === 'SUPPLIERS' || paramTab === 'SUPPLIER' ? 'SUPPLIERS' :
-    paramTab === 'VAULT' ? 'VAULT' : 'CLIENTS';
+    paramTab === 'VAULT' ? 'VAULT' :
+    paramTab === 'POS' || paramTab === 'PO' ? 'POS' : 'CLIENTS';
 
-  const [activeSegment, setActiveSegment] = useState(initialSegment); // 'CLIENTS' | 'SUPPLIERS' | 'VAULT'
+  const [activeSegment, setActiveSegment] = useState(initialSegment); // 'CLIENTS' | 'SUPPLIERS' | 'VAULT' | 'POS'
 
   const handleSelectSegment = (seg) => {
     setActiveSegment(seg);
@@ -69,6 +71,12 @@ const MasterData = () => {
   const [vaultCategory, setVaultCategory] = useState('ALL');
   const [vaultEntityFilter, setVaultEntityFilter] = useState('');
 
+  // PO Master List Filter States
+  const [poFilterType, setPoFilterType] = useState('ALL'); // 'ALL' | 'CLIENT' | 'SUPPLIER'
+  const [poSearchTerm, setPoSearchTerm] = useState('');
+  const [poStatusFilter, setPoStatusFilter] = useState('ALL');
+  const [poCurrencyFilter, setPoCurrencyFilter] = useState('ALL');
+
   // Inspector tab
   const [inspectorTab, setInspectorTab] = useState('OVERVIEW'); // 'OVERVIEW' | 'POS' | 'VAULT'
 
@@ -82,6 +90,9 @@ const MasterData = () => {
 
   const masterDirectory = data.masterDirectory || [];
   const vaultDocs = data.vault || [];
+  const clientPos = data.clientPos || [];
+  const supplierPos = data.supplierPos || [];
+  const totalPoCount = clientPos.length + supplierPos.length;
 
   // Default selected entity
   useEffect(() => {
@@ -227,6 +238,85 @@ const MasterData = () => {
       list
     };
   }, [masterDirectory]);
+
+  // Master PO Registry Aggregation (Client POs - AR & Supplier POs - AP)
+  const allMasterPos = useMemo(() => {
+    const clients = (data.clientPos || []).map(cpo => ({
+      ...cpo,
+      uniqueKey: `client-${cpo.id || cpo.poNumber}`,
+      type: 'client',
+      typeLabel: 'Client PO (AR)',
+      counterparty: cpo.clientName,
+      scopeOrProject: cpo.scope || cpo.projectName || 'Client Engagement',
+      valueNative: cpo.totalValueNative || cpo.totalValueUsd || 0,
+      valueUsd: cpo.totalValueUsd || 0,
+      billedPercent: cpo.drawdownPercent ?? (cpo.totalValueNative ? Math.round(((cpo.invoicedNative || 0) / cpo.totalValueNative) * 100) : 0),
+      billedNative: cpo.invoicedNative || 0,
+      remainingNative: cpo.remainingNative || 0,
+      terms: cpo.terms || 'Net 30',
+      status: cpo.status || 'Active',
+      date: cpo.issueDate || '—',
+      currency: cpo.currency || 'USD',
+      flag: cpo.flag || '🌐',
+      financeLink: '/finance/client'
+    }));
+
+    const suppliers = (data.supplierPos || []).map(spo => ({
+      ...spo,
+      uniqueKey: `supplier-${spo.id || spo.poNumber}`,
+      type: 'supplier',
+      typeLabel: 'Supplier PO (AP)',
+      counterparty: spo.supplierName,
+      scopeOrProject: spo.linkedProject ? `Project ${spo.linkedProject}` : (spo.items?.[0]?.desc || 'Procurement Order'),
+      valueNative: spo.committedNative || spo.committedUsd || 0,
+      valueUsd: spo.committedUsd || 0,
+      billedPercent: spo.billedPercent ?? (spo.committedUsd ? Math.round(((spo.billedUsd || 0) / spo.committedUsd) * 100) : 0),
+      billedNative: spo.billedUsd || 0,
+      remainingNative: spo.remainingUsd || 0,
+      terms: spo.terms || 'Net 30',
+      status: spo.status || 'Active',
+      date: spo.issueDate || spo.date || '—',
+      currency: spo.currency || 'USD',
+      flag: spo.origin?.includes('India') ? '🇮🇳' : spo.origin?.includes('Ireland') ? '🇮🇪' : spo.origin?.includes('Norway') ? '🇳🇴' : spo.origin?.includes('KSA') ? '🇸🇦' : '🌐',
+      financeLink: '/finance/supplier'
+    }));
+
+    return [...clients, ...suppliers];
+  }, [data.clientPos, data.supplierPos]);
+
+  // Filtered Master POs
+  const filteredMasterPos = useMemo(() => {
+    return allMasterPos.filter(po => {
+      if (poFilterType === 'CLIENT' && po.type !== 'client') return false;
+      if (poFilterType === 'SUPPLIER' && po.type !== 'supplier') return false;
+      if (poStatusFilter !== 'ALL' && po.status !== poStatusFilter) return false;
+      if (poCurrencyFilter !== 'ALL' && po.currency !== poCurrencyFilter) return false;
+      if (poSearchTerm) {
+        const q = poSearchTerm.toLowerCase();
+        const matchPoNum = (po.poNumber || '').toLowerCase().includes(q);
+        const matchParty = (po.counterparty || '').toLowerCase().includes(q);
+        const matchScope = (po.scopeOrProject || '').toLowerCase().includes(q);
+        const matchTerms = (po.terms || '').toLowerCase().includes(q);
+        if (!matchPoNum && !matchParty && !matchScope && !matchTerms) return false;
+      }
+      return true;
+    });
+  }, [allMasterPos, poFilterType, poStatusFilter, poCurrencyFilter, poSearchTerm]);
+
+  // Dynamic PO Registry KPIs
+  const poMetrics = useMemo(() => {
+    const clientValUsd = (data.clientPos || []).reduce((sum, p) => sum + (p.totalValueUsd || 0), 0);
+    const supplierValUsd = (data.supplierPos || []).reduce((sum, p) => sum + (p.committedUsd || 0), 0);
+    const netSpread = clientValUsd - supplierValUsd;
+    return {
+      totalCount: allMasterPos.length,
+      clientCount: (data.clientPos || []).length,
+      supplierCount: (data.supplierPos || []).length,
+      clientValUsd,
+      supplierValUsd,
+      netSpread,
+    };
+  }, [allMasterPos, data.clientPos, data.supplierPos]);
 
   // Handlers
   const handleOpenAddClient = () => {
@@ -390,6 +480,25 @@ const MasterData = () => {
         XLSX.utils.book_append_sheet(workbook, wsVault, 'Document Vault');
       }
 
+      if (allMasterPos.length > 0) {
+        const poRows = allMasterPos.map(po => ({
+          'PO Number': po.poNumber,
+          'Classification': po.typeLabel,
+          'Counterparty': po.counterparty,
+          'Scope / Project': po.scopeOrProject,
+          'Currency': po.currency,
+          'Contract Value (Native)': po.valueNative,
+          'Contract Value (USD)': po.valueUsd,
+          'Billed / Drawdown %': `${po.billedPercent}%`,
+          'Status': po.status,
+          'Payment Terms': po.terms,
+          'Issue Date': po.date,
+        }));
+        const wsPos = XLSX.utils.json_to_sheet(poRows);
+        setColWidths(wsPos, poRows);
+        XLSX.utils.book_append_sheet(workbook, wsPos, 'Purchase Orders Master');
+      }
+
       const dateStr = new Date().toISOString().split('T')[0];
       const filename = `Volvitech_Master_Registry_${dateStr}.xlsx`;
       XLSX.writeFile(workbook, filename);
@@ -456,6 +565,45 @@ const MasterData = () => {
     }
 
     addToast(`"${targetName}" has been permanently removed from Master Directory.`, 'info');
+  };
+
+  // Handler for Administrative Permanent PO Deletion
+  const handleDeletePo = (po) => {
+    if (!isAdmin) {
+      addToast('Unauthorized: Only administrators have permission to delete Purchase Orders.', 'error');
+      return;
+    }
+    try {
+      const nextData = { ...data };
+      if (po.type === 'client') {
+        nextData.clientPos = (nextData.clientPos || []).filter(
+          p => p.id !== po.id && p.poNumber !== po.poNumber
+        );
+        if (nextData.kpis) {
+          nextData.kpis = {
+            ...nextData.kpis,
+            clientPoTotal: Math.max(0, (nextData.kpis.clientPoTotal || 0) - (po.totalValueUsd || 0)),
+          };
+        }
+      } else {
+        nextData.supplierPos = (nextData.supplierPos || []).filter(
+          p => p.id !== po.id && p.poNumber !== po.poNumber
+        );
+        if (nextData.kpis) {
+          nextData.kpis = {
+            ...nextData.kpis,
+            supplierPoCommitted: Math.max(0, (nextData.kpis.supplierPoCommitted || 0) - (po.committedUsd || 0)),
+          };
+        }
+      }
+      setData(nextData);
+      saveFinanceData(nextData);
+      addToast(`Purchase Order "${po.poNumber}" (${po.counterparty}) permanently deleted from master registry.`, 'success');
+      setPoToDelete(null);
+    } catch (err) {
+      console.error('Error deleting Purchase Order:', err);
+      addToast('Failed to delete Purchase Order. Please try again.', 'error');
+    }
   };
 
   // Render dedicated Company Dossier page if a company is selected for dossier view
@@ -679,12 +827,12 @@ const MasterData = () => {
       </div>
 
       {/* Main Grid: Directory Table + 360 Entity Inspector Side Panel */}
-      {activeSegment !== 'VAULT' && (
+      {activeSegment !== 'VAULT' && activeSegment !== 'POS' && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
           {/* Left / Center: Interactive Master Table (8 Columns on xl) */}
           <div className="xl:col-span-8 bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden flex flex-col">
             <div className="px-4 py-2.5 bg-gray-50/90 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3 text-xs">
-              {/* 3 Tabs: Client, Supplier and Document Vault */}
+              {/* Segment Switcher Tabs: Clients, Suppliers, Document Vault, PO Master List */}
               <div className="inline-flex p-1 bg-gray-200/80 rounded-xl gap-1">
                 <button
                   type="button"
@@ -743,6 +891,26 @@ const MasterData = () => {
                       : 'bg-gray-300 text-gray-700'
                   }`}>
                     {vaultDocs.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectSegment('POS')}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
+                    activeSegment === 'POS'
+                      ? 'bg-white text-purple-600 shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/60'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">receipt_long</span>
+                  <span>PO Master List</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    activeSegment === 'POS'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'bg-gray-300 text-gray-700'
+                  }`}>
+                    {totalPoCount}
                   </span>
                 </button>
               </div>
@@ -1301,6 +1469,18 @@ const MasterData = () => {
                   {vaultDocs.length}
                 </span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectSegment('POS')}
+                className="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100/60"
+              >
+                <span className="material-symbols-outlined text-[16px]">receipt_long</span>
+                <span>PO Master List</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-300 text-gray-700">
+                  {totalPoCount}
+                </span>
+              </button>
             </div>
 
             <div className="flex items-center gap-1.5 text-gray-400 text-[11px] font-medium pr-1">
@@ -1489,6 +1669,475 @@ const MasterData = () => {
         </div>
       )}
 
+      {/* Enterprise Purchase Order (PO) Master Registry - Only displayed when PO Master List segment is selected */}
+      {activeSegment === 'POS' && (
+        <div id="po-master-section" className="bg-white rounded-2xl border border-gray-100 shadow-xs p-6 space-y-6 animate-fade-in text-left">
+          {/* Navigation Tabs Header */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-4">
+            <div className="inline-flex p-1 bg-gray-200/80 rounded-xl gap-1">
+              <button
+                type="button"
+                onClick={() => handleSelectSegment('CLIENTS')}
+                className="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100/60"
+              >
+                <span className="material-symbols-outlined text-[16px]">person</span>
+                <span>Clients</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-300 text-gray-700">
+                  {clientCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectSegment('SUPPLIERS')}
+                className="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100/60"
+              >
+                <span className="material-symbols-outlined text-[16px]">local_shipping</span>
+                <span>Suppliers</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-300 text-gray-700">
+                  {supplierCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectSegment('VAULT')}
+                className="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100/60"
+              >
+                <span className="material-symbols-outlined text-[16px]">folder_zip</span>
+                <span>Document Vault</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-300 text-gray-700">
+                  {vaultDocs.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectSegment('POS')}
+                className="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 bg-white text-purple-600 shadow-xs"
+              >
+                <span className="material-symbols-outlined text-[16px]">receipt_long</span>
+                <span>PO Master List</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">
+                  {totalPoCount}
+                </span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Link
+                to="/finance/client"
+                className="px-3.5 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200/70 rounded-xl transition flex items-center gap-1.5 shadow-2xs"
+              >
+                <span className="material-symbols-outlined text-[15px]">add_circle</span>
+                <span>Register Client PO</span>
+              </Link>
+              <Link
+                to="/finance/supplier"
+                className="px-3.5 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200/70 rounded-xl transition flex items-center gap-1.5 shadow-2xs"
+              >
+                <span className="material-symbols-outlined text-[15px]">add_circle</span>
+                <span>Issue Supplier PO</span>
+              </Link>
+            </div>
+          </div>
+
+          {/* Section Title & Badges */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-purple-50 text-purple-600">
+                  <span className="material-symbols-outlined text-[24px]">receipt_long</span>
+                </span>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 font-display">
+                    Purchase Order (PO) Master Registry
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Centralized master ledger of all Client Purchase Orders (AR revenue contracts) and Supplier Purchase Orders (AP vendor commitments). Inspect details and manage PO lifecycle with administrative delete privileges.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Live Ledger Synchronized</span>
+              </span>
+              <button
+                type="button"
+                onClick={exportRegistry}
+                className="px-3.5 py-1.5 text-xs font-semibold bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl transition shadow-2xs flex items-center gap-1.5"
+                title="Download complete registry export (.xlsx)"
+              >
+                <span className="material-symbols-outlined text-[16px] text-emerald-600">download</span>
+                <span>Export POs</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Mini PO Summary Metrics Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 bg-gray-50/70 rounded-2xl border border-gray-100 space-y-1">
+              <div className="flex items-center justify-between text-xs text-gray-500 font-medium">
+                <span>Total PO Contracts</span>
+                <span className="material-symbols-outlined text-[18px] text-gray-400">inventory_2</span>
+              </div>
+              <div className="text-2xl font-extrabold text-gray-900 font-display tracking-tight">
+                {poMetrics.totalCount}
+              </div>
+              <div className="text-[11px] text-gray-500 flex items-center gap-2 font-medium">
+                <span className="text-blue-600 font-bold">{poMetrics.clientCount} Client (AR)</span>
+                <span>•</span>
+                <span className="text-purple-600 font-bold">{poMetrics.supplierCount} Supplier (AP)</span>
+              </div>
+            </div>
+
+            <div className="p-4 bg-blue-50/40 rounded-2xl border border-blue-100/70 space-y-1">
+              <div className="flex items-center justify-between text-xs text-blue-700 font-semibold">
+                <span>Client PO Value (AR)</span>
+                <span className="material-symbols-outlined text-[18px] text-blue-500">arrow_downward</span>
+              </div>
+              <div className="text-2xl font-extrabold text-blue-900 font-display tracking-tight">
+                ${poMetrics.clientValUsd.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </div>
+              <div className="text-[11px] text-blue-600 font-medium">
+                Revenue bookings across {poMetrics.clientCount} clients
+              </div>
+            </div>
+
+            <div className="p-4 bg-purple-50/40 rounded-2xl border border-purple-100/70 space-y-1">
+              <div className="flex items-center justify-between text-xs text-purple-700 font-semibold">
+                <span>Supplier PO Value (AP)</span>
+                <span className="material-symbols-outlined text-[18px] text-purple-500">arrow_upward</span>
+              </div>
+              <div className="text-2xl font-extrabold text-purple-900 font-display tracking-tight">
+                ${poMetrics.supplierValUsd.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </div>
+              <div className="text-[11px] text-purple-600 font-medium">
+                Procurement commitments across {poMetrics.supplierCount} vendors
+              </div>
+            </div>
+
+            <div className="p-4 bg-emerald-50/40 rounded-2xl border border-emerald-100/70 space-y-1">
+              <div className="flex items-center justify-between text-xs text-emerald-700 font-semibold">
+                <span>Net PO Spread</span>
+                <span className="material-symbols-outlined text-[18px] text-emerald-500">account_balance</span>
+              </div>
+              <div className="text-2xl font-extrabold text-emerald-900 font-display tracking-tight">
+                ${poMetrics.netSpread.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </div>
+              <div className="text-[11px] text-emerald-600 font-medium">
+                {poMetrics.clientValUsd > 0 ? `${((poMetrics.netSpread / poMetrics.clientValUsd) * 100).toFixed(1)}% Gross contract margin` : 'Balanced backlog'}
+              </div>
+            </div>
+          </div>
+
+          {/* Filter & Search Controls */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-gray-50/80 p-3 rounded-2xl border border-gray-100">
+            {/* Sub-type Filter Pills */}
+            <div className="inline-flex p-1 bg-white rounded-xl shadow-2xs border border-gray-100 gap-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setPoFilterType('ALL')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition ${
+                  poFilterType === 'ALL'
+                    ? 'bg-gray-900 text-white shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                All POs ({allMasterPos.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setPoFilterType('CLIENT')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-1.5 ${
+                  poFilterType === 'CLIENT'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[14px]">arrow_downward</span>
+                <span>Client POs ({poMetrics.clientCount})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPoFilterType('SUPPLIER')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition flex items-center gap-1.5 ${
+                  poFilterType === 'SUPPLIER'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[14px]">arrow_upward</span>
+                <span>Supplier POs ({poMetrics.supplierCount})</span>
+              </button>
+            </div>
+
+            {/* Search and Dropdowns */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[16px]">search</span>
+                <input
+                  type="text"
+                  placeholder="Search PO#, company, project..."
+                  value={poSearchTerm}
+                  onChange={(e) => setPoSearchTerm(e.target.value)}
+                  className="text-xs pl-8 pr-7 py-1.5 bg-white border border-gray-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-purple-500 w-48 sm:w-64"
+                />
+                {poSearchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setPoSearchTerm('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">close</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Status Filter */}
+              <select
+                value={poStatusFilter}
+                onChange={(e) => setPoStatusFilter(e.target.value)}
+                className="text-xs px-2.5 py-1.5 bg-white border border-gray-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-purple-500 text-gray-700 font-medium"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="Partially Invoiced">Partially Invoiced</option>
+                <option value="Fully Invoiced">Fully Invoiced</option>
+                <option value="Fulfilled">Fulfilled</option>
+                <option value="Open">Open</option>
+                <option value="Active Drawdown">Active Drawdown</option>
+                <option value="Bill Overdue">Bill Overdue</option>
+              </select>
+
+              {/* Currency Filter */}
+              <select
+                value={poCurrencyFilter}
+                onChange={(e) => setPoCurrencyFilter(e.target.value)}
+                className="text-xs px-2.5 py-1.5 bg-white border border-gray-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-purple-500 text-gray-700 font-medium"
+              >
+                <option value="ALL">All FX</option>
+                <option value="USD">USD</option>
+                <option value="AED">AED</option>
+                <option value="SAR">SAR</option>
+                <option value="INR">INR</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Master PO Table */}
+          <div className="overflow-x-auto rounded-2xl border border-gray-100">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-gray-50/90 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                  <th className="py-3 px-4">PO Number & Date</th>
+                  <th className="py-3 px-3">Classification</th>
+                  <th className="py-3 px-3">Counterparty</th>
+                  <th className="py-3 px-3">Scope / Project</th>
+                  <th className="py-3 px-3 text-right">Contract Value</th>
+                  <th className="py-3 px-3">Drawdown / Billed</th>
+                  <th className="py-3 px-3 text-center">Status</th>
+                  <th className="py-3 px-3">Terms</th>
+                  <th className="py-3 px-4 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 bg-white">
+                {filteredMasterPos.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-12 text-center">
+                      <div className="flex flex-col items-center justify-center">
+                        <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mb-2">
+                          <span className="material-symbols-outlined text-[24px]">receipt_long</span>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-700">No Purchase Orders Found</p>
+                        <p className="text-xs text-gray-400 mt-1 max-w-sm">
+                          {poSearchTerm || poFilterType !== 'ALL' || poStatusFilter !== 'ALL' || poCurrencyFilter !== 'ALL'
+                            ? 'No PO contracts match your active filter criteria. Try resetting filters.'
+                            : 'No Purchase Orders are currently registered in the system.'}
+                        </p>
+                        {(poSearchTerm || poFilterType !== 'ALL' || poStatusFilter !== 'ALL' || poCurrencyFilter !== 'ALL') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPoFilterType('ALL');
+                              setPoSearchTerm('');
+                              setPoStatusFilter('ALL');
+                              setPoCurrencyFilter('ALL');
+                            }}
+                            className="mt-3 px-3.5 py-1.5 text-xs font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-xl transition"
+                          >
+                            Reset Filters
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredMasterPos.map((po) => {
+                    const isClient = po.type === 'client';
+                    return (
+                      <tr
+                        key={po.uniqueKey}
+                        className="hover:bg-purple-50/20 transition-colors group"
+                      >
+                        {/* PO Number & Date */}
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-gray-900 font-mono text-[11px] group-hover:text-purple-700 transition">
+                            {po.poNumber}
+                          </div>
+                          <div className="text-[10px] text-gray-400 font-medium mt-0.5 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[12px]">calendar_today</span>
+                            <span>{po.date}</span>
+                          </div>
+                        </td>
+
+                        {/* Classification */}
+                        <td className="py-3.5 px-3">
+                          {isClient ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200/60">
+                              <span className="material-symbols-outlined text-[12px]">arrow_downward</span>
+                              <span>Client PO (AR)</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200/60">
+                              <span className="material-symbols-outlined text-[12px]">arrow_upward</span>
+                              <span>Supplier PO (AP)</span>
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Counterparty */}
+                        <td className="py-3.5 px-3">
+                          <div className="font-semibold text-gray-900 flex items-center gap-1.5">
+                            <span>{po.flag}</span>
+                            <span>{po.counterparty}</span>
+                          </div>
+                          <div className="text-[10px] text-gray-400 mt-0.5">
+                            {isClient ? (po.country || 'International') : (po.origin || 'Vendor')}
+                          </div>
+                        </td>
+
+                        {/* Scope / Project */}
+                        <td className="py-3.5 px-3 max-w-[220px]">
+                          <div className="text-gray-700 font-medium truncate" title={po.scopeOrProject}>
+                            {po.scopeOrProject}
+                          </div>
+                          {po.linkedClientPo && (
+                            <div className="text-[10px] text-gray-400 mt-0.5 truncate">
+                              Ref: {po.linkedClientPo}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Contract Value */}
+                        <td className="py-3.5 px-3 text-right">
+                          <div className="font-bold text-gray-900">
+                            {po.currency} {Number(po.valueNative || 0).toLocaleString()}
+                          </div>
+                          <div className="text-[10px] text-gray-400 font-mono mt-0.5">
+                            ≈ ${Number(po.valueUsd || 0).toLocaleString()}
+                          </div>
+                        </td>
+
+                        {/* Drawdown / Billed */}
+                        <td className="py-3.5 px-3 min-w-[130px]">
+                          <div className="flex items-center justify-between text-[10px] font-semibold text-gray-600 mb-1">
+                            <span>{po.billedPercent}%</span>
+                            <span className="text-gray-400">
+                              {po.currency} {Number(po.billedNative || 0).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                po.billedPercent >= 100
+                                  ? 'bg-emerald-500'
+                                  : isClient
+                                  ? 'bg-blue-500'
+                                  : 'bg-purple-500'
+                              }`}
+                              style={{ width: `${Math.min(100, Math.max(0, po.billedPercent))}%` }}
+                            />
+                          </div>
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-3.5 px-3 text-center">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              po.status === 'Fully Invoiced' || po.status === 'Fulfilled'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : po.status === 'Partially Invoiced' || po.status === 'Active Drawdown'
+                                ? 'bg-blue-100 text-blue-800'
+                                : po.status === 'Bill Overdue'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {po.status}
+                          </span>
+                        </td>
+
+                        {/* Terms */}
+                        <td className="py-3.5 px-3">
+                          <span className="text-gray-600 font-medium text-[11px] bg-gray-100/80 px-2 py-0.5 rounded-md">
+                            {po.terms}
+                          </span>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="py-3.5 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {/* View in dedicated finance page */}
+                            <Link
+                              to={po.financeLink}
+                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                              title={`View in Finance (${isClient ? 'Client Side' : 'Supplier Side'})`}
+                            >
+                              <span className="material-symbols-outlined text-[17px]">open_in_new</span>
+                            </Link>
+
+                            {/* Delete PO Button */}
+                            <button
+                              type="button"
+                              onClick={() => setPoToDelete(po)}
+                              className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition active:scale-95"
+                              title={`Delete Purchase Order ${po.poNumber}`}
+                              aria-label={`Delete Purchase Order ${po.poNumber}`}
+                            >
+                              <span className="material-symbols-outlined text-[17px]">delete</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Table Footer Stats */}
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500 pt-2 border-t border-gray-100">
+            <span>
+              Showing <strong>{filteredMasterPos.length}</strong> of <strong>{allMasterPos.length}</strong> Purchase Orders in Master Registry
+            </span>
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                <span>{poMetrics.clientCount} AR Contracts</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                <span>{poMetrics.supplierCount} AP Contracts</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modals */}
       <AddEntityModal
         isOpen={addEntityOpen}
@@ -1546,6 +2195,76 @@ const MasterData = () => {
                 >
                   <span className="material-symbols-outlined text-[17px]">delete_forever</span>
                   <span>Permanently Delete</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM DELETE PURCHASE ORDER MODAL (ADMIN ONLY) */}
+      {poToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fade-in text-left">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-rose-100 animate-slide-up">
+            <div className="p-6 space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-2xs">
+                <span className="material-symbols-outlined text-[28px]">delete_forever</span>
+              </div>
+              <div className="text-center space-y-1.5">
+                <h3 className="text-base font-bold text-gray-900 font-display">
+                  Delete Purchase Order {poToDelete.poNumber}?
+                </h3>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Are you sure you want to permanently delete Purchase Order <strong className="text-gray-900">{poToDelete.poNumber}</strong> for <strong className="text-gray-900">{poToDelete.counterparty}</strong>?
+                </p>
+              </div>
+
+              {/* PO Details Summary Card */}
+              <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 text-xs space-y-1.5 text-gray-600">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Classification:</span>
+                  <span className="font-semibold text-gray-900">{poToDelete.typeLabel}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Counterparty:</span>
+                  <span className="font-semibold text-gray-900">{poToDelete.counterparty}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Scope / Project:</span>
+                  <span className="font-semibold text-gray-900 truncate max-w-[200px]">{poToDelete.scopeOrProject}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Contract Value:</span>
+                  <span className="font-bold text-gray-900">{poToDelete.currency} {Number(poToDelete.valueNative || 0).toLocaleString()} (~${Number(poToDelete.valueUsd || 0).toLocaleString()})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Drawdown / Billed:</span>
+                  <span className="font-semibold text-gray-900">{poToDelete.billedPercent}%</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-100 text-[11px] text-rose-800 flex items-start gap-2">
+                <span className="material-symbols-outlined text-rose-600 text-[16px] shrink-0 mt-0.5">admin_panel_settings</span>
+                <span>
+                  <strong>Administrator Action:</strong> This action cannot be undone. Only users with the Admin role can permanently delete Purchase Orders from the Master Registry.
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPoToDelete(null)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeletePo(poToDelete)}
+                  className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md transition flex items-center gap-1.5 active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-[17px]">delete_forever</span>
+                  <span>Permanently Delete PO</span>
                 </button>
               </div>
             </div>

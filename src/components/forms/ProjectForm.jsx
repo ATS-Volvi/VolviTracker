@@ -37,6 +37,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
 
   const [clientSearch, setClientSearch] = useState('');
   const [supplierSearch, setSupplierSearch] = useState('');
+  const [isCustomPoc, setIsCustomPoc] = useState(false);
 
   const [form, setForm] = useState({
     name: '',
@@ -58,6 +59,71 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
     endValue: 100,
     progress: 0
   });
+
+  // Identify currently selected client entity from Master Data
+  const selectedClient = useMemo(() => {
+    if (!form.clientId && !form.clientName) return null;
+    return clientsList.find(c =>
+      (form.clientId && c.id === form.clientId) ||
+      (form.clientName && c.name?.toLowerCase() === form.clientName?.toLowerCase())
+    ) || null;
+  }, [clientsList, form.clientId, form.clientName]);
+
+  // Aggregate all registered stakeholders for the selected company
+  const availableStakeholders = useMemo(() => {
+    if (!selectedClient) return [];
+    const list = [];
+    if (Array.isArray(selectedClient.stakeholders) && selectedClient.stakeholders.length > 0) {
+      selectedClient.stakeholders.forEach(s => {
+        if (s && (s.name || s.email)) {
+          list.push({
+            name: s.name || '',
+            role: s.role || s.designation || '',
+            email: s.email || '',
+            phone: s.phone || '',
+            dept: s.dept || s.department || ''
+          });
+        }
+      });
+    }
+    // Also include primary contactPerson if defined and not already in stakeholders
+    if (selectedClient.contactPerson && !list.some(s => s.name?.toLowerCase() === selectedClient.contactPerson?.toLowerCase())) {
+      list.unshift({
+        name: selectedClient.contactPerson,
+        role: selectedClient.contactDesignation || 'Lead Commercial POC',
+        email: selectedClient.companyMail || selectedClient.contactEmail || '',
+        phone: selectedClient.contactPhone || '',
+        dept: selectedClient.department || ''
+      });
+    }
+    return list;
+  }, [selectedClient]);
+
+  // Handle Point of Contact dropdown selection with automatic details autofill
+  const handlePocSelect = (e) => {
+    const selectedVal = e.target.value;
+    if (selectedVal === '__custom__') {
+      setIsCustomPoc(true);
+      return;
+    }
+
+    const matched = availableStakeholders.find(s => s.name === selectedVal);
+    if (matched) {
+      setForm(prev => ({
+        ...prev,
+        pocName: matched.name,
+        contactDesignation: matched.role || '',
+        clientDesignation: matched.role || '',
+        contactNumber: matched.phone || '',
+        contactEmail: matched.email || ''
+      }));
+    } else {
+      setForm(prev => ({
+        ...prev,
+        pocName: selectedVal
+      }));
+    }
+  };
 
   // Project tasks state
   const [projectTasks, setProjectTasks] = useState([]);
@@ -300,26 +366,39 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       setForm(prev => ({
         ...prev,
         clientId: '',
-        clientName: ''
+        clientName: '',
+        pocName: '',
+        contactDesignation: '',
+        clientDesignation: '',
+        contactNumber: '',
+        contactEmail: ''
       }));
+      setIsCustomPoc(false);
       return;
     }
 
-    setForm(prev => {
-      const primaryStakeholder = Array.isArray(client.stakeholders) && client.stakeholders.length > 0
-        ? client.stakeholders[0]
-        : null;
+    setIsCustomPoc(false);
 
-      return {
-        ...prev,
-        clientId: client.id,
-        clientName: client.name,
-        pocName: prev.pocName || client.contactPerson || primaryStakeholder?.name || '',
-        contactEmail: prev.contactEmail || client.companyMail || client.contactEmail || primaryStakeholder?.email || '',
-        contactNumber: prev.contactNumber || client.contactPhone || primaryStakeholder?.phone || '',
-        contactDesignation: prev.contactDesignation || primaryStakeholder?.role || 'Lead Commercial POC'
-      };
-    });
+    // Auto-select primary stakeholder if available
+    const primaryStakeholder = Array.isArray(client.stakeholders) && client.stakeholders.length > 0
+      ? client.stakeholders[0]
+      : (client.contactPerson ? {
+          name: client.contactPerson,
+          role: client.contactDesignation || 'Lead Commercial POC',
+          email: client.companyMail || client.contactEmail || '',
+          phone: client.contactPhone || ''
+        } : null);
+
+    setForm(prev => ({
+      ...prev,
+      clientId: client.id,
+      clientName: client.name,
+      pocName: primaryStakeholder?.name || '',
+      contactDesignation: primaryStakeholder?.role || client.contactDesignation || 'Lead Commercial POC',
+      clientDesignation: primaryStakeholder?.role || client.contactDesignation || 'Lead Commercial POC',
+      contactEmail: primaryStakeholder?.email || client.companyMail || client.contactEmail || '',
+      contactNumber: primaryStakeholder?.phone || client.contactPhone || ''
+    }));
   };
 
   const handleSelectSupplier = (supplier) => {
@@ -796,16 +875,75 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
             {/* Point of Contact & Contact Designation */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-gray-700">
-                  Point of Contact Name
-                </label>
-                <input
-                  type="text"
-                  className="input-field text-sm"
-                  value={form.pocName || ''}
-                  onChange={set('pocName')}
-                  placeholder="e.g. Alex Rivera"
-                />
+                <div className="mb-1.5 flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-gray-700">
+                    Point of Contact Name
+                    {availableStakeholders.length > 0 && (
+                      <span className="ml-1 text-[11px] text-blue-600 font-normal">
+                        ({availableStakeholders.length} Stakeholder{availableStakeholders.length > 1 ? 's' : ''})
+                      </span>
+                    )}
+                  </label>
+                  {availableStakeholders.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomPoc(!isCustomPoc)}
+                      className="text-[11px] text-blue-600 hover:text-blue-800 font-medium underline"
+                    >
+                      {isCustomPoc ? 'Select from list' : 'Custom entry'}
+                    </button>
+                  )}
+                </div>
+
+                {!isCustomPoc ? (
+                  <div className="relative">
+                    <select
+                      className="input-field text-sm pr-8 bg-white cursor-pointer"
+                      value={form.pocName || ''}
+                      onChange={handlePocSelect}
+                    >
+                      <option value="">
+                        {availableStakeholders.length > 0
+                          ? '-- Select Point of Contact --'
+                          : form.clientName
+                          ? `No stakeholders for ${form.clientName}`
+                          : '-- Choose a client first --'}
+                      </option>
+                      {availableStakeholders.map((s, idx) => (
+                        <option key={idx} value={s.name}>
+                          {s.name} {s.role ? `• ${s.role}` : ''}
+                        </option>
+                      ))}
+                      {form.pocName && !availableStakeholders.some(s => s.name === form.pocName) && (
+                        <option value={form.pocName}>
+                          {form.pocName} (Selected Contact)
+                        </option>
+                      )}
+                      <option value="__custom__">✏️ Custom / Manual Entry...</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      className="input-field text-sm pr-7"
+                      value={form.pocName || ''}
+                      onChange={set('pocName')}
+                      placeholder="e.g. Alex Rivera"
+                      autoFocus
+                    />
+                    {availableStakeholders.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomPoc(false)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600"
+                        title="Back to stakeholder dropdown"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">arrow_drop_down</span>
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-gray-700">
@@ -991,7 +1129,19 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                 {form.clientName ? (
                   <button
                     type="button"
-                    onClick={() => setForm(prev => ({ ...prev, clientId: '', clientName: '' }))}
+                    onClick={() => {
+                      setForm(prev => ({
+                        ...prev,
+                        clientId: '',
+                        clientName: '',
+                        pocName: '',
+                        contactDesignation: '',
+                        clientDesignation: '',
+                        contactNumber: '',
+                        contactEmail: ''
+                      }));
+                      setIsCustomPoc(false);
+                    }}
                     className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition"
                   >
                     Clear selection
