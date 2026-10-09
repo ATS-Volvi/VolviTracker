@@ -8,6 +8,9 @@ import Employee from './pages/Employee';
 import Finance from './pages/finance/Finance';
 import ClientSideFinance from './pages/finance/ClientSideFinance';
 import SupplierSideFinance from './pages/finance/SupplierSideFinance';
+import CashBookFinance from './pages/finance/CashBookFinance';
+import TaxFinance from './pages/finance/TaxFinance';
+import CashFlowFinance from './pages/finance/CashFlowFinance';
 import MasterData from './pages/masterData/MasterData';
 
 const ScrollToTop = () => {
@@ -137,20 +140,84 @@ const App = () => {
               element={<RequireAuth><MasterData /></RequireAuth>}
             />
             <Route
+              path="/sales"
+              element={<Navigate to="/sales/client-pos" replace />}
+            />
+            <Route
+              path="/sales/client-pos"
+              element={<RequireAuth><ClientSideFinance /></RequireAuth>}
+            />
+            <Route
+              path="/purchases"
+              element={<Navigate to="/purchases/supplier-pos" replace />}
+            />
+            <Route
+              path="/purchases/supplier-pos"
+              element={<RequireAuth><SupplierSideFinance /></RequireAuth>}
+            />
+            <Route
               path="/finance/client"
-              element={<RequireAdmin><ClientSideFinance /></RequireAdmin>}
+              element={<RequireAuth><ClientSideFinance /></RequireAuth>}
+            />
+            <Route
+              path="/finance/client-invoices"
+              element={<Navigate to="/finance/client?tab=invoices" replace />}
+            />
+            <Route
+              path="/finance/receipts"
+              element={<Navigate to="/finance/client?tab=receipts" replace />}
+            />
+            <Route
+              path="/finance/ar-ageing"
+              element={<Navigate to="/finance/client?tab=ageing" replace />}
+            />
+            <Route
+              path="/finance/client-statements"
+              element={<Navigate to="/finance/client?tab=statements" replace />}
             />
             <Route
               path="/finance/supplier"
-              element={<RequireAdmin><SupplierSideFinance /></RequireAdmin>}
+              element={<RequireAuth><SupplierSideFinance /></RequireAuth>}
+            />
+            <Route
+              path="/finance/supplier-invoices"
+              element={<Navigate to="/finance/supplier?tab=invoices" replace />}
+            />
+            <Route
+              path="/finance/payments"
+              element={<Navigate to="/finance/supplier?tab=payments" replace />}
+            />
+            <Route
+              path="/finance/ap-ageing"
+              element={<Navigate to="/finance/supplier?tab=ageing" replace />}
+            />
+            <Route
+              path="/finance/supplier-statements"
+              element={<Navigate to="/finance/supplier?tab=statements" replace />}
+            />
+            <Route
+              path="/finance/cash-book"
+              element={<RequireAuth><CashBookFinance /></RequireAuth>}
+            />
+            <Route
+              path="/finance/tax"
+              element={<RequireAuth><TaxFinance /></RequireAuth>}
+            />
+            <Route
+              path="/finance/cash-flow"
+              element={<RequireAuth><CashFlowFinance /></RequireAuth>}
+            />
+            <Route
+              path="/finance/cashflow"
+              element={<Navigate to="/finance/cash-flow" replace />}
             />
             <Route
               path="/finance"
-              element={<RequireAdmin><Finance /></RequireAdmin>}
+              element={<RequireAuth><Finance /></RequireAuth>}
             />
             <Route
               path="/finance/*"
-              element={<RequireAdmin><Finance /></RequireAdmin>}
+              element={<RequireAuth><Finance /></RequireAuth>}
             />
             <Route
               path="/docs"

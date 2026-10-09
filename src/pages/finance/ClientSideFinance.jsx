@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Navigate, Link } from 'react-router-dom';
+import { useNavigate, Navigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { loadFinanceData, saveFinanceData, subscribeFinanceData } from './financeData';
@@ -14,14 +14,28 @@ import RecordPaymentReceivedModal from './modals/RecordPaymentReceivedModal';
 import SampleInvoiceModal from './modals/SampleInvoiceModal';
 
 export const ClientSideFinance = () => {
-  const { user, isAdmin, loading } = useAuth();
+  const { user, loading } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Redirect non-admin users immediately
-  if (!loading && !isAdmin) {
-    return <Navigate to={user ? `/employee/${user.id}` : '/login'} replace />;
+  // Redirect unauthenticated users immediately
+  if (!loading && !user) {
+    return <Navigate to="/login" replace />;
   }
+
+  // Map URL tab to sub-tab identifier
+  const tabParam = (searchParams.get('tab') || 'pos').toUpperCase();
+  const activeSubTab = 
+    tabParam === 'INVOICES' || tabParam === 'INVOICE' ? 'INVOICES' :
+    tabParam === 'PAYMENTS' || tabParam === 'RECEIPTS' || tabParam === 'PAYMENT' ? 'PAYMENTS' :
+    tabParam === 'AGEING' || tabParam === 'AGING' ? 'AGEING' :
+    tabParam === 'STATEMENTS' || tabParam === 'STATEMENT' ? 'STATEMENTS' :
+    'POS';
+
+  const handleTabChange = (newTab) => {
+    setSearchParams({ tab: newTab.toLowerCase() });
+  };
 
   // State loaded from localStorage or defaults
   const [data, setData] = useState(() => loadFinanceData());
@@ -136,6 +150,44 @@ export const ClientSideFinance = () => {
     setSampleInvoiceModalOpen(true);
   };
 
+  const isSalesRoute = location.pathname.startsWith('/sales');
+  
+  const pageTitle = isSalesRoute
+    ? 'Client Purchase Orders'
+    : activeSubTab === 'INVOICES'
+    ? 'Client Invoices'
+    : activeSubTab === 'PAYMENTS'
+    ? 'Receipts & Payment Collections'
+    : activeSubTab === 'AGEING'
+    ? 'Accounts Receivable Ageing'
+    : activeSubTab === 'STATEMENTS'
+    ? 'Client Account Statements'
+    : 'Client-Side Financial Operations';
+
+  const pageBadge = isSalesRoute
+    ? 'Sales Workflow'
+    : activeSubTab === 'POS'
+    ? 'Client POs'
+    : activeSubTab === 'INVOICES'
+    ? 'Invoicing'
+    : activeSubTab === 'PAYMENTS'
+    ? 'Receipts'
+    : activeSubTab === 'AGEING'
+    ? 'AR Ageing'
+    : 'Statements';
+
+  const pageDescription = isSalesRoute
+    ? 'Authoritative SOW contract caps, client purchase order intakes, and milestone billing schedules'
+    : activeSubTab === 'INVOICES'
+    ? 'Multi-tax invoicing, milestone drawdowns, payment terms, and invoice status tracking'
+    : activeSubTab === 'PAYMENTS'
+    ? 'Receipt reconciliation, wire settlement recordings, and customer balance updates'
+    : activeSubTab === 'AGEING'
+    ? 'Receivables overdue exposure across 30, 60, and 90+ days aging cohorts'
+    : activeSubTab === 'STATEMENTS'
+    ? 'Consolidated client statements of account, lifetime billing, and remittance history'
+    : 'Institutional client PO contract intake, drawdowns, multi-tax invoicing, and payment reconciliation';
+
   return (
     <div className="w-full min-h-screen bg-[#FBFBFC] px-4 sm:px-8 py-6 space-y-6 text-left">
       {/* Top Banner & Header Bar */}
@@ -143,14 +195,14 @@ export const ClientSideFinance = () => {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 font-display tracking-tight">
-              Client-Side Financial Operations
+              {pageTitle}
             </h1>
             <span className="text-[11px] font-bold bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-              Receivables (AR)
+              {pageBadge}
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            Institutional client PO contract intake, drawdowns, multi-tax invoicing, and payment reconciliation
+            {pageDescription}
           </p>
         </div>
 
@@ -192,24 +244,44 @@ export const ClientSideFinance = () => {
 
       {/* Dedicated Page Breadcrumb Navigation */}
       <div className="flex items-center justify-between text-xs pb-1">
-        <div className="flex items-center gap-2 text-gray-500 font-medium">
+        <div className="flex items-center gap-2 text-gray-500 font-medium flex-wrap">
           <Link to="/finance" className="hover:text-blue-600 transition flex items-center gap-1 font-semibold text-gray-600">
             <span className="material-symbols-outlined text-[16px] text-blue-600">account_tree</span>
-            <span>Finance Hub</span>
+            <span>Finance</span>
           </Link>
           <span className="text-gray-300">/</span>
-          <span className="text-gray-900 font-bold flex items-center gap-1.5">
-            <span>Client-Side Workflow</span>
-            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-blue-100 text-blue-700">AR</span>
-          </span>
+          {isSalesRoute ? (
+            <span className="text-gray-900 font-bold flex items-center gap-1.5">
+              <span>Sales</span>
+              <span className="text-gray-300">/</span>
+              <span className="text-blue-600 font-bold">Client POs</span>
+            </span>
+          ) : (
+            <span className="text-gray-900 font-bold flex items-center gap-1.5">
+              <span>Accounts Receivable</span>
+              <span className="text-gray-300">/</span>
+              <span className="text-blue-600 font-bold">{pageTitle}</span>
+              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-blue-100 text-blue-700">AR</span>
+            </span>
+          )}
         </div>
-        <Link
-          to="/finance/supplier"
-          className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1"
-        >
-          <span>Switch to Supplier Side (AP)</span>
-          <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/purchases/supplier-pos"
+            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1"
+          >
+            <span>Supplier Side (AP)</span>
+            <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+          </Link>
+          <span className="text-gray-300">|</span>
+          <Link
+            to="/finance/cash-book"
+            className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 hover:underline flex items-center gap-1"
+          >
+            <span>Cash Book</span>
+            <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+          </Link>
+        </div>
       </div>
 
       {/* Client-Side Workflow Component */}
@@ -217,6 +289,8 @@ export const ClientSideFinance = () => {
         clientPos={data.clientPos}
         invoices={data.invoices}
         paymentsReceived={data.paymentsReceived || []}
+        activeSubTab={activeSubTab}
+        onTabChange={handleTabChange}
         onOpenRegisterClientPo={() => setRegisterClientPoOpen(true)}
         onOpenGenerateInvoice={() => setGenerateInvoiceOpen(true)}
         onOpenRecordPayment={() => setRecordClientPaymentOpen(true)}

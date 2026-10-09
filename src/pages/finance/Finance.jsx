@@ -29,9 +29,9 @@ export const Finance = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Redirect non-admin users immediately
-  if (!loading && !isAdmin) {
-    return <Navigate to={user ? `/employee/${user.id}` : '/login'} replace />;
+  // Redirect unauthenticated users immediately
+  if (!loading && !user) {
+    return <Navigate to="/login" replace />;
   }
 
   // State loaded from localStorage or defaults
@@ -55,6 +55,8 @@ export const Finance = () => {
       navigate('/finance/client', { replace: true });
     } else if (rawTab === 'supplier-pos' || rawTab === 'supplier-workflow') {
       navigate('/finance/supplier', { replace: true });
+    } else if (rawTab === 'cash-book' || rawTab === 'cashbook') {
+      navigate('/finance/cash-book', { replace: true });
     }
   }, [rawTab, navigate]);
 
