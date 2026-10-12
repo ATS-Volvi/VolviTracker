@@ -49,11 +49,21 @@ export const ClientSideFinance = () => {
   }, []);
 
   // Modals state
-  const [registerClientPoOpen, setRegisterClientPoOpen] = useState(false);
+  const [registerClientPoOpen, setRegisterClientPoOpen] = useState(() => {
+    const action = searchParams.get('action');
+    return action === 'add-po' || action === 'add-client-po';
+  });
   const [generateInvoiceOpen, setGenerateInvoiceOpen] = useState(false);
   const [recordClientPaymentOpen, setRecordClientPaymentOpen] = useState(false);
   const [sampleInvoiceModalOpen, setSampleInvoiceModalOpen] = useState(false);
   const [selectedInvoiceForSample, setSelectedInvoiceForSample] = useState(null);
+
+  useEffect(() => {
+    const action = searchParams.get('action');
+    if (action === 'add-po' || action === 'add-client-po') {
+      setRegisterClientPoOpen(true);
+    }
+  }, [searchParams]);
 
   // Sync state to localStorage whenever it changes
   useEffect(() => {
@@ -300,9 +310,18 @@ export const ClientSideFinance = () => {
       {/* Modals */}
       <RegisterClientPOModal
         isOpen={registerClientPoOpen}
-        onClose={() => setRegisterClientPoOpen(false)}
+        onClose={() => {
+          setRegisterClientPoOpen(false);
+          if (searchParams.get('action')) {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete('action');
+            setSearchParams(nextParams, { replace: true });
+          }
+        }}
         projects={data.projects}
         exchangeRates={data.exchangeRates}
+        clients={data.masterDirectory?.filter(d => d.category === 'Client') || []}
+        existingPos={data.clientPos || []}
         onSave={handleSaveClientPo}
       />
 

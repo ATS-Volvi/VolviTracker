@@ -19,6 +19,11 @@ const FinanceSupplierPOs = ({
   };
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatementSupplier, setSelectedStatementSupplier] = useState('ALL');
+  const [expandedPoId, setExpandedPoId] = useState(null);
+
+  const toggleExpand = (id) => {
+    setExpandedPoId(prev => (prev === id ? null : id));
+  };
 
   const filtered = supplierPos.filter(spo =>
     spo.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -176,84 +181,224 @@ const FinanceSupplierPOs = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 font-medium">
-                {filtered.map((spo) => (
-                  <tr key={spo.id} className="hover:bg-gray-50/80 transition">
-                    <td className="py-3.5 px-4 font-mono">
-                      <span className="font-bold text-gray-900 block">{spo.poNumber}</span>
-                      <span className="text-gray-400 text-[10px] block">{spo.entity}</span>
-                    </td>
+                {filtered.map((spo) => {
+                  const isExpanded = expandedPoId === spo.id;
+                  return (
+                    <React.Fragment key={spo.id}>
+                      <tr
+                        onClick={() => toggleExpand(spo.id)}
+                        className={`cursor-pointer transition ${
+                          isExpanded ? 'bg-indigo-50/40' : 'hover:bg-gray-50/80'
+                        }`}
+                      >
+                        <td className="py-3.5 px-4 font-mono">
+                          <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-gray-400 text-[16px]">
+                              {isExpanded ? 'expand_less' : 'expand_more'}
+                            </span>
+                            <div>
+                              <span className="font-bold text-gray-900 block">{spo.poNumber}</span>
+                              <span className="text-gray-400 text-[10px] block">{spo.entity}</span>
+                            </div>
+                          </div>
+                        </td>
 
-                    <td className="py-3.5 px-4">
-                      <span className="font-bold text-gray-900 block">{spo.supplierName}</span>
-                      <span className="text-gray-400 text-[11px] block">{spo.origin} · Tax: {spo.taxId}</span>
-                    </td>
+                        <td className="py-3.5 px-4">
+                          <span className="font-bold text-gray-900 block">{spo.supplierName}</span>
+                          <span className="text-gray-400 text-[11px] block">{spo.origin} {spo.taxId && `· Tax: ${spo.taxId}`}</span>
+                        </td>
 
-                    <td className="py-3.5 px-4">
-                      <span className="font-semibold text-blue-700 block">{spo.linkedProject}</span>
-                      <span className="text-gray-400 text-[10px] font-mono block">Client PO: {spo.linkedClientPo}</span>
-                    </td>
+                        <td className="py-3.5 px-4">
+                          <span className="font-semibold text-blue-700 block">{spo.linkedProject || spo.projectName || '—'}</span>
+                          {spo.linkedClientPo && (
+                            <span className="text-gray-400 text-[10px] font-mono block">Client PO: {spo.linkedClientPo}</span>
+                          )}
+                        </td>
 
-                    <td className="py-3.5 px-4 text-right font-bold text-gray-900 font-mono">
-                      ${spo.committedUsd?.toLocaleString()}
-                      {spo.currency !== 'USD' && (
-                        <span className="text-[10px] text-gray-400 block font-normal">
-                          {spo.currency} {spo.committedNative?.toLocaleString()}
-                        </span>
+                        <td className="py-3.5 px-4 text-right font-bold text-gray-900 font-mono">
+                          ${spo.committedUsd?.toLocaleString()}
+                          {spo.currency !== 'USD' && (
+                            <span className="text-[10px] text-gray-400 block font-normal">
+                              {spo.currency} {spo.committedNative?.toLocaleString()}
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right font-mono">
+                          <span className="font-bold text-indigo-700 block">${(spo.billedUsd || 0).toLocaleString()}</span>
+                          <span className="text-gray-400 text-[10px] block">{spo.billedPercent || 0}% Billed</span>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right font-bold font-mono text-gray-700">
+                          ${(spo.remainingUsd || 0).toLocaleString()}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-center">
+                          <span className="inline-block px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 text-[10px] font-semibold">
+                            {spo.terms}
+                          </span>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-center">
+                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            spo.status === 'Fulfilled'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : spo.status === 'Bill Overdue'
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          }`}>
+                            {spo.status}
+                          </span>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onViewSampleSupplierPo(spo);
+                              }}
+                              className="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] font-bold transition flex items-center gap-1"
+                              title="View Official Purchase Order Document"
+                            >
+                              <span className="material-symbols-outlined text-[13px]">visibility</span>
+                              <span>PO Doc</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenThreeWayMatch(spo);
+                              }}
+                              className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[10px] font-bold transition flex items-center gap-1"
+                              title="Run 3-Way Audit Verification"
+                            >
+                              <span className="material-symbols-outlined text-[13px]">fact_check</span>
+                              <span>3-Way Match</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expanded Details Row */}
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={9} className="p-4 bg-gray-50/70 border-b border-gray-200">
+                            <div className="p-4 bg-white rounded-xl border border-gray-200 shadow-2xs space-y-3">
+                              <div className="flex items-center justify-between text-xs border-b border-gray-100 pb-2">
+                                <span className="font-bold text-gray-900 flex items-center gap-1.5">
+                                  <span className="material-symbols-outlined text-[16px] text-indigo-600">receipt_long</span>
+                                  <span>Supplier Order Breakdown ({spo.poNumber})</span>
+                                </span>
+                                <span className="text-gray-400 font-mono text-[11px]">PO Date: {spo.issueDate || spo.date || '—'}</span>
+                              </div>
+
+                              {/* Specifications & Metadata */}
+                              <div className="p-3.5 bg-gray-50/80 rounded-xl border border-gray-200/80 text-xs space-y-2.5">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-gray-700">
+                                  {spo.location && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Location</span>
+                                      <span className="font-semibold text-gray-900">{spo.location}</span>
+                                    </div>
+                                  )}
+                                  {spo.importExport && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Trade Classification</span>
+                                      <span className="font-semibold text-gray-900">{spo.importExport}</span>
+                                    </div>
+                                  )}
+                                  {spo.expectedCompletion && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Expected Completion</span>
+                                      <span className="font-semibold text-gray-900 font-mono">{spo.expectedCompletion}</span>
+                                    </div>
+                                  )}
+                                  {(spo.linkedProject || spo.projectName) && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Project</span>
+                                      <span className="font-semibold text-gray-900">{spo.projectName || spo.linkedProject}</span>
+                                    </div>
+                                  )}
+                                  {spo.linkedClientPo && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Mapped Client PO</span>
+                                      <span className="font-semibold text-indigo-700 font-mono">{spo.linkedClientPo}</span>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Currency & Total</span>
+                                    <span className="font-semibold text-gray-900 font-mono">
+                                      {spo.currency || 'USD'} {(spo.totalValueNative || spo.committedNative || spo.committedUsd || 0).toLocaleString()}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {spo.notes && (
+                                  <div className="pt-2 border-t border-gray-200/60 text-gray-600">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Notes</span>
+                                    <p className="text-[11px] leading-relaxed">{spo.notes}</p>
+                                  </div>
+                                )}
+
+                                {spo.attachedDocuments && spo.attachedDocuments.length > 0 && (
+                                  <div className="pt-2 border-t border-gray-200/60">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Attached Documents</span>
+                                    <div className="flex flex-wrap gap-2">
+                                      {spo.attachedDocuments.map((doc, docIdx) => (
+                                        <span
+                                          key={docIdx}
+                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-[11px] text-gray-800 font-medium shadow-2xs"
+                                        >
+                                          <span className="material-symbols-outlined text-[14px] text-indigo-600">description</span>
+                                          <span>{doc.name}</span>
+                                          <span className="text-gray-400 text-[10px]">({doc.size || 'PDF'})</span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Milestones Breakdown */}
+                              {spo.milestones && spo.milestones.length > 0 && (
+                                <div>
+                                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">
+                                    Payment Milestones Schedule
+                                  </span>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {spo.milestones.map((m, idx) => (
+                                      <div key={idx} className="p-3 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-between text-xs">
+                                        <div>
+                                          <div className="font-semibold text-gray-900">{m.name}</div>
+                                          <div className="text-[11px] text-gray-400 font-mono mt-0.5">
+                                            {m.percent ? `${m.percent}% · ` : ''}{spo.currency || 'USD'} {(m.amount || 0).toLocaleString()}
+                                            {m.date && ` · Due: ${m.date}`}
+                                          </div>
+                                        </div>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                          m.status === 'Paid'
+                                            ? 'bg-emerald-100 text-emerald-800'
+                                            : m.status === 'Billed'
+                                            ? 'bg-blue-100 text-blue-800'
+                                            : 'bg-gray-200 text-gray-600'
+                                        }`}>
+                                          {m.status || 'Scheduled'}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-
-                    <td className="py-3.5 px-4 text-right font-mono">
-                      <span className="font-bold text-indigo-700 block">${(spo.billedUsd || 0).toLocaleString()}</span>
-                      <span className="text-gray-400 text-[10px] block">{spo.billedPercent || 0}% Billed</span>
-                    </td>
-
-                    <td className="py-3.5 px-4 text-right font-bold font-mono text-gray-700">
-                      ${(spo.remainingUsd || 0).toLocaleString()}
-                    </td>
-
-                    <td className="py-3.5 px-4 text-center">
-                      <span className="inline-block px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 text-[10px] font-semibold">
-                        {spo.terms}
-                      </span>
-                    </td>
-
-                    <td className="py-3.5 px-4 text-center">
-                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                        spo.status === 'Fulfilled'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : spo.status === 'Bill Overdue'
-                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                          : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                      }`}>
-                        {spo.status}
-                      </span>
-                    </td>
-
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => onViewSampleSupplierPo(spo)}
-                          className="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] font-bold transition flex items-center gap-1"
-                          title="View Official Purchase Order Document"
-                        >
-                          <span className="material-symbols-outlined text-[13px]">visibility</span>
-                          <span>PO Doc</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => onOpenThreeWayMatch(spo)}
-                          className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[10px] font-bold transition flex items-center gap-1"
-                          title="Run 3-Way Audit Verification"
-                        >
-                          <span className="material-symbols-outlined text-[13px]">fact_check</span>
-                          <span>3-Way Match</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

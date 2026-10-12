@@ -49,12 +49,22 @@ export const SupplierSideFinance = () => {
   }, []);
 
   // Modals state
-  const [issueSupplierPoOpen, setIssueSupplierPoOpen] = useState(false);
+  const [issueSupplierPoOpen, setIssueSupplierPoOpen] = useState(() => {
+    const action = searchParams.get('action');
+    return action === 'add-po' || action === 'add-supplier-po';
+  });
   const [recordSupplierPaymentOpen, setRecordSupplierPaymentOpen] = useState(false);
   const [sampleSupplierPoOpen, setSampleSupplierPoOpen] = useState(false);
   const [selectedPoForSample, setSelectedPoForSample] = useState(null);
   const [threeWayMatchOpen, setThreeWayMatchOpen] = useState(false);
   const [selectedPoForMatch, setSelectedPoForMatch] = useState(null);
+
+  useEffect(() => {
+    const action = searchParams.get('action');
+    if (action === 'add-po' || action === 'add-supplier-po') {
+      setIssueSupplierPoOpen(true);
+    }
+  }, [searchParams]);
 
   // Sync state to localStorage whenever it changes
   useEffect(() => {
@@ -294,8 +304,11 @@ export const SupplierSideFinance = () => {
       <IssueSupplierPOModal
         isOpen={issueSupplierPoOpen}
         onClose={() => setIssueSupplierPoOpen(false)}
-        projects={data.projects}
-        exchangeRates={data.exchangeRates}
+        projects={data.projects || []}
+        vendors={data.masterDirectory?.filter(d => d.category === 'Supplier') || []}
+        clientPos={data.clientPos || []}
+        exchangeRates={data.exchangeRates || {}}
+        existingPos={data.supplierPos || []}
         onSave={handleSaveSupplierPo}
       />
 

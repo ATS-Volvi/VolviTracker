@@ -277,6 +277,63 @@ const FinanceClientPOs = ({
                                 <span className="text-gray-400 font-mono text-[11px]">Terms: {cpo.terms}</span>
                               </div>
 
+                              {/* PO Specifications & Metadata */}
+                              {(cpo.location || cpo.importExport || cpo.expectedCompletion || cpo.projectName || cpo.notes || (cpo.attachedDocuments && cpo.attachedDocuments.length > 0)) && (
+                                <div className="p-3.5 bg-gray-50/80 rounded-xl border border-gray-200/80 text-xs space-y-2.5">
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-gray-700">
+                                    {cpo.location && (
+                                      <div>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Location</span>
+                                        <span className="font-semibold text-gray-900">{cpo.location}</span>
+                                      </div>
+                                    )}
+                                    {cpo.importExport && (
+                                      <div>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Trade Classification</span>
+                                        <span className="font-semibold text-gray-900">{cpo.importExport}</span>
+                                      </div>
+                                    )}
+                                    {cpo.expectedCompletion && (
+                                      <div>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Expected Completion</span>
+                                        <span className="font-semibold text-gray-900 font-mono">{cpo.expectedCompletion}</span>
+                                      </div>
+                                    )}
+                                    {cpo.projectName && (
+                                      <div>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Linked Project</span>
+                                        <span className="font-semibold text-gray-900">{cpo.projectName}</span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {cpo.notes && (
+                                    <div className="pt-2 border-t border-gray-200/60 text-gray-600">
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Notes</span>
+                                      <p className="text-[11px] leading-relaxed">{cpo.notes}</p>
+                                    </div>
+                                  )}
+
+                                  {cpo.attachedDocuments && cpo.attachedDocuments.length > 0 && (
+                                    <div className="pt-2 border-t border-gray-200/60">
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Attached Documents</span>
+                                      <div className="flex flex-wrap gap-2">
+                                        {cpo.attachedDocuments.map((doc, docIdx) => (
+                                          <span
+                                            key={docIdx}
+                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-[11px] text-gray-800 font-medium shadow-2xs"
+                                          >
+                                            <span className="material-symbols-outlined text-[14px] text-blue-600">description</span>
+                                            <span>{doc.name}</span>
+                                            <span className="text-gray-400 text-[10px]">({doc.size || 'PDF'})</span>
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {(cpo.milestones || []).map((m, idx) => (
                                   <div key={idx} className="p-3 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-between text-xs">

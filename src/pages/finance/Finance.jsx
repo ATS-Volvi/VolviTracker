@@ -371,15 +371,21 @@ export const Finance = () => {
         isOpen={registerClientPoOpen}
         onClose={() => setRegisterClientPoOpen(false)}
         onSave={handleSaveClientPo}
-        clients={data.masterDirectory.filter(d => d.category === 'Client')}
+        clients={data.masterDirectory?.filter(d => d.category === 'Client') || []}
+        projects={data.projects || []}
+        exchangeRates={data.exchangeRates || {}}
+        existingPos={data.clientPos || []}
       />
 
       <IssueSupplierPOModal
         isOpen={issueSupplierPoOpen}
         onClose={() => setIssueSupplierPoOpen(false)}
         onSave={handleSaveSupplierPo}
-        projects={data.projects}
-        vendors={data.masterDirectory.filter(d => d.category === 'Supplier')}
+        projects={data.projects || []}
+        vendors={data.masterDirectory?.filter(d => d.category === 'Supplier') || []}
+        clientPos={data.clientPos || []}
+        exchangeRates={data.exchangeRates || {}}
+        existingPos={data.supplierPos || []}
       />
 
       <GenerateInvoiceModal
