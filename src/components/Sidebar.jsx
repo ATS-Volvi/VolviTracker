@@ -87,9 +87,9 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
   const isMasterDataActive = location.pathname.startsWith('/master-data');
 
   // Accordion open states
-  const [arOpen, setArOpen] = useState(true);
-  const [apOpen, setApOpen] = useState(true);
-  const [cashBookOpen, setCashBookOpen] = useState(true);
+  const [arOpen, setArOpen] = useState(false);
+  const [apOpen, setApOpen] = useState(false);
+  const [cashBookOpen, setCashBookOpen] = useState(false);
 
   // Auto-expand accordion if navigating into its subpages
   useEffect(() => {
