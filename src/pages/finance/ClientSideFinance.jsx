@@ -53,7 +53,10 @@ export const ClientSideFinance = () => {
     const action = searchParams.get('action');
     return action === 'add-po' || action === 'add-client-po';
   });
-  const [generateInvoiceOpen, setGenerateInvoiceOpen] = useState(false);
+  const [generateInvoiceOpen, setGenerateInvoiceOpen] = useState(() => {
+    const action = searchParams.get('action');
+    return action === 'generate-invoice' || action === 'add-invoice' || action === 'new-invoice';
+  });
   const [recordClientPaymentOpen, setRecordClientPaymentOpen] = useState(false);
   const [sampleInvoiceModalOpen, setSampleInvoiceModalOpen] = useState(false);
   const [selectedInvoiceForSample, setSelectedInvoiceForSample] = useState(null);
@@ -62,6 +65,8 @@ export const ClientSideFinance = () => {
     const action = searchParams.get('action');
     if (action === 'add-po' || action === 'add-client-po') {
       setRegisterClientPoOpen(true);
+    } else if (action === 'generate-invoice' || action === 'add-invoice' || action === 'new-invoice') {
+      setGenerateInvoiceOpen(true);
     }
   }, [searchParams]);
 
@@ -108,14 +113,34 @@ export const ClientSideFinance = () => {
         return cpo;
       });
 
+      // Record automatic receipt if partial or full payment was received upfront
+      const nextPaymentsReceived = [...(prev.paymentsReceived || [])];
+      if (newInv.amountReceivedSoFar > 0) {
+        nextPaymentsReceived.unshift({
+          id: `PMT-${Date.now()}`,
+          date: newInv.paidDate || newInv.invoicingDate || new Date().toISOString().split('T')[0],
+          clientName: newInv.clientName,
+          invoiceNumber: newInv.invoiceNumber,
+          linkedPo: newInv.linkedPo,
+          mode: 'Direct Deposit / Wire',
+          reference: `REC-${newInv.invoiceNumber.replace(/^VOL-/, '')}`,
+          amountNative: newInv.amountReceivedSoFar,
+          currency: newInv.currency,
+          amountUsd: newInv.receivedUsd || 0,
+          status: 'Cleared'
+        });
+      }
+
       const nextData = {
         ...prev,
         invoices: [newInv, ...prev.invoices],
         clientPos: nextClientPos,
+        paymentsReceived: nextPaymentsReceived,
         kpis: {
           ...prev.kpis,
           invoicedTotal: (prev.kpis.invoicedTotal || 0) + newInv.amountUsd,
-          arOutstanding: (prev.kpis.arOutstanding || 0) + newInv.amountUsd
+          arOutstanding: (prev.kpis.arOutstanding || 0) + (newInv.balanceUsd ?? newInv.amountUsd),
+          collectedTotal: (prev.kpis.collectedTotal || 0) + (newInv.receivedUsd || 0)
         }
       };
       saveFinanceData(nextData);
@@ -328,8 +353,11 @@ export const ClientSideFinance = () => {
       <GenerateInvoiceModal
         isOpen={generateInvoiceOpen}
         onClose={() => setGenerateInvoiceOpen(false)}
-        clientPos={data.clientPos}
-        exchangeRates={data.exchangeRates}
+        clientPos={data.clientPos || []}
+        projects={data.projects || []}
+        clients={data.masterDirectory?.filter(d => d.category === 'Client') || []}
+        exchangeRates={data.exchangeRates || {}}
+        existingInvoices={data.invoices || []}
         onSave={handleSaveInvoice}
       />
 

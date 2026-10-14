@@ -21,9 +21,13 @@ const FinanceClientPOs = ({
   };
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatementClient, setSelectedStatementClient] = useState('ALL');
+  const [expandedInvId, setExpandedInvId] = useState(null);
 
   const toggleExpand = (id) => {
     setExpandedPoId(prev => (prev === id ? null : id));
+  };
+  const toggleExpandInv = (id) => {
+    setExpandedInvId(prev => (prev === id ? null : id));
   };
 
   const filteredPos = clientPos.filter(cpo =>
@@ -397,83 +401,209 @@ const FinanceClientPOs = ({
                   <th className="py-3 px-4 text-center">Status</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 font-medium">
-                {filteredInvoices.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-gray-50/80 transition">
-                    <td className="py-3.5 px-4 font-mono">
-                      <span className="font-bold text-blue-700 block">{inv.invoiceNumber}</span>
-                      <span className="text-gray-400 text-[10px] block">{inv.issueDate}</span>
-                    </td>
+              </thead>              <tbody className="divide-y divide-gray-100 font-medium">
+                {filteredInvoices.map((inv) => {
+                  const isExpanded = expandedInvId === inv.id;
+                  return (
+                    <React.Fragment key={inv.id}>
+                      <tr
+                        onClick={() => toggleExpandInv(inv.id)}
+                        className={`cursor-pointer transition ${
+                          isExpanded ? 'bg-blue-50/40' : 'hover:bg-gray-50/80'
+                        }`}
+                      >
+                        <td className="py-3.5 px-4 font-mono">
+                          <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-gray-400 text-[16px]">
+                              {isExpanded ? 'expand_less' : 'expand_more'}
+                            </span>
+                            <div>
+                              <span className="font-bold text-blue-700 block">{inv.invoiceNumber}</span>
+                              <span className="text-gray-400 text-[10px] block">{inv.issueDate || inv.invoicingDate}</span>
+                            </div>
+                          </div>
+                        </td>
 
-                    <td className="py-3.5 px-4">
-                      <span className="font-bold text-gray-900 block">{inv.clientName}</span>
-                      <span className="font-mono text-gray-400 text-[10px] block">PO: {inv.linkedPo}</span>
-                    </td>
+                        <td className="py-3.5 px-4">
+                          <span className="font-bold text-gray-900 block">{inv.clientName}</span>
+                          <span className="font-mono text-gray-400 text-[10px] block">PO: {inv.linkedPo || 'Not linked'}</span>
+                        </td>
 
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                        inv.country.includes('USA') || inv.country.includes('UAE') || inv.country.includes('KSA')
-                          ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                          : 'bg-gray-100 text-gray-700'
-                      }`}>
-                        {inv.country.includes('USA') || inv.country.includes('UAE') || inv.country.includes('KSA') ? 'Export / Cross-Border' : 'Domestic'}
-                      </span>
-                    </td>
+                        <td className="py-3.5 px-4">
+                          <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                            inv.importExport === 'Export' || (inv.country && (inv.country.includes('USA') || inv.country.includes('UAE') || inv.country.includes('KSA') || inv.country.includes('Singapore')))
+                              ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                              : 'bg-gray-100 text-gray-700'
+                          }`}>
+                            {inv.importExport ? `${inv.importExport}` : (inv.country && (inv.country.includes('USA') || inv.country.includes('UAE') || inv.country.includes('KSA')) ? 'Export / Cross-Border' : 'Domestic')}
+                          </span>
+                        </td>
 
-                    <td className="py-3.5 px-4 font-mono text-gray-600">
-                      {inv.dueDate}
-                    </td>
+                        <td className="py-3.5 px-4 font-mono text-gray-600">
+                          {inv.dueDate}
+                        </td>
 
-                    <td className="py-3.5 px-4 text-right font-bold text-gray-900 font-mono">
-                      ${inv.amountUsd?.toLocaleString()}
-                      {inv.currency !== 'USD' && (
-                        <span className="text-[10px] text-gray-400 block font-normal">
-                          {inv.currency} {inv.amountNative?.toLocaleString()}
-                        </span>
+                        <td className="py-3.5 px-4 text-right font-bold text-gray-900 font-mono">
+                          ${inv.amountUsd?.toLocaleString()}
+                          {inv.currency !== 'USD' && (
+                            <span className="text-[10px] text-gray-400 block font-normal">
+                              {inv.currency} {inv.amountNative?.toLocaleString()}
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right font-bold font-mono text-amber-700">
+                          ${(inv.balanceUsd || 0).toLocaleString()}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-center">
+                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            inv.status === 'Paid'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}>
+                            {inv.status}
+                          </span>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onViewSampleInvoice(inv);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] font-bold transition flex items-center gap-1"
+                              title="View Tax Invoice Sample Format"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">visibility</span>
+                              <span>View Doc</span>
+                            </button>
+
+                            {inv.status !== 'Paid' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenRecordPayment();
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold transition flex items-center gap-1"
+                              >
+                                <span className="material-symbols-outlined text-[14px]">payments</span>
+                                <span>Pay</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expanded Invoice Details Row */}
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={8} className="p-4 bg-gray-50/70 border-b border-gray-200">
+                            <div className="p-4 bg-white rounded-xl border border-gray-200 shadow-2xs space-y-3">
+                              <div className="flex items-center justify-between text-xs border-b border-gray-100 pb-2">
+                                <span className="font-bold text-gray-900 flex items-center gap-1.5">
+                                  <span className="material-symbols-outlined text-[16px] text-blue-600">receipt_long</span>
+                                  <span>Client Invoice Specifications ({inv.invoiceNumber})</span>
+                                </span>
+                                <span className="text-gray-400 font-mono text-[11px]">
+                                  Billing Month: {inv.month || '—'} · Terms: {inv.paymentTermDays ? `${inv.paymentTermDays} Days` : 'Net 30'}
+                                </span>
+                              </div>
+
+                              <div className="p-3.5 bg-gray-50/80 rounded-xl border border-gray-200/80 text-xs space-y-2.5">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-gray-700">
+                                  {inv.clientLocation && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Location</span>
+                                      <span className="font-semibold text-gray-900">{inv.clientLocation}</span>
+                                    </div>
+                                  )}
+                                  {inv.importExport && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Trade Classification</span>
+                                      <span className="font-semibold text-gray-900">{inv.importExport}</span>
+                                    </div>
+                                  )}
+                                  {(inv.linkedProject || inv.projectName) && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Project</span>
+                                      <span className="font-semibold text-gray-900">{inv.projectName || inv.linkedProject}</span>
+                                    </div>
+                                  )}
+                                  {inv.linkedPo && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Linked Client PO</span>
+                                      <span className="font-semibold text-blue-700 font-mono">{inv.linkedPo}</span>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Invoice Value (+ Tax)</span>
+                                    <span className="font-semibold text-gray-900 font-mono">
+                                      {inv.currency || 'USD'} {(inv.amountNative || inv.invoiceValueTax || 0).toLocaleString()}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Amount Received</span>
+                                    <span className="font-semibold text-emerald-700 font-mono">
+                                      {inv.currency || 'USD'} {(inv.amountReceivedSoFar || inv.receivedUsd || 0).toLocaleString()}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Balance Outstanding</span>
+                                    <span className="font-semibold text-amber-700 font-mono">
+                                      {inv.currency || 'USD'} {(inv.balanceNative || inv.balanceUsd || 0).toLocaleString()}
+                                    </span>
+                                  </div>
+                                  {inv.paidDate && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Paid Date</span>
+                                      <span className="font-semibold text-emerald-600 font-mono">{inv.paidDate}</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {(inv.milestones || inv.milestone) && (
+                                  <div className="pt-2 border-t border-gray-200/60 text-gray-700">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Payment Milestone / Scope</span>
+                                    <p className="text-[11.5px] font-medium leading-relaxed">{inv.milestones || inv.milestone}</p>
+                                  </div>
+                                )}
+
+                                {inv.notes && (
+                                  <div className="pt-2 border-t border-gray-200/60 text-gray-600">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Notes</span>
+                                    <p className="text-[11px] leading-relaxed">{inv.notes}</p>
+                                  </div>
+                                )}
+
+                                {inv.attachedDocuments && inv.attachedDocuments.length > 0 && (
+                                  <div className="pt-2 border-t border-gray-200/60">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Attached Documents</span>
+                                    <div className="flex flex-wrap gap-2">
+                                      {inv.attachedDocuments.map((doc, docIdx) => (
+                                        <span
+                                          key={docIdx}
+                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-[11px] text-gray-800 font-medium shadow-2xs"
+                                        >
+                                          <span className="material-symbols-outlined text-[14px] text-blue-600">description</span>
+                                          <span>{doc.name}</span>
+                                          <span className="text-gray-400 text-[10px]">({doc.size || 'PDF'})</span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-
-                    <td className="py-3.5 px-4 text-right font-bold font-mono text-amber-700">
-                      ${(inv.balanceUsd || 0).toLocaleString()}
-                    </td>
-
-                    <td className="py-3.5 px-4 text-center">
-                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                        inv.status === 'Paid'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : 'bg-amber-50 text-amber-700 border border-amber-200'
-                      }`}>
-                        {inv.status}
-                      </span>
-                    </td>
-
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => onViewSampleInvoice(inv)}
-                          className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] font-bold transition flex items-center gap-1"
-                          title="View Tax Invoice Sample Format"
-                        >
-                          <span className="material-symbols-outlined text-[14px]">visibility</span>
-                          <span>View Doc</span>
-                        </button>
-
-                        {inv.status !== 'Paid' && (
-                          <button
-                            type="button"
-                            onClick={onOpenRecordPayment}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold transition flex items-center gap-1"
-                          >
-                            <span className="material-symbols-outlined text-[14px]">payments</span>
-                            <span>Pay</span>
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
