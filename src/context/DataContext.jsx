@@ -199,13 +199,18 @@ export const DataProvider = ({ children }) => {
     const rawLoadedTasks = Array.isArray(loaded.tasks) && loaded.tasks.length > 0 ? loaded.tasks : seedData.tasks;
     const initialTasks = cascadeParentAssignees(rawLoadedTasks);
 
-    // Merge seed employees (e.g. Rachel Vance) if not present
-    const loadedEmployees = Array.isArray(loaded.employees) ? [...loaded.employees] : [...seedData.employees];
+    const initialEmployeesRaw = Array.isArray(loaded.employees) ? [...loaded.employees] : [...seedData.employees];
     (seedData.employees || []).forEach(se => {
-      if (!loadedEmployees.some(le => le.id === se.id || (le.email && le.email.toLowerCase() === se.email.toLowerCase()))) {
-        loadedEmployees.push(se);
+      if (!initialEmployeesRaw.some(le => le.id === se.id || (le.email && le.email.toLowerCase() === se.email.toLowerCase()))) {
+        initialEmployeesRaw.push(se);
       }
     });
+    const loadedEmployees = initialEmployeesRaw.map(emp => ({
+      ...emp,
+      userType: emp.userType || 'internal',
+      externalType: emp.externalType || null,
+      organization: emp.organization || (emp.userType === 'external' ? '' : 'Volvitech')
+    }));
 
     // Merge seed projects and ensure createdBy field
     const rawProjects = Array.isArray(loaded.projects) && loaded.projects.length > 0 ? loaded.projects : seedData.projects;
@@ -635,7 +640,14 @@ export const DataProvider = ({ children }) => {
   // Employee CRUD & Credentials with Cloud Neon Sync
   // ----------------------------------------------------
   const addEmployee = (emp) => {
-    const item = { ...emp, id: emp.id || generateId() };
+    const userType = emp.userType || 'internal';
+    const item = {
+      ...emp,
+      id: emp.id || generateId(),
+      userType,
+      externalType: userType === 'external' ? (emp.externalType || 'client') : null,
+      organization: emp.organization || (userType === 'internal' ? 'Volvitech' : '')
+    };
     const nextEmployees = [...data.employees, item];
 
     setData(prev => ({ ...prev, employees: nextEmployees }));

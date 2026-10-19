@@ -16,7 +16,10 @@ export const toEmployeeDto = (row) => row ? ({
   role: row.role || 'Member',
   avatar: row.avatar || '',
   passwordHash: row.password_hash || '',
-  isAdmin: Boolean(row.is_admin || (row.role || '').toLowerCase() === 'admin')
+  isAdmin: Boolean(row.is_admin || (row.role || '').toLowerCase() === 'admin'),
+  userType: row.user_type || 'internal',
+  externalType: row.external_type || null,
+  organization: row.organization || (row.user_type === 'external' ? '' : 'Volvitech')
 }) : null;
 
 const parseJsonArray = (val) => {
@@ -383,19 +386,25 @@ export async function directDeleteMeeting(id) {
 export async function directCreateEmployee(emp) {
   const id = emp.id || ('emp_' + Date.now() + Math.random().toString(36).substring(2, 6));
   const isAdmin = Boolean(emp.isAdmin || (emp.role || '').toLowerCase() === 'admin');
+  const userType = emp.userType || 'internal';
+  const externalType = emp.externalType || null;
+  const organization = emp.organization || (userType === 'internal' ? 'Volvitech' : '');
 
   await sql`
     INSERT INTO employees (
-      id, full_name, email, role, avatar, password_hash, is_admin
+      id, full_name, email, role, avatar, password_hash, is_admin, user_type, external_type, organization
     ) VALUES (
       ${id}, ${emp.fullName}, ${emp.email.toLowerCase().trim()}, ${emp.role || 'Member'},
-      ${emp.avatar || ''}, ${emp.passwordHash || ''}, ${isAdmin}
+      ${emp.avatar || ''}, ${emp.passwordHash || ''}, ${isAdmin}, ${userType}, ${externalType}, ${organization}
     )
     ON CONFLICT (email) DO UPDATE SET
       full_name = EXCLUDED.full_name,
       role = EXCLUDED.role,
       avatar = EXCLUDED.avatar,
-      is_admin = EXCLUDED.is_admin;
+      is_admin = EXCLUDED.is_admin,
+      user_type = EXCLUDED.user_type,
+      external_type = EXCLUDED.external_type,
+      organization = EXCLUDED.organization;
   `;
 
   const created = await sql`SELECT * FROM employees WHERE id = ${id}`;
@@ -411,6 +420,9 @@ export async function directUpdateEmployee(id, updates) {
   let role = updates.role !== undefined ? updates.role : current.role;
   const avatar = updates.avatar !== undefined ? updates.avatar : current.avatar;
   const passwordHash = updates.passwordHash !== undefined ? updates.passwordHash : current.password_hash;
+  const userType = updates.userType !== undefined ? updates.userType : (current.user_type || 'internal');
+  const externalType = updates.externalType !== undefined ? updates.externalType : (current.external_type || null);
+  const organization = updates.organization !== undefined ? updates.organization : (current.organization || '');
 
   let isAdmin;
   if (updates.isAdmin !== undefined) {
@@ -428,7 +440,10 @@ export async function directUpdateEmployee(id, updates) {
       role = ${role},
       avatar = ${avatar},
       password_hash = ${passwordHash},
-      is_admin = ${isAdmin}
+      is_admin = ${isAdmin},
+      user_type = ${userType},
+      external_type = ${externalType},
+      organization = ${organization}
     WHERE id = ${current.id};
   `;
 

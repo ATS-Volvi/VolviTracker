@@ -801,17 +801,32 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
             <div className="px-4 py-2 border-b border-gray-100">
               <p className="text-xs font-bold text-gray-900 truncate">{user?.fullName}</p>
               <p className="text-[11px] text-gray-500 truncate">{user?.email}</p>
-              <span
-                className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                  isAdmin
-                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                    : isProjectManager
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-slate-50 text-slate-700 border-slate-200'
-                }`}
-              >
-                {user?.role || (isAdmin ? 'Admin' : isProjectManager ? 'Project Manager' : 'Member')}
-              </span>
+              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                <span
+                  className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                    isAdmin
+                      ? 'bg-purple-50 text-purple-700 border-purple-200'
+                      : isProjectManager
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-slate-50 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  {user?.role || (isAdmin ? 'Admin' : isProjectManager ? 'Project Manager' : 'Member')}
+                </span>
+                {user?.userType === 'internal' || !user?.userType ? (
+                  <span className="text-[9px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-full border border-indigo-200">
+                    Internal
+                  </span>
+                ) : user?.externalType === 'supplier' ? (
+                  <span className="text-[9px] font-semibold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200 truncate max-w-[120px]" title={user.organization}>
+                    Supplier{user?.organization ? ` • ${user.organization}` : ''}
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200 truncate max-w-[120px]" title={user.organization}>
+                    Client{user?.organization ? ` • ${user.organization}` : ''}
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="py-1">

@@ -3,6 +3,7 @@ import { useToast } from '../../context/ToastContext';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../widgets/Avatar';
+import { getFinanceData } from '../../pages/finance/financeData';
 
 const ROLE_SUGGESTIONS = [
   'Product Lead',
@@ -27,8 +28,28 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave, onDelete }) => {
   const [role, setRole] = useState('');
   const [avatar, setAvatar] = useState('');
   const [isAdminChecked, setIsAdminChecked] = useState(false);
+  const [userType, setUserType] = useState('internal');
+  const [externalType, setExternalType] = useState('client');
+  const [organization, setOrganization] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Master directory companies for quick suggestion
+  const { clientCompanies, supplierCompanies } = useMemo(() => {
+    try {
+      const fData = getFinanceData();
+      const mDir = Array.isArray(fData.masterDirectory) ? fData.masterDirectory : [];
+      const clients = Array.from(new Set(
+        mDir.filter(e => e.category === 'Client').map(e => e.name).filter(Boolean)
+      ));
+      const suppliers = Array.from(new Set(
+        mDir.filter(e => e.category === 'Supplier').map(e => e.name).filter(Boolean)
+      ));
+      return { clientCompanies: clients, supplierCompanies: suppliers };
+    } catch {
+      return { clientCompanies: [], supplierCompanies: [] };
+    }
+  }, []);
 
   // Designation dropdown states
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -120,6 +141,9 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave, onDelete }) => {
       setRole((employee.role || '').toLowerCase() === 'admin' ? 'Software Engineer' : (employee.role || ''));
       setAvatar(employee.avatar || '');
       setIsAdminChecked(employee.isAdmin === true || (employee.role || '').toLowerCase() === 'admin');
+      setUserType(employee.userType || 'internal');
+      setExternalType(employee.externalType || 'client');
+      setOrganization(employee.organization || (employee.userType === 'external' ? '' : 'Volvitech'));
       setError('');
       setIsDropdownOpen(false);
       setRoleSearchQuery('');
@@ -183,7 +207,10 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave, onDelete }) => {
         fullName: cleanName,
         role: cleanRole,
         avatar: avatar.trim() || employee.avatar,
-        isAdmin: isCurrentUserAdmin ? isAdminChecked : Boolean(employee.isAdmin)
+        isAdmin: isCurrentUserAdmin ? isAdminChecked : Boolean(employee.isAdmin),
+        userType: isCurrentUserAdmin ? userType : (employee.userType || 'internal'),
+        externalType: isCurrentUserAdmin ? (userType === 'external' ? externalType : null) : (employee.externalType || null),
+        organization: isCurrentUserAdmin ? (userType === 'internal' ? 'Volvitech' : organization.trim()) : (employee.organization || '')
       });
       addToast(`Updated properties for ${cleanName}!`, 'success');
       onClose();
@@ -227,14 +254,31 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave, onDelete }) => {
             className="w-12 h-12 rounded-full object-cover ring-2 ring-purple-200 shrink-0"
           />
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-bold text-gray-900 truncate">
-              {fullName || 'Employee Name'}
+            <div className="text-sm font-bold text-gray-900 truncate flex items-center gap-2">
+              <span>{fullName || 'Employee Name'}</span>
+              {isAdminChecked && userType === 'internal' && (
+                <span className="text-[9px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full border border-purple-200">
+                  Admin
+                </span>
+              )}
             </div>
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md truncate">
                 {role || 'Designation'}
               </span>
-              <span className="text-[11px] text-gray-500 truncate">{employee.email}</span>
+              {userType === 'internal' ? (
+                <span className="text-[10px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md border border-indigo-200">
+                  🏢 Internal Staff
+                </span>
+              ) : externalType === 'client' ? (
+                <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-md border border-emerald-200">
+                  🤝 Client: {organization.trim() || 'Client Org'}
+                </span>
+              ) : (
+                <span className="text-[10px] font-semibold bg-amber-50 text-amber-800 px-2 py-0.5 rounded-md border border-amber-200">
+                  📦 Supplier: {organization.trim() || 'Supplier Org'}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -265,6 +309,110 @@ const EditEmployeeModal = ({ isOpen, onClose, employee, onSave, onDelete }) => {
               required
             />
           </div>
+
+          {/* User Brand & Classification (Admin Only) */}
+          {isCurrentUserAdmin && (
+            <div className="p-3.5 rounded-xl border border-gray-200 bg-gray-50/60 space-y-3">
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                User Brand Classification
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserType('internal');
+                    setOrganization('Volvitech');
+                  }}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 border transition ${
+                    userType === 'internal'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">apartment</span>
+                  <span>Internal Staff</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserType('external');
+                    setIsAdminChecked(false);
+                    if (!organization || organization === 'Volvitech') {
+                      setOrganization(externalType === 'client' ? (clientCompanies[0] || 'NexaCorp') : (supplierCompanies[0] || 'Amazon Web Services'));
+                    }
+                  }}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 border transition ${
+                    userType === 'external'
+                      ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                      : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">hub</span>
+                  <span>External Partner</span>
+                </button>
+              </div>
+
+              {userType === 'external' && (
+                <div className="pt-2 border-t border-gray-200/80 space-y-2.5">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExternalType('client');
+                        if (!organization || supplierCompanies.includes(organization)) {
+                          setOrganization(clientCompanies[0] || 'NexaCorp International Ltd.');
+                        }
+                      }}
+                      className={`py-1.5 px-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1 border ${
+                        externalType === 'client'
+                          ? 'bg-emerald-600 text-white border-emerald-600'
+                          : 'bg-white text-gray-700 border-gray-200'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">handshake</span>
+                      <span>Client</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExternalType('supplier');
+                        if (!organization || clientCompanies.includes(organization)) {
+                          setOrganization(supplierCompanies[0] || 'Amazon Web Services');
+                        }
+                      }}
+                      className={`py-1.5 px-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1 border ${
+                        externalType === 'supplier'
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'bg-white text-gray-700 border-gray-200'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">inventory_2</span>
+                      <span>Supplier</span>
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                      Organization / Company
+                    </label>
+                    <input
+                      type="text"
+                      list="edit-external-companies"
+                      value={organization}
+                      onChange={(e) => setOrganization(e.target.value)}
+                      placeholder="Company name..."
+                      className="input-field text-xs py-1.5 px-2.5 bg-white"
+                    />
+                    <datalist id="edit-external-companies">
+                      {(externalType === 'client' ? clientCompanies : supplierCompanies).map((c, i) => (
+                        <option key={i} value={c} />
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Designation / Role Dropdown */}
           <div className="relative" ref={dropdownRef}>

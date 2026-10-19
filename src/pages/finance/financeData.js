@@ -1189,7 +1189,6 @@ export const INITIAL_DOCUMENT_VAULT = [
   }
 ];
 
-// Helper to load or initialize from localStorage
 export function loadFinanceData() {
   try {
     const raw = localStorage.getItem('volvitech_finance_suite');
@@ -1249,6 +1248,7 @@ export function loadFinanceData() {
     vault: INITIAL_DOCUMENT_VAULT,
   };
 }
+export const getFinanceData = loadFinanceData;
 
 export function saveFinanceData(data) {
   try {

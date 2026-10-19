@@ -109,7 +109,10 @@ export const AuthProvider = ({ children }) => {
       email: targetEmp.email,
       role: targetEmp.role || 'Member',
       avatar: targetEmp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(targetEmp.fullName)}&background=0070F3&color=fff`,
-      isAdmin: isTargetAdmin
+      isAdmin: isTargetAdmin,
+      userType: targetEmp.userType || 'internal',
+      externalType: targetEmp.externalType || null,
+      organization: targetEmp.organization || (targetEmp.userType === 'external' ? '' : 'Volvitech')
     };
 
     const newSession = {
@@ -168,7 +171,10 @@ export const AuthProvider = ({ children }) => {
       email: newEmployee.email,
       role: newEmployee.role,
       avatar: newEmployee.avatar,
-      isAdmin: false
+      isAdmin: false,
+      userType: newEmployee.userType || 'internal',
+      externalType: newEmployee.externalType || null,
+      organization: newEmployee.organization || 'Volvitech'
     };
 
     const newSession = {
@@ -242,19 +248,29 @@ export const AuthProvider = ({ children }) => {
           ? Boolean(activeEmp.isAdmin)
           : (activeEmp.role || '').toLowerCase() === 'admin';
 
+        const empUserType = activeEmp.userType || 'internal';
+        const empExternalType = activeEmp.externalType || null;
+        const empOrg = activeEmp.organization || (empUserType === 'external' ? '' : 'Volvitech');
+
         if ((activeEmp.role && activeEmp.role !== user.role) ||
             (activeEmp.avatar && activeEmp.avatar !== user.avatar) ||
-            (empIsAdmin !== Boolean(user.isAdmin))) {
+            (empIsAdmin !== Boolean(user.isAdmin)) ||
+            (empUserType !== user.userType) ||
+            (empExternalType !== user.externalType) ||
+            (empOrg !== user.organization)) {
           setUser(prev => ({
             ...prev,
             role: activeEmp.role || prev.role,
             avatar: activeEmp.avatar || prev.avatar,
-            isAdmin: empIsAdmin
+            isAdmin: empIsAdmin,
+            userType: empUserType,
+            externalType: empExternalType,
+            organization: empOrg
           }));
         }
       }
     }
-  }, [employees, user?.id, user?.email, user?.role, user?.avatar, user?.isAdmin]);
+  }, [employees, user?.id, user?.email, user?.role, user?.avatar, user?.isAdmin, user?.userType, user?.externalType, user?.organization]);
 
   // Update profile avatar
   const updateAvatar = useCallback((newAvatar) => {

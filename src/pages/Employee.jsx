@@ -255,6 +255,23 @@ export const Employee = () => {
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200/60">
                     {emp.role || '—'}
                   </span>
+                  {/* Brand Classification Badge */}
+                  {emp.userType === 'internal' || !emp.userType ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md border border-indigo-200">
+                      <span className="material-symbols-outlined text-[13px]">apartment</span>
+                      Internal Staff • {emp.organization || 'Volvitech'}
+                    </span>
+                  ) : emp.externalType === 'supplier' ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-50 text-amber-800 px-2 py-0.5 rounded-md border border-amber-200">
+                      <span className="material-symbols-outlined text-[13px]">inventory_2</span>
+                      External Partner • Supplier: {emp.organization || 'Supplier Vendor'}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-md border border-emerald-200">
+                      <span className="material-symbols-outlined text-[13px]">handshake</span>
+                      External Partner • Client: {emp.organization || 'Client Partner'}
+                    </span>
+                  )}
                   {isEmpAdmin ? (
                     <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded-md border border-purple-200">
                       <svg className="w-3 h-3 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
@@ -273,7 +290,7 @@ export const Employee = () => {
                       onClick={() => setIsEditModalOpen(true)}
                       className="text-[11px] text-blue-600 hover:text-blue-700 font-medium hover:underline"
                     >
-                      Change designation
+                      Edit branding & designation
                     </button>
                   )}
                 </div>
