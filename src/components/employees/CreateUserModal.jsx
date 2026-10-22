@@ -188,7 +188,7 @@ export const CreateUserModal = ({ isOpen, onClose, onCreated }) => {
         organization: cleanOrg
       };
 
-      const created = addEmployee(newUserData);
+      const created = await addEmployee(newUserData);
 
       const brandLabel = userType === 'internal'
         ? 'Internal Staff (Volvitech)'

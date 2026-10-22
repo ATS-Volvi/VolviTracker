@@ -98,8 +98,48 @@ export const toDocDto = (row) => row ? ({
   updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : ''
 }) : null;
 
+let schemaEnsured = false;
+let schemaPromise = null;
+
+export async function ensureDirectSchema() {
+  if (schemaEnsured) return;
+  if (schemaPromise) return schemaPromise;
+
+  schemaPromise = (async () => {
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS employees (
+          id VARCHAR(100) PRIMARY KEY,
+          full_name TEXT NOT NULL,
+          email TEXT UNIQUE NOT NULL,
+          role TEXT DEFAULT 'Member',
+          avatar TEXT DEFAULT '',
+          password_hash TEXT DEFAULT '',
+          is_admin BOOLEAN DEFAULT FALSE,
+          user_type TEXT DEFAULT 'internal',
+          external_type TEXT DEFAULT NULL,
+          organization TEXT DEFAULT '',
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `;
+      await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;`;
+      await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS user_type TEXT DEFAULT 'internal';`;
+      await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS external_type TEXT DEFAULT NULL;`;
+      await sql`ALTER TABLE employees ADD COLUMN IF NOT EXISTS organization TEXT DEFAULT '';`;
+      schemaEnsured = true;
+    } catch (err) {
+      console.warn('[Neon Direct] Schema ensure notice:', err.message);
+    } finally {
+      schemaPromise = null;
+    }
+  })();
+
+  return schemaPromise;
+}
+
 // Bootstrap Data from Neon DB
 export async function directGetBootstrapData() {
+  await ensureDirectSchema();
   let docRows = [];
   const [empRows, projRows, taskRows, meetRows] = await Promise.all([
     sql`SELECT * FROM employees ORDER BY created_at ASC`,
@@ -384,6 +424,7 @@ export async function directDeleteMeeting(id) {
 
 // Employee Operations
 export async function directCreateEmployee(emp) {
+  await ensureDirectSchema();
   const id = emp.id || ('emp_' + Date.now() + Math.random().toString(36).substring(2, 6));
   const isAdmin = Boolean(emp.isAdmin || (emp.role || '').toLowerCase() === 'admin');
   const userType = emp.userType || 'internal';
@@ -407,11 +448,12 @@ export async function directCreateEmployee(emp) {
       organization = EXCLUDED.organization;
   `;
 
-  const created = await sql`SELECT * FROM employees WHERE id = ${id}`;
+  const created = await sql`SELECT * FROM employees WHERE id = ${id} OR LOWER(email) = ${emp.email.toLowerCase().trim()}`;
   return toEmployeeDto(created[0]);
 }
 
 export async function directUpdateEmployee(id, updates) {
+  await ensureDirectSchema();
   const existing = await sql`SELECT * FROM employees WHERE id = ${id} OR email = ${updates.email || ''}`;
   if (!existing || existing.length === 0) return null;
 

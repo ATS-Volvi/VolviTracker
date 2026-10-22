@@ -68,16 +68,61 @@ const cascadeParentAssignees = (tasksList) => {
 };
 
 export const DataProvider = ({ children }) => {
-  const [data, setData] = useState({
-    employees: Array.isArray(seedData.employees) ? seedData.employees : [],
-    projects: Array.isArray(seedData.projects) ? seedData.projects : [],
-    tasks: Array.isArray(seedData.tasks) ? seedData.tasks : [],
-    meetings: Array.isArray(seedData.meetings) ? seedData.meetings : [],
-    docs: Array.isArray(seedDocs) ? seedDocs : []
+  const [data, setData] = useState(() => {
+    let initialEmployees = seedData.employees || [];
+    let initialProjects = seedData.projects || [];
+    let initialTasks = seedData.tasks || [];
+    let initialMeetings = seedData.meetings || [];
+    let initialDocs = seedDocs || [];
+
+    try {
+      const empRaw = localStorage.getItem('employees');
+      if (empRaw) {
+        const parsed = JSON.parse(empRaw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const merged = [...parsed];
+          (seedData.employees || []).forEach(se => {
+            if (!merged.some(m => m.id === se.id || (m.email && m.email.toLowerCase() === se.email.toLowerCase()))) {
+              merged.push(se);
+            }
+          });
+          initialEmployees = merged;
+        }
+      }
+      const projRaw = localStorage.getItem('projects');
+      if (projRaw) {
+        const parsed = JSON.parse(projRaw);
+        if (Array.isArray(parsed) && parsed.length > 0) initialProjects = parsed;
+      }
+      const taskRaw = localStorage.getItem('tasks');
+      if (taskRaw) {
+        const parsed = JSON.parse(taskRaw);
+        if (Array.isArray(parsed) && parsed.length > 0) initialTasks = parsed;
+      }
+      const meetRaw = localStorage.getItem('meetings');
+      if (meetRaw) {
+        const parsed = JSON.parse(meetRaw);
+        if (Array.isArray(parsed) && parsed.length > 0) initialMeetings = parsed;
+      }
+      const docsRaw = localStorage.getItem('docs');
+      if (docsRaw) {
+        const parsed = JSON.parse(docsRaw);
+        if (Array.isArray(parsed) && parsed.length > 0) initialDocs = parsed;
+      }
+    } catch {}
+
+    return {
+      employees: initialEmployees,
+      projects: initialProjects,
+      tasks: initialTasks,
+      meetings: initialMeetings,
+      docs: initialDocs
+    };
   });
   const [isCloudSynced, setIsCloudSynced] = useState(false);
   const dataRef = useRef(data);
   dataRef.current = data;
+  const deletedEmployeeIds = useRef(new Set());
 
   // Persist changes to localStorage cache
   const saveLocal = useCallback((key, value) => {
@@ -109,6 +154,27 @@ export const DataProvider = ({ children }) => {
         let remoteMeetings = Array.isArray(cloudData.meetings) ? [...cloudData.meetings] : [];
         let remoteEmployees = Array.isArray(cloudData.employees) ? [...cloudData.employees] : [];
         let remoteDocs = Array.isArray(cloudData.docs) ? [...cloudData.docs] : [];
+
+        // Automatic Local-to-Cloud Sync & preservation for Employees:
+        // Ensure any locally added employees (e.g. external partners, clients, suppliers)
+        // are preserved and synced to Neon DB instead of being wiped out by remote fetch!
+        const localEmployees = dataRef.current?.employees || [];
+        for (const le of localEmployees) {
+          if (!le || !le.email) continue;
+          if (deletedEmployeeIds.current.has(le.id)) continue;
+          const exists = remoteEmployees.some(re =>
+            re.id === le.id || (re.email && le.email && re.email.toLowerCase().trim() === le.email.toLowerCase().trim())
+          );
+          if (!exists) {
+            remoteEmployees.push(le);
+            apiCreateEmployee(le).catch(e => console.error('[Cloud Sync] Failed to sync local employee to Neon:', e));
+          }
+        }
+
+        // Filter out any locally deleted employees that remote Neon might still be returning
+        if (deletedEmployeeIds.current.size > 0) {
+          remoteEmployees = remoteEmployees.filter(re => !deletedEmployeeIds.current.has(re.id));
+        }
 
         // Automatic Local-to-Cloud Sync:
         // If the device has custom user projects (e.g. "CRM for FACE co", "ATS")
@@ -639,7 +705,7 @@ export const DataProvider = ({ children }) => {
   // ----------------------------------------------------
   // Employee CRUD & Credentials with Cloud Neon Sync
   // ----------------------------------------------------
-  const addEmployee = (emp) => {
+  const addEmployee = async (emp) => {
     const userType = emp.userType || 'internal';
     const item = {
       ...emp,
@@ -648,13 +714,61 @@ export const DataProvider = ({ children }) => {
       externalType: userType === 'external' ? (emp.externalType || 'client') : null,
       organization: emp.organization || (userType === 'internal' ? 'Volvitech' : '')
     };
-    const nextEmployees = [...data.employees, item];
+
+    deletedEmployeeIds.current.delete(item.id);
+
+    let currentEmployees = [];
+    try {
+      const stored = localStorage.getItem('employees');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          currentEmployees = parsed;
+        }
+      }
+    } catch {}
+
+    if (currentEmployees.length === 0) {
+      currentEmployees = Array.isArray(dataRef.current?.employees) && dataRef.current.employees.length > 0
+        ? dataRef.current.employees
+        : (Array.isArray(data.employees) ? data.employees : (seedData.employees || []));
+    }
+
+    const nextEmployees = [
+      ...currentEmployees.filter(e => e.id !== item.id && (e.email || '').toLowerCase().trim() !== (item.email || '').toLowerCase().trim()),
+      item
+    ];
+
+    try {
+      localStorage.setItem('employees', JSON.stringify(nextEmployees));
+    } catch (e) {
+      console.error('Failed to write employees to localStorage:', e);
+    }
+    if (dataRef.current) {
+      dataRef.current.employees = nextEmployees;
+    }
 
     setData(prev => ({ ...prev, employees: nextEmployees }));
-    saveLocal('employees', nextEmployees);
 
     // Sync to Neon Cloud
-    apiCreateEmployee(item).catch(e => console.error('[Neon Error] addEmployee:', e));
+    try {
+      const saved = await apiCreateEmployee(item);
+      if (saved && saved.id) {
+        const synced = (dataRef.current?.employees || nextEmployees).map(e =>
+          (e.id === item.id || (e.email && saved.email && e.email.toLowerCase() === saved.email.toLowerCase()))
+            ? { ...e, ...saved }
+            : e
+        );
+        try {
+          localStorage.setItem('employees', JSON.stringify(synced));
+        } catch {}
+        if (dataRef.current) dataRef.current.employees = synced;
+        setData(prev => ({ ...prev, employees: synced }));
+        return saved;
+      }
+    } catch (e) {
+      console.error('[Neon Error] addEmployee:', e);
+    }
     return item;
   };
 
@@ -669,14 +783,22 @@ export const DataProvider = ({ children }) => {
     apiUpdateEmployee(id, updates).catch(e => console.error('[Neon Error] updateEmployee:', e));
   };
 
-  const removeEmployee = (id) => {
+  const removeEmployee = async (id) => {
     if (!id) return;
+    deletedEmployeeIds.current.add(id);
     const nextEmployees = data.employees.filter(e => e.id !== id);
     setData(prev => ({ ...prev, employees: nextEmployees }));
     saveLocal('employees', nextEmployees);
+    if (dataRef.current) {
+      dataRef.current.employees = nextEmployees;
+    }
 
     // Sync deletion to Neon Cloud
-    apiDeleteEmployee(id).catch(e => console.error('[Neon Error] removeEmployee:', e));
+    try {
+      await apiDeleteEmployee(id);
+    } catch (e) {
+      console.error('[Neon Error] removeEmployee:', e);
+    }
   };
 
   const updateEmployeeCredentials = (email, newPasswordHash) => {
