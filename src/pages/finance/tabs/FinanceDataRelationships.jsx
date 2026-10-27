@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../../../context/ToastContext';
+import { DEFAULT_EXCHANGE_RATES, getExchangeRate } from '../financeCalcs';
 
 const FinanceDataRelationships = ({
   projects = [],
@@ -9,7 +10,7 @@ const FinanceDataRelationships = ({
   invoices = [],
   paymentsReceived = [],
   paymentsMade = [],
-  exchangeRates = { USD: 1, AED: 3.67, SAR: 3.75, INR: 83.2 }
+  exchangeRates = DEFAULT_EXCHANGE_RATES
 }) => {
   const { addToast } = useToast();
   const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || 'PRJ-2024-01');

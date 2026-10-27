@@ -324,6 +324,20 @@ const AddEntityModal = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
+  const [classification, setClassification] = useState('Domestic'); // 'Domestic' | 'International'
+  const [name, setName] = useState('');
+  const [country, setCountry] = useState('India 🇮🇳');
+  const [stakeholders, setStakeholders] = useState([
+    {
+      name: '',
+      email: '',
+      phone: '',
+      dept: '',
+      department: '',
+      role: 'Primary Contact'
+    }
+  ]);
+
   // Ensure category and form state stay synced when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -358,19 +372,6 @@ const AddEntityModal = ({
       ]);
     }
   }, [isOpen, defaultCategory]);
-  const [classification, setClassification] = useState('Domestic'); // 'Domestic' | 'International'
-  const [name, setName] = useState('');
-  const [country, setCountry] = useState('India 🇮🇳');
-  const [stakeholders, setStakeholders] = useState([
-    {
-      name: '',
-      email: '',
-      phone: '',
-      dept: '',
-      department: '',
-      role: 'Primary Contact'
-    }
-  ]);
 
   // Comprehensive Dynamic Global Tax and Regulatory Identifier Resolution
   const taxInfo = useMemo(() => {

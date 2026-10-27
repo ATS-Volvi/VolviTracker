@@ -1,5 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { calculateApAgeing } from '../financeCalcs';
+import {
+  exportSupplierPosToSpreadsheet,
+  exportPaymentsMadeToSpreadsheet,
+  exportApAgeingToSpreadsheet
+} from '../financeExports';
 
 const FinanceSupplierPOs = ({
   supplierPos = [],
@@ -9,7 +15,11 @@ const FinanceSupplierPOs = ({
   onOpenIssueSupplierPo,
   onOpenThreeWayMatch,
   onOpenRecordSupplierPayment,
-  onViewSampleSupplierPo
+  onViewSampleSupplierPo,
+  onDeletePayment,
+  canManageFinance = true,
+  onEditSupplierPo,
+  onVoidSupplierPo
 }) => {
   const [internalTab, setInternalTab] = useState('POS');
   const activeSubTab = controlledTab || internalTab;
@@ -32,6 +42,11 @@ const FinanceSupplierPOs = ({
     spo.linkedProject.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const [pageSpo, setPageSpo] = useState(1);
+  const [pageSizeSpo, setPageSizeSpo] = useState(25);
+  const totalPagesSpo = Math.max(1, Math.ceil(filtered.length / pageSizeSpo));
+  const paginatedSpo = filtered.slice((pageSpo - 1) * pageSizeSpo, pageSpo * pageSizeSpo);
+
   const filteredPayments = paymentsMade.filter(pmt =>
     pmt.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
     pmt.supplierName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -44,37 +59,19 @@ const FinanceSupplierPOs = ({
     ...paymentsMade.map(p => p.supplierName)
   ])).filter(Boolean);
 
-  // AP Ageing Calculations
-  const ageingData = supplierPos.map(spo => {
-    const isSettled = spo.paymentStatus === 'Paid' || spo.status === 'Fulfilled';
-    const amountDue = isSettled ? 0 : (spo.remainingNative || spo.totalValueUsd || 0);
-    const dueDate = new Date(spo.paymentTermsDueDate || spo.issueDate || '2024-03-30');
-    const now = new Date();
-    const diffDays = Math.floor((now - dueDate) / (1000 * 60 * 60 * 24));
-    const daysOverdue = isSettled ? 0 : Math.max(0, diffDays);
+  // AP Ageing Filter States
+  const [apAsOfDate, setApAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [apSupplierFilter, setApSupplierFilter] = useState('ALL');
 
-    let bucket = 'current';
-    if (!isSettled) {
-      if (daysOverdue > 90) bucket = '90+';
-      else if (daysOverdue > 60) bucket = '61-90';
-      else if (daysOverdue > 30) bucket = '31-60';
-      else if (daysOverdue > 0) bucket = '1-30';
-    }
+  // Real AP Ageing Report computed pure via calculateApAgeing
+  const apAgeingReport = useMemo(() => {
+    return calculateApAgeing(supplierPos, {
+      asOfDate: apAsOfDate,
+      supplierFilter: apSupplierFilter
+    });
+  }, [supplierPos, apAsOfDate, apSupplierFilter]);
 
-    return {
-      ...spo,
-      daysOverdue,
-      amountDue,
-      bucket
-    };
-  });
-
-  const totalApOutstanding = ageingData.reduce((acc, s) => acc + s.amountDue, 0);
-  const currentTotal = ageingData.filter(s => s.bucket === 'current' && s.paymentStatus !== 'Paid').reduce((acc, s) => acc + s.amountDue, 0);
-  const d1to30Total = ageingData.filter(s => s.bucket === '1-30').reduce((acc, s) => acc + s.amountDue, 0);
-  const d31to60Total = ageingData.filter(s => s.bucket === '31-60').reduce((acc, s) => acc + s.amountDue, 0);
-  const d61to90Total = ageingData.filter(s => s.bucket === '61-90').reduce((acc, s) => acc + s.amountDue, 0);
-  const d90PlusTotal = ageingData.filter(s => s.bucket === '90+').reduce((acc, s) => acc + s.amountDue, 0);
+  const { summary: apSummary, bySupplier: apBySupplier, items: apItems } = apAgeingReport;
 
   return (
     <div className="space-y-6 text-left">
@@ -126,13 +123,44 @@ const FinanceSupplierPOs = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={onOpenRecordSupplierPayment}
-            className="px-3.5 py-2 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-800 rounded-xl transition border border-indigo-200 flex items-center gap-1.5 shadow-xs active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[16px]">account_balance_wallet</span>
-            <span>Record Payment Made</span>
-          </button>
+          {/* Quick Export for Active Tab */}
+          <div className="inline-flex rounded-xl shadow-2xs border border-gray-200 bg-white overflow-hidden">
+            <button
+              onClick={() => {
+                if (activeSubTab === 'POS') exportSupplierPosToSpreadsheet(filtered, 'xlsx');
+                else if (activeSubTab === 'PAYMENTS') exportPaymentsMadeToSpreadsheet(filteredPayments, 'xlsx');
+                else if (activeSubTab === 'AGEING') exportApAgeingToSpreadsheet(apAgeingReport, apAsOfDate, 'xlsx');
+                else exportSupplierPosToSpreadsheet(filtered, 'xlsx');
+              }}
+              className="px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-1.5 transition active:scale-95"
+              title={`Export ${activeSubTab} to Excel (.XLSX)`}
+            >
+              <span className="material-symbols-outlined text-[16px] text-emerald-600">table_view</span>
+              <span>Export {activeSubTab === 'AGEING' ? 'Ageing' : activeSubTab === 'PAYMENTS' ? 'Payments' : 'Supplier POs'} (.XLSX)</span>
+            </button>
+            <button
+              onClick={() => {
+                if (activeSubTab === 'POS') exportSupplierPosToSpreadsheet(filtered, 'csv');
+                else if (activeSubTab === 'PAYMENTS') exportPaymentsMadeToSpreadsheet(filteredPayments, 'csv');
+                else if (activeSubTab === 'AGEING') exportApAgeingToSpreadsheet(apAgeingReport, apAsOfDate, 'csv');
+                else exportSupplierPosToSpreadsheet(filtered, 'csv');
+              }}
+              className="px-2.5 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 border-l border-gray-200 transition active:scale-95"
+              title={`Export ${activeSubTab} to CSV`}
+            >
+              .CSV
+            </button>
+          </div>
+
+          {canManageFinance && (
+            <button
+              onClick={onOpenRecordSupplierPayment}
+              className="px-3.5 py-2 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-800 rounded-xl transition border border-indigo-200 flex items-center gap-1.5 shadow-xs active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[16px]">account_balance_wallet</span>
+              <span>Record Payment Made</span>
+            </button>
+          )}
 
           <button
             onClick={() => onOpenThreeWayMatch()}
@@ -142,13 +170,20 @@ const FinanceSupplierPOs = ({
             <span>3-Way Match Audit</span>
           </button>
 
-          <button
-            onClick={onOpenIssueSupplierPo}
-            className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition shadow-xs flex items-center gap-1.5 active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[16px]">add_shopping_cart</span>
-            <span>+ Issue Supplier PO</span>
-          </button>
+          {canManageFinance ? (
+            <button
+              onClick={onOpenIssueSupplierPo}
+              className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition shadow-xs flex items-center gap-1.5 active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[16px]">add_shopping_cart</span>
+              <span>+ Issue Supplier PO</span>
+            </button>
+          ) : (
+            <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 font-semibold text-xs flex items-center gap-1.5 border border-slate-200">
+              <span className="material-symbols-outlined text-[16px] text-slate-400">visibility</span>
+              <span>Read-Only Access</span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -181,7 +216,7 @@ const FinanceSupplierPOs = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 font-medium">
-                {filtered.map((spo) => {
+                {paginatedSpo.map((spo) => {
                   const isExpanded = expandedPoId === spo.id;
                   return (
                     <React.Fragment key={spo.id}>
@@ -241,14 +276,21 @@ const FinanceSupplierPOs = ({
 
                         <td className="py-3.5 px-4 text-center">
                           <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            spo.status === 'Fulfilled'
+                            spo.status === 'Void' || spo.isVoid
+                              ? 'bg-gray-100 text-gray-500 border border-gray-300'
+                              : spo.status === 'Fulfilled'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               : spo.status === 'Bill Overdue'
                               ? 'bg-rose-50 text-rose-700 border border-rose-200'
                               : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
                           }`}>
-                            {spo.status}
+                            {spo.status === 'Void' || spo.isVoid ? 'VOID' : spo.status}
                           </span>
+                          {spo.voidReason && (
+                            <span className="block text-[10px] text-gray-400 italic max-w-[120px] truncate mx-auto mt-0.5" title={spo.voidReason}>
+                              {spo.voidReason}
+                            </span>
+                          )}
                         </td>
 
                         <td className="py-3.5 px-4 text-center">
@@ -278,6 +320,39 @@ const FinanceSupplierPOs = ({
                               <span className="material-symbols-outlined text-[13px]">fact_check</span>
                               <span>3-Way Match</span>
                             </button>
+
+                            {canManageFinance && spo.status !== 'Void' && !spo.isVoid && (
+                              <>
+                                {onEditSupplierPo && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onEditSupplierPo(spo);
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold transition flex items-center gap-1"
+                                    title="Edit Supplier PO"
+                                  >
+                                    <span className="material-symbols-outlined text-[13px]">edit</span>
+                                    <span>Edit</span>
+                                  </button>
+                                )}
+                                {onVoidSupplierPo && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onVoidSupplierPo(spo);
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-[10px] font-bold transition flex items-center gap-1"
+                                    title="Void Supplier PO"
+                                  >
+                                    <span className="material-symbols-outlined text-[13px]">block</span>
+                                    <span>Void</span>
+                                  </button>
+                                )}
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -402,6 +477,65 @@ const FinanceSupplierPOs = ({
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {filtered.length > 0 && (
+            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-500">
+              <div className="flex items-center gap-2">
+                <span>Showing {Math.min((pageSpo - 1) * pageSizeSpo + 1, filtered.length)} to {Math.min(pageSpo * pageSizeSpo, filtered.length)} of {filtered.length} entries</span>
+                <span className="text-gray-300">|</span>
+                <select
+                  value={pageSizeSpo}
+                  onChange={(e) => {
+                    setPageSizeSpo(Number(e.target.value));
+                    setPageSpo(1);
+                  }}
+                  className="py-1 px-2 border border-gray-200 rounded-lg bg-white text-xs text-gray-700"
+                >
+                  <option value={10}>10 per page</option>
+                  <option value={25}>25 per page</option>
+                  <option value={50}>50 per page</option>
+                  <option value={100}>100 per page</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setPageSpo(1)}
+                  disabled={pageSpo === 1}
+                  className="px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                  title="First Page"
+                >
+                  «
+                </button>
+                <button
+                  onClick={() => setPageSpo(p => Math.max(1, p - 1))}
+                  disabled={pageSpo === 1}
+                  className="px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 font-medium"
+                >
+                  Prev
+                </button>
+                <span className="px-3 py-1 font-semibold text-gray-800">
+                  {pageSpo} / {totalPagesSpo}
+                </span>
+                <button
+                  onClick={() => setPageSpo(p => Math.min(totalPagesSpo, p + 1))}
+                  disabled={pageSpo === totalPagesSpo}
+                  className="px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 font-medium"
+                >
+                  Next
+                </button>
+                <button
+                  onClick={() => setPageSpo(totalPagesSpo)}
+                  disabled={pageSpo === totalPagesSpo}
+                  className="px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                  title="Last Page"
+                >
+                  »
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -475,6 +609,7 @@ const FinanceSupplierPOs = ({
                   <th className="py-3 px-4">Remittance Reference</th>
                   <th className="py-3 px-4 text-right">Disbursed Amount</th>
                   <th className="py-3 px-4 text-center">Status</th>
+                  {canManageFinance && onDeletePayment && <th className="py-3 px-4 text-center">Action</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 font-medium">
@@ -515,6 +650,23 @@ const FinanceSupplierPOs = ({
                         {pmt.status}
                       </span>
                     </td>
+
+                    {canManageFinance && onDeletePayment && (
+                      <td className="py-3.5 px-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Are you sure you want to void/delete supplier payment ${pmt.id} for PO ${pmt.supplierPoNumber}? This will reverse the linked cash transaction.`)) {
+                              onDeletePayment(pmt.id, pmt.supplierPoNumber);
+                            }
+                          }}
+                          className="p-1 hover:bg-rose-50 rounded text-gray-400 hover:text-rose-600 transition"
+                          title="Void / Delete Supplier Payment"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -526,36 +678,99 @@ const FinanceSupplierPOs = ({
       {/* Sub-tab 4: AP Ageing Schedule */}
       {activeSubTab === 'AGEING' && (
         <div className="space-y-6">
+          {/* Controls Bar: As of Date & Supplier Filter */}
+          <div className="bg-white p-4.5 rounded-2xl border border-gray-100 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-gray-700 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[16px] text-emerald-600">calendar_month</span>
+                  <span>As of Date:</span>
+                </label>
+                <input
+                  type="date"
+                  value={apAsOfDate}
+                  onChange={(e) => setApAsOfDate(e.target.value)}
+                  className="text-xs font-semibold bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-gray-900 focus:outline-hidden focus:border-emerald-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => setApAsOfDate(new Date().toISOString().slice(0, 10))}
+                  className="px-2 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition"
+                  title="Reset As Of Date to Today"
+                >
+                  Today
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-gray-700 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[16px] text-emerald-600">store</span>
+                  <span>Supplier Filter:</span>
+                </label>
+                <select
+                  value={apSupplierFilter}
+                  onChange={(e) => setApSupplierFilter(e.target.value)}
+                  className="text-xs font-semibold bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-gray-900 focus:outline-hidden focus:border-emerald-400"
+                >
+                  <option value="ALL">All Suppliers ({allSuppliers.length})</option>
+                  {allSuppliers.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="inline-flex rounded-xl shadow-2xs border border-gray-200 bg-white overflow-hidden">
+                <button
+                  onClick={() => exportApAgeingToSpreadsheet(apAgeingReport, apAsOfDate, 'xlsx')}
+                  className="px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-1 transition"
+                  title="Export AP Ageing Report to Excel"
+                >
+                  <span className="material-symbols-outlined text-[15px] text-emerald-600">table_view</span>
+                  <span>Export Ageing (.XLSX)</span>
+                </button>
+                <button
+                  onClick={() => exportApAgeingToSpreadsheet(apAgeingReport, apAsOfDate, 'csv')}
+                  className="px-2.5 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 border-l border-gray-200 transition"
+                  title="Export AP Ageing Report to CSV"
+                >
+                  .CSV
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Ageing KPI Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Total AP Outstanding</span>
-              <div className="text-xl font-extrabold text-gray-900 font-mono">${Math.round(totalApOutstanding).toLocaleString()}</div>
-              <p className="text-[10px] text-gray-400">All supplier commitments</p>
+              <div className="text-xl font-extrabold text-gray-900 font-mono">${Math.round(apSummary.totalOutstanding).toLocaleString()}</div>
+              <p className="text-[10px] text-gray-400">As of {apAsOfDate}</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-xs space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Current (0-30d)</span>
-              <div className="text-xl font-extrabold text-emerald-700 font-mono">${Math.round(currentTotal).toLocaleString()}</div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Current</span>
+              <div className="text-xl font-extrabold text-emerald-700 font-mono">${Math.round(apSummary.current).toLocaleString()}</div>
               <p className="text-[10px] text-emerald-600">Within payment term</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-xs space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">1 - 30 Days Due</span>
-              <div className="text-xl font-extrabold text-blue-700 font-mono">${Math.round(d1to30Total).toLocaleString()}</div>
+              <div className="text-xl font-extrabold text-blue-700 font-mono">${Math.round(apSummary.d1to30).toLocaleString()}</div>
               <p className="text-[10px] text-blue-500">Upcoming invoice run</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-amber-100 shadow-xs space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">31 - 60 Days</span>
-              <div className="text-xl font-extrabold text-amber-700 font-mono">${Math.round(d31to60Total).toLocaleString()}</div>
+              <div className="text-xl font-extrabold text-amber-700 font-mono">${Math.round(apSummary.d31to60).toLocaleString()}</div>
               <p className="text-[10px] text-amber-500">Review cashflow</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-orange-100 shadow-xs space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-orange-600">61 - 90 Days</span>
-              <div className="text-xl font-extrabold text-orange-700 font-mono">${Math.round(d61to90Total).toLocaleString()}</div>
+              <div className="text-xl font-extrabold text-orange-700 font-mono">${Math.round(apSummary.d61to90).toLocaleString()}</div>
               <p className="text-[10px] text-orange-500">Payment prioritized</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-rose-100 shadow-xs space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600">90+ Days Critical</span>
-              <div className="text-xl font-extrabold text-rose-700 font-mono">${Math.round(d90PlusTotal).toLocaleString()}</div>
+              <div className="text-xl font-extrabold text-rose-700 font-mono">${Math.round(apSummary.d90Plus).toLocaleString()}</div>
               <p className="text-[10px] text-rose-500">Urgent vendor release</p>
             </div>
           </div>
@@ -565,10 +780,10 @@ const FinanceSupplierPOs = ({
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <div>
                 <h3 className="text-sm font-bold text-gray-900 font-display">Supplier Accounts Payable Ageing Schedule</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Procurement liabilities categorized by age past agreed payment terms</p>
+                <p className="text-xs text-gray-400 mt-0.5">Procurement liabilities categorized by age past agreed payment terms as of {apAsOfDate}</p>
               </div>
               <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-                {allSuppliers.length} Creditors
+                {apBySupplier.length} Creditors
               </span>
             </div>
 
@@ -587,52 +802,145 @@ const FinanceSupplierPOs = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-medium">
-                  {allSuppliers.map((supplier) => {
-                    const supPos = ageingData.filter(s => s.supplierName === supplier);
-                    const cur = supPos.filter(s => s.bucket === 'current' && s.paymentStatus !== 'Paid').reduce((a, b) => a + b.amountDue, 0);
-                    const b1 = supPos.filter(s => s.bucket === '1-30').reduce((a, b) => a + b.amountDue, 0);
-                    const b2 = supPos.filter(s => s.bucket === '31-60').reduce((a, b) => a + b.amountDue, 0);
-                    const b3 = supPos.filter(s => s.bucket === '61-90').reduce((a, b) => a + b.amountDue, 0);
-                    const b4 = supPos.filter(s => s.bucket === '90+').reduce((a, b) => a + b.amountDue, 0);
-                    const tot = cur + b1 + b2 + b3 + b4;
+                  {apBySupplier.map((sup) => (
+                    <tr key={sup.supplierName} className="hover:bg-gray-50/80 transition">
+                      <td className="py-3.5 px-4 font-bold text-gray-900">
+                        {sup.supplierName}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-mono text-emerald-700">
+                        {sup.current > 0 ? `$${Math.round(sup.current).toLocaleString()}` : '—'}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-mono text-blue-700">
+                        {sup.d1to30 > 0 ? `$${Math.round(sup.d1to30).toLocaleString()}` : '—'}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-mono text-amber-700">
+                        {sup.d31to60 > 0 ? `$${Math.round(sup.d31to60).toLocaleString()}` : '—'}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-mono text-orange-700">
+                        {sup.d61to90 > 0 ? `$${Math.round(sup.d61to90).toLocaleString()}` : '—'}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-mono text-rose-700 font-bold">
+                        {sup.d90Plus > 0 ? `$${Math.round(sup.d90Plus).toLocaleString()}` : '—'}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-mono font-extrabold text-gray-900">
+                        ${Math.round(sup.total).toLocaleString()}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <button
+                          onClick={() => {
+                            setActiveSubTab('STATEMENTS');
+                            setSelectedStatementSupplier(sup.supplierName);
+                          }}
+                          className="px-2.5 py-1 text-[11px] font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
+                        >
+                          Statement
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {apBySupplier.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-gray-400">
+                        No outstanding supplier payables match the selected filters.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Itemized Aged Supplier POs / AP Commitments Ledger */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 font-display">Aged Supplier Purchase Orders & Liabilities</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Itemized commitments with individual aging overdue days and balances</p>
+              </div>
+              <span className="text-xs font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                {apItems.length} Commitments
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-gray-50/50 border-b border-gray-100 text-gray-400 font-bold uppercase text-[10px]">
+                  <tr>
+                    <th className="py-3 px-4">PO Number & Entity</th>
+                    <th className="py-3 px-4">Supplier & SOW</th>
+                    <th className="py-3 px-4">PO Date</th>
+                    <th className="py-3 px-4">Due Date</th>
+                    <th className="py-3 px-4 text-center">Overdue Days</th>
+                    <th className="py-3 px-4 text-center">Ageing Bucket</th>
+                    <th className="py-3 px-4 text-right">Committed Value</th>
+                    <th className="py-3 px-4 text-right">Payable Balance</th>
+                    <th className="py-3 px-4 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 font-medium">
+                  {apItems.map((spo) => {
+                    const bucketBadge = {
+                      'current': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                      '1-30': 'bg-blue-50 text-blue-700 border-blue-200',
+                      '31-60': 'bg-amber-50 text-amber-700 border-amber-200',
+                      '61-90': 'bg-orange-50 text-orange-700 border-orange-200',
+                      '90+': 'bg-rose-50 text-rose-700 border-rose-200 font-bold'
+                    }[spo.bucket] || 'bg-gray-50 text-gray-700 border-gray-200';
 
                     return (
-                      <tr key={supplier} className="hover:bg-gray-50/80 transition">
-                        <td className="py-3.5 px-4 font-bold text-gray-900">
-                          {supplier}
+                      <tr key={spo.id} className="hover:bg-gray-50/80 transition">
+                        <td className="py-3.5 px-4 font-mono font-bold text-gray-900">
+                          <div>{spo.poNumber}</div>
+                          <div className="text-[10px] text-gray-400 font-normal">{spo.entity}</div>
                         </td>
-                        <td className="py-3.5 px-4 text-right font-mono text-emerald-700">
-                          {cur > 0 ? `$${Math.round(cur).toLocaleString()}` : '—'}
+                        <td className="py-3.5 px-4">
+                          <span className="font-bold text-gray-900 block">{spo.supplierName}</span>
+                          <span className="text-gray-400 text-[11px] block">{spo.linkedProject || spo.projectName || '—'}</span>
                         </td>
-                        <td className="py-3.5 px-4 text-right font-mono text-blue-700">
-                          {b1 > 0 ? `$${Math.round(b1).toLocaleString()}` : '—'}
+                        <td className="py-3.5 px-4 font-mono text-gray-600">
+                          {spo.issueDate || spo.date || '—'}
                         </td>
-                        <td className="py-3.5 px-4 text-right font-mono text-amber-700">
-                          {b2 > 0 ? `$${Math.round(b2).toLocaleString()}` : '—'}
+                        <td className="py-3.5 px-4 font-mono text-gray-700 font-semibold">
+                          {spo.dueDate || '—'}
                         </td>
-                        <td className="py-3.5 px-4 text-right font-mono text-orange-700">
-                          {b3 > 0 ? `$${Math.round(b3).toLocaleString()}` : '—'}
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-mono text-rose-700 font-bold">
-                          {b4 > 0 ? `$${Math.round(b4).toLocaleString()}` : '—'}
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-mono font-extrabold text-gray-900">
-                          ${Math.round(tot).toLocaleString()}
+                        <td className="py-3.5 px-4 text-center font-mono">
+                          {spo.daysOverdue > 0 ? (
+                            <span className="font-bold text-rose-600">+{spo.daysOverdue}d</span>
+                          ) : (
+                            <span className="text-emerald-600 font-semibold">Current</span>
+                          )}
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          <button
-                            onClick={() => {
-                              setActiveSubTab('STATEMENTS');
-                              setSelectedStatementSupplier(supplier);
-                            }}
-                            className="px-2.5 py-1 text-[11px] font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
-                          >
-                            Statement
-                          </button>
+                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] border ${bucketBadge}`}>
+                            {spo.bucket === 'current' ? 'Current' : `${spo.bucket} days`}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono text-gray-700">
+                          ${Math.round(spo.committedUsd || spo.totalValueUsd || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono font-bold text-gray-900">
+                          ${Math.round(spo.amountDue).toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          {onViewSampleSupplierPo && (
+                            <button
+                              onClick={() => onViewSampleSupplierPo(spo)}
+                              className="px-2.5 py-1 text-[11px] font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
+                            >
+                              View PO
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
                   })}
+                  {apItems.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="py-8 text-center text-gray-400">
+                        No outstanding supplier commitments match the selected filters.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

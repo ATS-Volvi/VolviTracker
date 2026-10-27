@@ -28,7 +28,3 @@ export async function hashPassword(password) {
   }
   return 'fb_' + Math.abs(hash).toString(16);
 }
-
-// Pre-computed SHA-256 for default demo password 'password123'
-export const DEFAULT_DEMO_PASSWORD = 'password123';
-export const DEFAULT_PASSWORD_HASH = 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f';

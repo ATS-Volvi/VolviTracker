@@ -6,6 +6,7 @@ import { Avatar } from '../widgets/Avatar';
 import { getFinanceData } from '../../pages/finance/financeData';
 
 const ROLE_SUGGESTIONS = [
+  'Accountant',
   'Product Lead',
   'Software Engineer',
   'Frontend Developer',

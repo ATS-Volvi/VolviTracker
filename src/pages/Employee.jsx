@@ -30,6 +30,16 @@ export const Employee = () => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const isOwnProfile = user && String(user.id) === String(id);
+  const emp = getEmployee(id);
+
+  // Sync custom properties
+  useEffect(() => {
+    if (emp && Array.isArray(emp.properties)) {
+      setProps(emp.properties);
+    } else {
+      setProps([]);
+    }
+  }, [emp?.properties]);
 
   // For Admin and Project Manager users, Planner and Personal pages are combined into the Projects page
   if ((isAdmin || isProjectManager) && isOwnProfile) {
@@ -80,16 +90,7 @@ export const Employee = () => {
     );
   }
 
-  const emp = getEmployee(id);
 
-  // Sync custom properties
-  useEffect(() => {
-    if (emp && Array.isArray(emp.properties)) {
-      setProps(emp.properties);
-    } else {
-      setProps([]);
-    }
-  }, [emp?.properties]);
 
   if (!emp) {
     return (

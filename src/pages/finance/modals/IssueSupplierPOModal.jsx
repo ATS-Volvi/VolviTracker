@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { loadFinanceData } from '../financeData';
+import { convertToUsd, getExchangeRate, DEFAULT_EXCHANGE_RATES } from '../financeCalcs';
 
 const getLocalDateString = (d = new Date()) => {
   const year = d.getFullYear();
@@ -56,7 +57,7 @@ const IssueSupplierPOModal = ({
         vendors: stored.masterDirectory?.filter(d => d.category === 'Supplier') || [],
         projects: stored.projects || [],
         clientPos: stored.clientPos || [],
-        exchangeRates: stored.exchangeRates || { USD: 1, AED: 3.67, SAR: 3.75, INR: 83.2 }
+        exchangeRates: stored.exchangeRates || DEFAULT_EXCHANGE_RATES
       };
     } catch {
       return { vendors: [], projects: [], clientPos: [], exchangeRates: {} };
@@ -276,14 +277,8 @@ const IssueSupplierPOModal = ({
     const selectedProj = projectsList.find(p => p.id === linkedProject);
     const projectName = selectedProj ? (selectedProj.projectName || selectedProj.name) : '';
 
-    const rate = rates[currency] || (
-      currency === 'AED' ? 3.67 :
-      currency === 'SAR' ? 3.75 :
-      currency === 'INR' ? 83.2 :
-      currency === 'EUR' ? 0.92 :
-      currency === 'GBP' ? 0.79 : 1.0
-    );
-    const totalValUsd = currency === 'USD' ? numPoValue : (numPoValue / rate);
+    const rate = getExchangeRate(currency, rates);
+    const totalValUsd = convertToUsd(numPoValue, currency, rates);
 
     const finalizedMilestones = milestones.length > 0
       ? milestones.map((m, idx) => ({
@@ -317,6 +312,7 @@ const IssueSupplierPOModal = ({
       issueDate: poDate,
       date: poDate,
       currency,
+      exchangeRate: rate,
       committedNative: numPoValue,
       committedUsd: Math.round(totalValUsd * 100) / 100,
       totalValueNative: numPoValue,

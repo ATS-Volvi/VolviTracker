@@ -1,7 +1,6 @@
 import React, { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { seedData } from './seed';
 import { seedDocs } from './seedDocs';
-import { DEFAULT_PASSWORD_HASH } from '../utils/crypto';
 import {
   isCloudSyncEnabled,
   fetchInitialData,
@@ -801,17 +800,10 @@ export const DataProvider = ({ children }) => {
     }
   };
 
-  const updateEmployeeCredentials = (email, newPasswordHash) => {
+  const updateEmployeeCredentials = (email, newPassword) => {
     if (!email) return;
-    const updated = data.employees.map(e =>
-      e.email?.toLowerCase() === email.toLowerCase() ? { ...e, passwordHash: newPasswordHash } : e
-    );
-
-    setData(prev => ({ ...prev, employees: updated }));
-    saveLocal('employees', updated);
-
-    // Sync to Neon Cloud
-    apiUpdatePassword(email, newPasswordHash).catch(e => console.error('[Neon Error] updateEmployeeCredentials:', e));
+    // Sync to Server API
+    apiUpdatePassword(email, newPassword).catch(e => console.error('[Server Error] updateEmployeeCredentials:', e));
   };
 
   // ----------------------------------------------------

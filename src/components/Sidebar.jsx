@@ -55,11 +55,9 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
     (location.pathname === '/' && canManageProjects) || 
     Boolean(user && !canManageProjects && location.pathname === `/employee/${user?.id}`);
 
-  const isClientPosActive = location.pathname === '/sales/client-pos' || 
-    (location.pathname === '/finance/client' && (!currentTab || currentTab === 'pos'));
+  const isClientPosActive = (location.pathname === '/finance/client' || location.pathname === '/sales/client-pos') && (!currentTab || currentTab === 'pos');
 
-  const isSupplierPosActive = location.pathname === '/purchases/supplier-pos' || 
-    (location.pathname === '/finance/supplier' && (!currentTab || currentTab === 'pos'));
+  const isSupplierPosActive = (location.pathname === '/finance/supplier' || location.pathname === '/purchases/supplier-pos') && (!currentTab || currentTab === 'pos');
 
   // Accounts Receivable subpages
   const isClientInvoicesActive = location.pathname === '/finance/client' && ['invoices', 'invoice'].includes(currentTab);
@@ -82,7 +80,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
   const isCashBookAddActive = location.pathname === '/finance/cash-book' && ['add-entry', 'add'].includes(currentAction);
   const isCashBookActive = location.pathname === '/finance/cash-book';
   const isTaxActive = location.pathname.startsWith('/finance/tax');
-  const isCashFlowActive = location.pathname.startsWith('/finance/cash-flow') || location.pathname.startsWith('/finance/cashflow');
+  const isCashFlowActive = location.pathname.startsWith('/finance/cash-flow');
 
   const isMasterDataActive = location.pathname.startsWith('/master-data');
 
@@ -190,7 +188,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
               {/* Sales Client POs Collapsed */}
               <div className="relative group">
                 <Link
-                  to="/sales/client-pos"
+                  to="/finance/client"
                   className={`flex items-center justify-center p-3 rounded-xl transition-all duration-150 ${
                     isClientPosActive ? 'bg-blue-50 text-blue-600 shadow-2xs' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                   }`}
@@ -206,7 +204,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
               {/* Purchases Supplier POs Collapsed */}
               <div className="relative group">
                 <Link
-                  to="/purchases/supplier-pos"
+                  to="/finance/supplier"
                   className={`flex items-center justify-center p-3 rounded-xl transition-all duration-150 ${
                     isSupplierPosActive ? 'bg-blue-50 text-blue-600 shadow-2xs' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                   }`}
@@ -462,7 +460,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                   Sales
                 </div>
                 <Link
-                  to="/sales/client-pos"
+                  to="/finance/client"
                   className={`group flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-150 ${
                     isClientPosActive
                       ? 'bg-blue-50 text-blue-600 font-bold shadow-2xs'
@@ -483,7 +481,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                   Purchases
                 </div>
                 <Link
-                  to="/purchases/supplier-pos"
+                  to="/finance/supplier"
                   className={`group flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-150 ${
                     isSupplierPosActive
                       ? 'bg-blue-50 text-blue-600 font-bold shadow-2xs'

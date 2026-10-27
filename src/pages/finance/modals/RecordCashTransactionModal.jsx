@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { convertToUsd, getExchangeRate } from '../financeCalcs';
 
 const CATEGORIES = {
   Inflow: [
@@ -131,8 +132,8 @@ export const RecordCashTransactionModal = ({
     const num = parseFloat(amountNative);
     if (isNaN(num) || num <= 0) return;
 
-    const rate = exchangeRates[currency] || (currency === 'USD' ? 1.0 : currency === 'AED' ? 3.67 : currency === 'SAR' ? 3.75 : 83.2);
-    const amountUsd = currency === 'USD' ? num : num / rate;
+    const rate = getExchangeRate(currency, exchangeRates);
+    const amountUsd = convertToUsd(num, currency, exchangeRates);
 
     const newTxn = {
       id: `CB-TXN-${Date.now()}`,
@@ -150,6 +151,7 @@ export const RecordCashTransactionModal = ({
       reference: reference.trim(),
       paymentMode,
       currency,
+      exchangeRate: rate,
       amountNative: num,
       amountUsd,
       status,
@@ -465,9 +467,7 @@ export const RecordCashTransactionModal = ({
             <span className="text-gray-500">Live Equivalent in Base USD:</span>
             <span className="font-mono font-bold text-gray-900 text-sm">
               ${amountNative && !isNaN(parseFloat(amountNative))
-                ? (
-                    (parseFloat(amountNative) / (exchangeRates[currency] || (currency === 'USD' ? 1.0 : currency === 'AED' ? 3.67 : currency === 'SAR' ? 3.75 : 83.2)))
-                  ).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                ? convertToUsd(parseFloat(amountNative), currency, exchangeRates).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                 : '0.00'
               }
             </span>

@@ -1,16 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { convertToUsd, calculateArAgeing } from '../financeCalcs';
+import {
+  exportInvoicesToSpreadsheet,
+  exportClientPosToSpreadsheet,
+  exportPaymentsReceivedToSpreadsheet,
+  exportArAgeingToSpreadsheet
+} from '../financeExports';
 
 const FinanceClientPOs = ({
   clientPos = [],
   invoices = [],
   paymentsReceived = [],
+  exchangeRates = {},
   activeSubTab: controlledTab,
   onTabChange,
   onOpenRegisterClientPo,
   onOpenGenerateInvoice,
   onOpenRecordPayment,
-  onViewSampleInvoice
+  onViewSampleInvoice,
+  onDeletePayment,
+  canManageFinance = true,
+  onEditClientPo,
+  onVoidClientPo,
+  onEditInvoice,
+  onVoidInvoice
 }) => {
   const [expandedPoId, setExpandedPoId] = useState(null);
   const [internalTab, setInternalTab] = useState('POS');
@@ -36,11 +50,21 @@ const FinanceClientPOs = ({
     cpo.scope.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const [pagePo, setPagePo] = useState(1);
+  const [pageSizePo, setPageSizePo] = useState(25);
+  const totalPagesPo = Math.max(1, Math.ceil(filteredPos.length / pageSizePo));
+  const paginatedPos = filteredPos.slice((pagePo - 1) * pageSizePo, pagePo * pageSizePo);
+
   const filteredInvoices = invoices.filter(inv =>
     inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
     inv.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     inv.linkedPo.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const [pageInv, setPageInv] = useState(1);
+  const [pageSizeInv, setPageSizeInv] = useState(25);
+  const totalPagesInv = Math.max(1, Math.ceil(filteredInvoices.length / pageSizeInv));
+  const paginatedInvoices = filteredInvoices.slice((pageInv - 1) * pageSizeInv, pageInv * pageSizeInv);
 
   const filteredPayments = paymentsReceived.filter(pmt =>
     pmt.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -54,37 +78,19 @@ const FinanceClientPOs = ({
     ...invoices.map(i => i.clientName)
   ])).filter(Boolean);
 
-  // AR Ageing Calculations
-  const ageingData = invoices.map(inv => {
-    const isPaid = inv.status === 'Paid';
-    const amountDue = isPaid ? 0 : (inv.balanceUsd || inv.amountUsd || 0);
-    const dueDate = new Date(inv.dueDate || inv.date);
-    const now = new Date();
-    const diffDays = Math.floor((now - dueDate) / (1000 * 60 * 60 * 24));
-    const daysOverdue = isPaid ? 0 : Math.max(0, diffDays);
+  // AR Ageing Filter States
+  const [arAsOfDate, setArAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [arClientFilter, setArClientFilter] = useState('ALL');
 
-    let bucket = 'current';
-    if (!isPaid) {
-      if (daysOverdue > 90) bucket = '90+';
-      else if (daysOverdue > 60) bucket = '61-90';
-      else if (daysOverdue > 30) bucket = '31-60';
-      else if (daysOverdue > 0) bucket = '1-30';
-    }
+  // Real AR Ageing Report computed pure via calculateArAgeing
+  const arAgeingReport = useMemo(() => {
+    return calculateArAgeing(invoices, {
+      asOfDate: arAsOfDate,
+      clientFilter: arClientFilter
+    });
+  }, [invoices, arAsOfDate, arClientFilter]);
 
-    return {
-      ...inv,
-      daysOverdue,
-      amountDue,
-      bucket
-    };
-  });
-
-  const totalArOutstanding = ageingData.reduce((acc, i) => acc + i.amountDue, 0);
-  const currentTotal = ageingData.filter(i => i.bucket === 'current' && i.status !== 'Paid').reduce((acc, i) => acc + i.amountDue, 0);
-  const d1to30Total = ageingData.filter(i => i.bucket === '1-30').reduce((acc, i) => acc + i.amountDue, 0);
-  const d31to60Total = ageingData.filter(i => i.bucket === '31-60').reduce((acc, i) => acc + i.amountDue, 0);
-  const d61to90Total = ageingData.filter(i => i.bucket === '61-90').reduce((acc, i) => acc + i.amountDue, 0);
-  const d90PlusTotal = ageingData.filter(i => i.bucket === '90+').reduce((acc, i) => acc + i.amountDue, 0);
+  const { summary: arSummary, byClient: arByClient, items: arItems } = arAgeingReport;
 
   return (
     <div className="space-y-6 text-left">
@@ -136,29 +142,69 @@ const FinanceClientPOs = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={onOpenRecordPayment}
-            className="px-3.5 py-2 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl transition border border-emerald-200 flex items-center gap-1.5 shadow-xs active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[16px]">payments</span>
-            <span>Record Payment</span>
-          </button>
+          {/* Quick Export for Active Tab */}
+          <div className="inline-flex rounded-xl shadow-2xs border border-gray-200 bg-white overflow-hidden">
+            <button
+              onClick={() => {
+                if (activeSubTab === 'POS') exportClientPosToSpreadsheet(filteredPos, 'xlsx');
+                else if (activeSubTab === 'INVOICES') exportInvoicesToSpreadsheet(filteredInvoices, 'xlsx');
+                else if (activeSubTab === 'PAYMENTS') exportPaymentsReceivedToSpreadsheet(filteredPayments, 'xlsx');
+                else if (activeSubTab === 'AGEING') exportArAgeingToSpreadsheet(arAgeingReport, arAsOfDate, 'xlsx');
+                else exportInvoicesToSpreadsheet(invoices, 'xlsx');
+              }}
+              className="px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-1 transition"
+              title="Export active records as Excel (.XLSX)"
+            >
+              <span className="material-symbols-outlined text-[16px] text-emerald-600">table_view</span>
+              <span>Export .XLSX</span>
+            </button>
+            <button
+              onClick={() => {
+                if (activeSubTab === 'POS') exportClientPosToSpreadsheet(filteredPos, 'csv');
+                else if (activeSubTab === 'INVOICES') exportInvoicesToSpreadsheet(filteredInvoices, 'csv');
+                else if (activeSubTab === 'PAYMENTS') exportPaymentsReceivedToSpreadsheet(filteredPayments, 'csv');
+                else if (activeSubTab === 'AGEING') exportArAgeingToSpreadsheet(arAgeingReport, arAsOfDate, 'csv');
+                else exportInvoicesToSpreadsheet(invoices, 'csv');
+              }}
+              className="px-2.5 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 border-l border-gray-200 transition"
+              title="Export active records as CSV"
+            >
+              .CSV
+            </button>
+          </div>
 
-          <button
-            onClick={onOpenGenerateInvoice}
-            className="px-3.5 py-2 text-xs font-bold bg-white hover:bg-gray-50 text-gray-800 rounded-xl transition border border-gray-200 flex items-center gap-1.5 shadow-xs active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[16px] text-blue-600">flash_on</span>
-            <span>Auto-Gen Invoice</span>
-          </button>
+          {canManageFinance ? (
+            <>
+              <button
+                onClick={onOpenRecordPayment}
+                className="px-3.5 py-2 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl transition border border-emerald-200 flex items-center gap-1.5 shadow-xs active:scale-95"
+              >
+                <span className="material-symbols-outlined text-[16px]">payments</span>
+                <span>Record Payment</span>
+              </button>
 
-          <button
-            onClick={onOpenRegisterClientPo}
-            className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition shadow-xs flex items-center gap-1.5 active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[16px]">add_task</span>
-            <span>+ Register Client PO</span>
-          </button>
+              <button
+                onClick={onOpenGenerateInvoice}
+                className="px-3.5 py-2 text-xs font-bold bg-white hover:bg-gray-50 text-gray-800 rounded-xl transition border border-gray-200 flex items-center gap-1.5 shadow-xs active:scale-95"
+              >
+                <span className="material-symbols-outlined text-[16px] text-blue-600">flash_on</span>
+                <span>Auto-Gen Invoice</span>
+              </button>
+
+              <button
+                onClick={onOpenRegisterClientPo}
+                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition shadow-xs flex items-center gap-1.5 active:scale-95"
+              >
+                <span className="material-symbols-outlined text-[16px]">add_task</span>
+                <span>+ Register Client PO</span>
+              </button>
+            </>
+          ) : (
+            <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 font-semibold text-xs flex items-center gap-1.5 border border-slate-200">
+              <span className="material-symbols-outlined text-[16px] text-slate-400">visibility</span>
+              <span>Read-Only Access</span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -190,7 +236,7 @@ const FinanceClientPOs = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 font-medium">
-                {filteredPos.map((cpo) => {
+                {paginatedPos.map((cpo) => {
                   const isExpanded = expandedPoId === cpo.id;
                   return (
                     <React.Fragment key={cpo.id}>
@@ -229,7 +275,7 @@ const FinanceClientPOs = ({
 
                         <td className="py-3.5 px-4 text-right">
                           <div className="font-bold text-blue-700 font-mono">
-                            ${cpo.currency === 'USD' ? cpo.invoicedNative?.toLocaleString() : Math.round(cpo.invoicedNative / (cpo.currency === 'AED' ? 3.67 : cpo.currency === 'SAR' ? 3.75 : 83.2)).toLocaleString()}
+                            ${Math.round(convertToUsd(cpo.invoicedNative, cpo.currency, exchangeRates)).toLocaleString()}
                           </div>
                           <div className="w-24 ml-auto h-1.5 rounded-full bg-gray-200 mt-1 overflow-hidden">
                             <div
@@ -241,12 +287,14 @@ const FinanceClientPOs = ({
                         </td>
 
                         <td className="py-3.5 px-4 text-right font-mono font-bold text-gray-700">
-                          ${cpo.currency === 'USD' ? cpo.remainingNative?.toLocaleString() : Math.round(cpo.remainingNative / (cpo.currency === 'AED' ? 3.67 : cpo.currency === 'SAR' ? 3.75 : 83.2)).toLocaleString()}
+                          ${Math.round(convertToUsd(cpo.remainingNative, cpo.currency, exchangeRates)).toLocaleString()}
                         </td>
 
                         <td className="py-3.5 px-4 text-center">
                           <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            cpo.status === 'Fully Invoiced'
+                            cpo.status === 'Void' || cpo.isVoid
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : cpo.status === 'Fully Invoiced' || cpo.status === 'Fulfilled'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               : 'bg-blue-50 text-blue-700 border border-blue-200'
                           }`}>
@@ -255,16 +303,55 @@ const FinanceClientPOs = ({
                         </td>
 
                         <td className="py-3.5 px-4 text-center">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onOpenGenerateInvoice();
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[10px] transition"
-                          >
-                            + Invoice
-                          </button>
+                          <div className="flex items-center justify-center gap-1">
+                            {canManageFinance && cpo.status !== 'Void' && !cpo.isVoid && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onOpenGenerateInvoice && onOpenGenerateInvoice();
+                                  }}
+                                  className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[10px] transition"
+                                  title="Generate Invoice for this PO"
+                                >
+                                  + Invoice
+                                </button>
+                                {onEditClientPo && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onEditClientPo(cpo);
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] transition"
+                                    title="Edit PO specifications"
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+                                {onVoidClientPo && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onVoidClientPo(cpo);
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[10px] transition"
+                                    title="Void PO"
+                                  >
+                                    Void
+                                  </button>
+                                )}
+                              </>
+                            )}
+                            {(cpo.status === 'Void' || cpo.isVoid) && (
+                              <span className="text-[10px] text-rose-600 font-semibold italic">Voided</span>
+                            )}
+                            {!canManageFinance && cpo.status !== 'Void' && !cpo.isVoid && (
+                              <span className="text-[10px] text-slate-400">—</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
 
@@ -369,6 +456,65 @@ const FinanceClientPOs = ({
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {filteredPos.length > 0 && (
+            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-500">
+              <div className="flex items-center gap-2">
+                <span>Showing {Math.min((pagePo - 1) * pageSizePo + 1, filteredPos.length)} to {Math.min(pagePo * pageSizePo, filteredPos.length)} of {filteredPos.length} entries</span>
+                <span className="text-gray-300">|</span>
+                <select
+                  value={pageSizePo}
+                  onChange={(e) => {
+                    setPageSizePo(Number(e.target.value));
+                    setPagePo(1);
+                  }}
+                  className="py-1 px-2 border border-gray-200 rounded-lg bg-white text-xs text-gray-700"
+                >
+                  <option value={10}>10 per page</option>
+                  <option value={25}>25 per page</option>
+                  <option value={50}>50 per page</option>
+                  <option value={100}>100 per page</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setPagePo(1)}
+                  disabled={pagePo === 1}
+                  className="px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                  title="First Page"
+                >
+                  «
+                </button>
+                <button
+                  onClick={() => setPagePo(p => Math.max(1, p - 1))}
+                  disabled={pagePo === 1}
+                  className="px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 font-medium"
+                >
+                  Prev
+                </button>
+                <span className="px-3 py-1 font-semibold text-gray-800">
+                  {pagePo} / {totalPagesPo}
+                </span>
+                <button
+                  onClick={() => setPagePo(p => Math.min(totalPagesPo, p + 1))}
+                  disabled={pagePo === totalPagesPo}
+                  className="px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 font-medium"
+                >
+                  Next
+                </button>
+                <button
+                  onClick={() => setPagePo(totalPagesPo)}
+                  disabled={pagePo === totalPagesPo}
+                  className="px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                  title="Last Page"
+                >
+                  »
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -380,12 +526,14 @@ const FinanceClientPOs = ({
               <h3 className="text-sm font-bold text-gray-900 font-display">Client Tax Invoice & Billing Register</h3>
               <p className="text-xs text-gray-400 mt-0.5">Raised drawdown invoices with domestic vs export classifications and settlement statuses</p>
             </div>
-            <button
-              onClick={onOpenGenerateInvoice}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold text-xs hover:bg-blue-700 transition"
-            >
-              + Generate Invoice
-            </button>
+            {canManageFinance && (
+              <button
+                onClick={onOpenGenerateInvoice}
+                className="px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold text-xs hover:bg-blue-700 transition"
+              >
+                + Generate Invoice
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto">
@@ -401,15 +549,17 @@ const FinanceClientPOs = ({
                   <th className="py-3 px-4 text-center">Status</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
-              </thead>              <tbody className="divide-y divide-gray-100 font-medium">
-                {filteredInvoices.map((inv) => {
+              </thead>
+              <tbody className="divide-y divide-gray-100 font-medium">
+                {paginatedInvoices.map((inv) => {
                   const isExpanded = expandedInvId === inv.id;
+                  const isInvVoid = inv.status === 'Void' || inv.isVoid;
                   return (
                     <React.Fragment key={inv.id}>
                       <tr
                         onClick={() => toggleExpandInv(inv.id)}
                         className={`cursor-pointer transition ${
-                          isExpanded ? 'bg-blue-50/40' : 'hover:bg-gray-50/80'
+                          isInvVoid ? 'bg-rose-50/20 opacity-75' : isExpanded ? 'bg-blue-50/40' : 'hover:bg-gray-50/80'
                         }`}
                       >
                         <td className="py-3.5 px-4 font-mono">
@@ -418,7 +568,9 @@ const FinanceClientPOs = ({
                               {isExpanded ? 'expand_less' : 'expand_more'}
                             </span>
                             <div>
-                              <span className="font-bold text-blue-700 block">{inv.invoiceNumber}</span>
+                              <span className={`font-bold block ${isInvVoid ? 'text-rose-700 line-through' : 'text-blue-700'}`}>
+                                {inv.invoiceNumber}
+                              </span>
                               <span className="text-gray-400 text-[10px] block">{inv.issueDate || inv.invoicingDate}</span>
                             </div>
                           </div>
@@ -458,7 +610,9 @@ const FinanceClientPOs = ({
 
                         <td className="py-3.5 px-4 text-center">
                           <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            inv.status === 'Paid'
+                            isInvVoid
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : inv.status === 'Paid'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               : 'bg-amber-50 text-amber-700 border border-amber-200'
                           }`}>
@@ -481,18 +635,49 @@ const FinanceClientPOs = ({
                               <span>View Doc</span>
                             </button>
 
-                            {inv.status !== 'Paid' && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onOpenRecordPayment();
-                                }}
-                                className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold transition flex items-center gap-1"
-                              >
-                                <span className="material-symbols-outlined text-[14px]">payments</span>
-                                <span>Pay</span>
-                              </button>
+                            {canManageFinance && !isInvVoid && (
+                              <>
+                                {inv.status !== 'Paid' && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onOpenRecordPayment();
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold transition flex items-center gap-1"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">payments</span>
+                                    <span>Pay</span>
+                                  </button>
+                                )}
+
+                                {onEditInvoice && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onEditInvoice(inv);
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold transition"
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+
+                                {onVoidInvoice && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onVoidInvoice(inv);
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-bold transition"
+                                    title="Void Invoice"
+                                  >
+                                    Void
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
                         </td>
@@ -607,6 +792,65 @@ const FinanceClientPOs = ({
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {filteredInvoices.length > 0 && (
+            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-500">
+              <div className="flex items-center gap-2">
+                <span>Showing {Math.min((pageInv - 1) * pageSizeInv + 1, filteredInvoices.length)} to {Math.min(pageInv * pageSizeInv, filteredInvoices.length)} of {filteredInvoices.length} entries</span>
+                <span className="text-gray-300">|</span>
+                <select
+                  value={pageSizeInv}
+                  onChange={(e) => {
+                    setPageSizeInv(Number(e.target.value));
+                    setPageInv(1);
+                  }}
+                  className="py-1 px-2 border border-gray-200 rounded-lg bg-white text-xs text-gray-700"
+                >
+                  <option value={10}>10 per page</option>
+                  <option value={25}>25 per page</option>
+                  <option value={50}>50 per page</option>
+                  <option value={100}>100 per page</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setPageInv(1)}
+                  disabled={pageInv === 1}
+                  className="px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                  title="First Page"
+                >
+                  «
+                </button>
+                <button
+                  onClick={() => setPageInv(p => Math.max(1, p - 1))}
+                  disabled={pageInv === 1}
+                  className="px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 font-medium"
+                >
+                  Prev
+                </button>
+                <span className="px-3 py-1 font-semibold text-gray-800">
+                  {pageInv} / {totalPagesInv}
+                </span>
+                <button
+                  onClick={() => setPageInv(p => Math.min(totalPagesInv, p + 1))}
+                  disabled={pageInv === totalPagesInv}
+                  className="px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 font-medium"
+                >
+                  Next
+                </button>
+                <button
+                  onClick={() => setPageInv(totalPagesInv)}
+                  disabled={pageInv === totalPagesInv}
+                  className="px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                  title="Last Page"
+                >
+                  »
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -638,6 +882,7 @@ const FinanceClientPOs = ({
                   <th className="py-3 px-4">Reference / UTR</th>
                   <th className="py-3 px-4 text-right">Amount Received</th>
                   <th className="py-3 px-4 text-center">Status</th>
+                  {onDeletePayment && <th className="py-3 px-4 text-center">Action</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 font-medium">
@@ -679,6 +924,23 @@ const FinanceClientPOs = ({
                         {pmt.status}
                       </span>
                     </td>
+
+                    {onDeletePayment && (
+                      <td className="py-3.5 px-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Are you sure you want to void/delete payment receipt ${pmt.id} for invoice ${pmt.invoiceNumber}? This will reverse the linked cash transaction.`)) {
+                              onDeletePayment(pmt.id, pmt.invoiceNumber);
+                            }
+                          }}
+                          className="p-1 hover:bg-rose-50 rounded text-gray-400 hover:text-rose-600 transition"
+                          title="Void / Delete Payment Receipt"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -687,39 +949,102 @@ const FinanceClientPOs = ({
         </div>
       )}
 
-      {/* Sub-tab 4: AR Ageing Analysis */}
+      {/* Sub-tab 4: Real AR Ageing Analysis */}
       {activeSubTab === 'AGEING' && (
         <div className="space-y-6">
+          {/* Ageing Control & Filter Bar */}
+          <div className="bg-white p-4.5 rounded-2xl border border-gray-100 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-gray-700 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[16px] text-purple-600">calendar_month</span>
+                  <span>As of Date:</span>
+                </label>
+                <input
+                  type="date"
+                  value={arAsOfDate}
+                  onChange={(e) => setArAsOfDate(e.target.value)}
+                  className="text-xs font-semibold bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-gray-900 focus:outline-hidden focus:border-purple-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => setArAsOfDate(new Date().toISOString().slice(0, 10))}
+                  className="px-2 py-1 text-[11px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition"
+                  title="Reset As Of Date to Today"
+                >
+                  Today
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-gray-700 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[16px] text-blue-600">business</span>
+                  <span>Client Filter:</span>
+                </label>
+                <select
+                  value={arClientFilter}
+                  onChange={(e) => setArClientFilter(e.target.value)}
+                  className="text-xs font-semibold bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-gray-900 focus:outline-hidden focus:border-blue-400"
+                >
+                  <option value="ALL">All Clients ({allClients.length})</option>
+                  {allClients.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="inline-flex rounded-xl shadow-2xs border border-gray-200 bg-white overflow-hidden">
+                <button
+                  onClick={() => exportArAgeingToSpreadsheet(arAgeingReport, arAsOfDate, 'xlsx')}
+                  className="px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-1 transition"
+                  title="Export AR Ageing Report to Excel"
+                >
+                  <span className="material-symbols-outlined text-[15px] text-emerald-600">table_view</span>
+                  <span>Export Ageing (.XLSX)</span>
+                </button>
+                <button
+                  onClick={() => exportArAgeingToSpreadsheet(arAgeingReport, arAsOfDate, 'csv')}
+                  className="px-2.5 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 border-l border-gray-200 transition"
+                  title="Export AR Ageing Report to CSV"
+                >
+                  .CSV
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Ageing KPI Buckets */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Total Outstanding</span>
-              <div className="text-xl font-extrabold text-gray-900 font-mono">${Math.round(totalArOutstanding).toLocaleString()}</div>
-              <p className="text-[10px] text-gray-400">All uncollected invoices</p>
+              <div className="text-xl font-extrabold text-gray-900 font-mono">${Math.round(arSummary.totalOutstanding).toLocaleString()}</div>
+              <p className="text-[10px] text-gray-400">As of {arAsOfDate}</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-xs space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Current (0-30d)</span>
-              <div className="text-xl font-extrabold text-emerald-700 font-mono">${Math.round(currentTotal).toLocaleString()}</div>
-              <p className="text-[10px] text-emerald-600">Within payment term</p>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Current</span>
+              <div className="text-xl font-extrabold text-emerald-700 font-mono">${Math.round(arSummary.current).toLocaleString()}</div>
+              <p className="text-[10px] text-emerald-600">Not yet due</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-xs space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">1 - 30 Days Due</span>
-              <div className="text-xl font-extrabold text-blue-700 font-mono">${Math.round(d1to30Total).toLocaleString()}</div>
-              <p className="text-[10px] text-blue-500">First reminder sent</p>
+              <div className="text-xl font-extrabold text-blue-700 font-mono">${Math.round(arSummary.d1to30).toLocaleString()}</div>
+              <p className="text-[10px] text-blue-500">First reminder notice</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-amber-100 shadow-xs space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">31 - 60 Days</span>
-              <div className="text-xl font-extrabold text-amber-700 font-mono">${Math.round(d31to60Total).toLocaleString()}</div>
+              <div className="text-xl font-extrabold text-amber-700 font-mono">${Math.round(arSummary.d31to60).toLocaleString()}</div>
               <p className="text-[10px] text-amber-500">Second follow-up</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-orange-100 shadow-xs space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-orange-600">61 - 90 Days</span>
-              <div className="text-xl font-extrabold text-orange-700 font-mono">${Math.round(d61to90Total).toLocaleString()}</div>
+              <div className="text-xl font-extrabold text-orange-700 font-mono">${Math.round(arSummary.d61to90).toLocaleString()}</div>
               <p className="text-[10px] text-orange-500">Escalated collection</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-rose-100 shadow-xs space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600">90+ Days Critical</span>
-              <div className="text-xl font-extrabold text-rose-700 font-mono">${Math.round(d90PlusTotal).toLocaleString()}</div>
+              <div className="text-xl font-extrabold text-rose-700 font-mono">${Math.round(arSummary.d90Plus).toLocaleString()}</div>
               <p className="text-[10px] text-rose-500">Legal notice hold</p>
             </div>
           </div>
@@ -729,10 +1054,10 @@ const FinanceClientPOs = ({
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <div>
                 <h3 className="text-sm font-bold text-gray-900 font-display">Client Accounts Receivable Ageing Schedule</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Categorized breakdown of receivables aged from original invoice due date</p>
+                <p className="text-xs text-gray-400 mt-0.5">Categorized breakdown of receivables aged from invoice due date as of {arAsOfDate}</p>
               </div>
               <span className="text-xs font-bold text-purple-700 bg-purple-50 px-3 py-1 rounded-full border border-purple-200">
-                {allClients.length} Debtors
+                {arByClient.length} Debtors
               </span>
             </div>
 
@@ -751,43 +1076,42 @@ const FinanceClientPOs = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-medium">
-                  {allClients.map((client) => {
-                    const clientInvs = ageingData.filter(i => i.clientName === client);
-                    const cur = clientInvs.filter(i => i.bucket === 'current' && i.status !== 'Paid').reduce((a, b) => a + b.amountDue, 0);
-                    const b1 = clientInvs.filter(i => i.bucket === '1-30').reduce((a, b) => a + b.amountDue, 0);
-                    const b2 = clientInvs.filter(i => i.bucket === '31-60').reduce((a, b) => a + b.amountDue, 0);
-                    const b3 = clientInvs.filter(i => i.bucket === '61-90').reduce((a, b) => a + b.amountDue, 0);
-                    const b4 = clientInvs.filter(i => i.bucket === '90+').reduce((a, b) => a + b.amountDue, 0);
-                    const tot = cur + b1 + b2 + b3 + b4;
-
-                    return (
-                      <tr key={client} className="hover:bg-gray-50/80 transition">
+                  {arByClient.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-gray-400 font-medium">
+                        No receivables found matching the selected client filter and as-of date.
+                      </td>
+                    </tr>
+                  ) : (
+                    arByClient.map((clientRow) => (
+                      <tr key={clientRow.clientName} className="hover:bg-gray-50/80 transition">
                         <td className="py-3.5 px-4 font-bold text-gray-900">
-                          {client}
+                          {clientRow.clientName}
+                          <span className="text-[10px] text-gray-400 block font-normal">{clientRow.invoiceCount} invoice(s)</span>
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono text-emerald-700">
-                          {cur > 0 ? `$${Math.round(cur).toLocaleString()}` : '—'}
+                          {clientRow.current > 0 ? `$${Math.round(clientRow.current).toLocaleString()}` : '—'}
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono text-blue-700">
-                          {b1 > 0 ? `$${Math.round(b1).toLocaleString()}` : '—'}
+                          {clientRow.d1to30 > 0 ? `$${Math.round(clientRow.d1to30).toLocaleString()}` : '—'}
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono text-amber-700">
-                          {b2 > 0 ? `$${Math.round(b2).toLocaleString()}` : '—'}
+                          {clientRow.d31to60 > 0 ? `$${Math.round(clientRow.d31to60).toLocaleString()}` : '—'}
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono text-orange-700">
-                          {b3 > 0 ? `$${Math.round(b3).toLocaleString()}` : '—'}
+                          {clientRow.d61to90 > 0 ? `$${Math.round(clientRow.d61to90).toLocaleString()}` : '—'}
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono text-rose-700 font-bold">
-                          {b4 > 0 ? `$${Math.round(b4).toLocaleString()}` : '—'}
+                          {clientRow.d90Plus > 0 ? `$${Math.round(clientRow.d90Plus).toLocaleString()}` : '—'}
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono font-extrabold text-gray-900">
-                          ${Math.round(tot).toLocaleString()}
+                          ${Math.round(clientRow.totalDue).toLocaleString()}
                         </td>
                         <td className="py-3.5 px-4 text-center">
                           <button
                             onClick={() => {
                               setActiveSubTab('STATEMENTS');
-                              setSelectedStatementClient(client);
+                              setSelectedStatementClient(clientRow.clientName);
                             }}
                             className="px-2.5 py-1 text-[11px] font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
                           >
@@ -795,8 +1119,102 @@ const FinanceClientPOs = ({
                           </button>
                         </td>
                       </tr>
-                    );
-                  })}
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Itemized Aged Invoices Register */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 font-display">Itemized Invoices Ageing Ledger</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Real invoice-level overdue analysis computed as of {arAsOfDate}</p>
+              </div>
+              <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-200">
+                {arItems.length} Invoices Listed
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-gray-50/50 border-b border-gray-100 text-gray-400 font-bold uppercase text-[10px]">
+                  <tr>
+                    <th className="py-3 px-4">Invoice #</th>
+                    <th className="py-3 px-4">Client Name & Linked PO</th>
+                    <th className="py-3 px-4">Issue Date</th>
+                    <th className="py-3 px-4">Due Date</th>
+                    <th className="py-3 px-4 text-center">Days Overdue</th>
+                    <th className="py-3 px-4 text-center">Ageing Bucket</th>
+                    <th className="py-3 px-4 text-right">Outstanding (USD)</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 font-medium">
+                  {arItems.map((inv) => (
+                    <tr key={inv.id || inv.invoiceNumber} className="hover:bg-gray-50/80 transition">
+                      <td className="py-3.5 px-4 font-mono font-bold text-blue-700">
+                        {inv.invoiceNumber}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="font-bold text-gray-900 block">{inv.clientName}</span>
+                        <span className="text-gray-400 text-[10px] font-mono block">PO: {inv.linkedPo || 'Direct'}</span>
+                      </td>
+                      <td className="py-3.5 px-4 font-mono text-gray-600">
+                        {inv.issueDate || inv.date || '—'}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono font-semibold text-gray-900">
+                        {inv.dueDate || '—'}
+                      </td>
+                      <td className="py-3.5 px-4 text-center font-mono font-bold">
+                        {inv.daysOverdue > 0 ? (
+                          <span className="text-rose-600">+{inv.daysOverdue} d</span>
+                        ) : (
+                          <span className="text-emerald-600">On time</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                          inv.bucket === 'current'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : inv.bucket === '1-30'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : inv.bucket === '31-60'
+                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                            : inv.bucket === '61-90'
+                            ? 'bg-orange-50 text-orange-700 border-orange-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
+                        }`}>
+                          {inv.bucket === 'current' ? 'CURRENT' : `${inv.bucket} DAYS`}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-mono font-extrabold text-gray-900">
+                        ${Math.round(inv.amountDue).toLocaleString()}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          inv.status === 'Paid'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                        }`}>
+                          {inv.status}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => onViewSampleInvoice(inv)}
+                          className="px-2.5 py-1 text-[11px] font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition inline-flex items-center gap-1"
+                        >
+                          <span className="material-symbols-outlined text-[13px]">visibility</span>
+                          <span>Invoice</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

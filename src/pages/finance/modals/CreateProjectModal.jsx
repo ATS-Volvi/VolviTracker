@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { convertFromUsd, getExchangeRate } from '../financeCalcs';
 
 const CreateProjectModal = ({
   isOpen,
@@ -6,7 +7,8 @@ const CreateProjectModal = ({
   onSave,
   clients = [],
   clientPos = [],
-  supplierPos = []
+  supplierPos = [],
+  exchangeRates = {}
 }) => {
   const [projectName, setProjectName] = useState('');
   const [clientName, setClientName] = useState(clients[0]?.name || 'Gulf Utilities Co.');
@@ -37,8 +39,9 @@ const CreateProjectModal = ({
       clientName,
       country,
       currency,
+      exchangeRate: getExchangeRate(currency, exchangeRates),
       contractValue: val,
-      contractValueNative: currency === 'USD' ? val : currency === 'AED' ? val * 3.67 : currency === 'SAR' ? val * 3.75 : val * 83.2,
+      contractValueNative: convertFromUsd(val, currency, exchangeRates),
       invoicedAmount: 0,
       invoicedPercent: 0,
       supplierCosts: supCost,

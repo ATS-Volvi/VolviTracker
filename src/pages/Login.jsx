@@ -6,6 +6,7 @@ import ForgotPasswordModal from '../components/auth/ForgotPasswordModal';
 import logo from '../assets/volvitech-logo.png';
 
 const ROLE_OPTIONS = [
+  'Accountant',
   'Product Lead',
   'Software Engineer',
   'Frontend Developer',

@@ -1,13 +1,11 @@
-import { DEFAULT_PASSWORD_HASH } from '../utils/crypto';
-
 // Seed data used on first load when localStorage is empty.
 export const seedEmployees = [
-  { id: '1', fullName: 'Swastik Kumar', email: 'swastikk005@gmail.com', role: 'Admin', avatar: 'https://i.pravatar.cc/150?u=swastik', passwordHash: DEFAULT_PASSWORD_HASH, userType: 'internal', organization: 'Volvitech' },
-  { id: '2', fullName: 'Amara Patel', email: 'amara@example.com', role: 'Designer', avatar: 'https://i.pravatar.cc/150?u=amara', passwordHash: DEFAULT_PASSWORD_HASH, userType: 'internal', organization: 'Volvitech' },
-  { id: '3', fullName: 'Liam Chen', email: 'liam@example.com', role: 'Engineer', avatar: 'https://i.pravatar.cc/150?u=liam', passwordHash: DEFAULT_PASSWORD_HASH, userType: 'internal', organization: 'Volvitech' },
-  { id: '4', fullName: 'Noor Hassan', email: 'noor@example.com', role: 'Engineer', avatar: 'https://i.pravatar.cc/150?u=noor', passwordHash: DEFAULT_PASSWORD_HASH, userType: 'internal', organization: 'Volvitech' },
-  { id: '5', fullName: 'Rachel Vance', email: 'rachel@example.com', role: 'Project Manager', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80', passwordHash: DEFAULT_PASSWORD_HASH, userType: 'internal', organization: 'Volvitech' },
-  { id: 'emp_maxma', fullName: 'Max Man', email: 'maxma@gmail.com', role: 'Member', avatar: 'https://ui-avatars.com/api/?name=Max+Man&background=0070F3&color=fff', passwordHash: '1c88eb7156a1e949c07338da1122e3dbcc36904fd12965354fae1f9a0618241d', userType: 'internal', organization: 'Volvitech' }
+  { id: '1', fullName: 'Swastik Kumar', email: 'swastikk005@gmail.com', role: 'Admin', avatar: 'https://i.pravatar.cc/150?u=swastik', userType: 'internal', organization: 'Volvitech' },
+  { id: '2', fullName: 'Amara Patel', email: 'amara@example.com', role: 'Designer', avatar: 'https://i.pravatar.cc/150?u=amara', userType: 'internal', organization: 'Volvitech' },
+  { id: '3', fullName: 'Liam Chen', email: 'liam@example.com', role: 'Engineer', avatar: 'https://i.pravatar.cc/150?u=liam', userType: 'internal', organization: 'Volvitech' },
+  { id: '4', fullName: 'Noor Hassan', email: 'noor@example.com', role: 'Engineer', avatar: 'https://i.pravatar.cc/150?u=noor', userType: 'internal', organization: 'Volvitech' },
+  { id: '5', fullName: 'Rachel Vance', email: 'rachel@example.com', role: 'Project Manager', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80', userType: 'internal', organization: 'Volvitech' },
+  { id: 'emp_maxma', fullName: 'Max Man', email: 'maxma@gmail.com', role: 'Member', avatar: 'https://ui-avatars.com/api/?name=Max+Man&background=0070F3&color=fff', userType: 'internal', organization: 'Volvitech' }
 ];
 
 export const seedProjects = [

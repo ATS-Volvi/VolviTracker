@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { loadFinanceData } from '../financeData';
+import { convertToUsd, getExchangeRate, DEFAULT_EXCHANGE_RATES } from '../financeCalcs';
 
 const getLocalDateString = (d = new Date()) => {
   const year = d.getFullYear();
@@ -59,7 +60,7 @@ const GenerateInvoiceModal = ({
         projects: stored.projects || [],
         clients: stored.masterDirectory?.filter(d => d.category === 'Client') || [],
         invoices: stored.invoices || [],
-        exchangeRates: stored.exchangeRates || { USD: 1, AED: 3.67, SAR: 3.75, INR: 83.2 }
+        exchangeRates: stored.exchangeRates || DEFAULT_EXCHANGE_RATES
       };
     } catch {
       return { clientPos: [], projects: [], clients: [], invoices: [], exchangeRates: {} };
@@ -282,11 +283,11 @@ const GenerateInvoiceModal = ({
   if (!isOpen) return null;
 
   // Rate conversion for preview
-  const rate = rates[currency] || 1;
+  const rate = getExchangeRate(currency, rates);
   const numInvoiceVal = parseFloat(invoiceValueTax) || parseFloat(invoiceValue) || 0;
-  const totalValUsd = currency === 'USD' ? numInvoiceVal : numInvoiceVal / (rate || 1);
+  const totalValUsd = convertToUsd(numInvoiceVal, currency, rates);
   const numReceived = parseFloat(amountReceivedSoFar) || 0;
-  const receivedUsd = currency === 'USD' ? numReceived : numReceived / (rate || 1);
+  const receivedUsd = convertToUsd(numReceived, currency, rates);
   const balanceNative = Math.max(0, numInvoiceVal - numReceived);
   const balanceUsd = Math.max(0, totalValUsd - receivedUsd);
 
@@ -324,6 +325,7 @@ const GenerateInvoiceModal = ({
       invoiceValue: parseFloat(invoiceValue) || 0,
       invoiceValueTax: numInvoiceVal,
       currency,
+      exchangeRate: rate,
       amountUsd: Math.round(totalValUsd * 100) / 100,
       amountReceivedSoFar: numReceived,
       receivedUsd: Math.round(receivedUsd * 100) / 100,

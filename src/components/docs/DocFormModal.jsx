@@ -115,6 +115,10 @@ export const DocFormModal = ({ isOpen, onClose, initialDoc = null, onSave }) => 
     }
   };
 
+  const handleRemoveTag = (tagToRemove) => {
+    setTags(tags.filter((t) => t !== tagToRemove));
+  };
+
   const formatFileSize = (bytes) => {
     if (!bytes) return '0 B';
     const k = 1024;

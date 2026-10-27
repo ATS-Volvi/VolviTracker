@@ -1,60 +1,37 @@
-// Client-side API Service for Cloud Sync with Neon PostgreSQL
-import {
-  directGetBootstrapData,
-  directCreateProject,
-  directUpdateProject,
-  directDeleteProject,
-  directCreateTask,
-  directUpdateTask,
-  directDeleteTask,
-  directCreateMeeting,
-  directUpdateMeeting,
-  directDeleteMeeting,
-  directCreateEmployee,
-  directUpdateEmployee,
-  directDeleteEmployee,
-  directUpdatePassword,
-  directCreateDoc,
-  directUpdateDoc,
-  directDeleteDoc
-} from './neonDirect';
-
+// Client-side API Service for Cloud Sync with Neon PostgreSQL via Server Endpoints
 const API_BASE = '/api';
 
 /**
+ * Retrieves the active session authentication token from browser storage.
+ */
+export function getAuthToken() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const saved = localStorage.getItem('volvitech_auth_session') || sessionStorage.getItem('volvitech_auth_session');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed?.token || null;
+    }
+  } catch {}
+  return null;
+}
+
+/**
  * Determines whether cloud database sync should be enabled.
- * - Localhost / local development: DISABLED (local data stays strictly in browser localStorage).
- * - Deployed on Render/Vercel or production: ENABLED (connects to Neon PostgreSQL database).
- * - Can be manually overridden locally by setting VITE_ENABLE_LOCAL_DB=true in .env if needed.
  */
 export function isCloudSyncEnabled() {
-  if (typeof window === 'undefined') return false;
-
-  // Manual local opt-in if explicitly requested
-  if (import.meta.env.VITE_ENABLE_LOCAL_DB === 'true') {
-    return true;
-  }
-
-  const hostname = window.location.hostname;
-  // Strictly disable cloud database calls when running locally
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0' || hostname === '') {
-    return false;
-  }
-
-  // Active on any deployed domain (e.g. volvitracker.onrender.com, *.vercel.app, custom domains)
-  return true;
+  return typeof window !== 'undefined';
 }
 
 async function request(endpoint, options = {}) {
-  if (!isCloudSyncEnabled()) {
-    return null;
-  }
-
   const url = `${API_BASE}${endpoint}`;
+  const token = getAuthToken();
+
   const config = {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       ...(options.headers || {})
     }
   };
@@ -62,211 +39,253 @@ async function request(endpoint, options = {}) {
   const res = await fetch(url, config);
   const contentType = res.headers.get('content-type') || '';
   if (!res.ok || !contentType.includes('application/json')) {
-    throw new Error(`Endpoint ${endpoint} returned status ${res.status} (${contentType})`);
+    let errBody = null;
+    try {
+      errBody = await res.json();
+    } catch {}
+    const message = errBody?.error || errBody?.message || `Endpoint ${endpoint} returned status ${res.status}`;
+    const err = new Error(message);
+    err.status = res.status;
+    err.body = errBody;
+    throw err;
   }
   return await res.json();
 }
 
-// 1. Data Bootstrap
+// -----------------------------------------------------------------------------
+// Auth Endpoints
+// -----------------------------------------------------------------------------
+
+export async function apiLogin(email, password) {
+  return request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password })
+  });
+}
+
+export async function apiSignup(userData) {
+  return request('/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify(userData)
+  });
+}
+
+export async function apiChangePassword(currentPassword, newPassword) {
+  return request('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword, newPassword })
+  });
+}
+
+export async function apiResetPassword(email, newPassword) {
+  return request('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, newPassword })
+  });
+}
+
+export async function apiUpdatePassword(email, newPassword) {
+  return apiResetPassword(email, newPassword);
+}
+
+// -----------------------------------------------------------------------------
+// Data Bootstrap
+// -----------------------------------------------------------------------------
 export async function fetchInitialData() {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request('/data');
   } catch (err) {
-    // Seamless fallback to direct Neon PostgreSQL query (e.g. on Render Static Site)
-    return await directGetBootstrapData();
+    console.error('[API] fetchInitialData error:', err.message);
+    return null;
   }
 }
 
-// 2. Projects
+// -----------------------------------------------------------------------------
+// Projects
+// -----------------------------------------------------------------------------
 export async function apiCreateProject(project, tasks = []) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request('/projects', {
       method: 'POST',
       body: JSON.stringify({ project, tasks })
     });
-  } catch {
-    return await directCreateProject(project, tasks);
+  } catch (err) {
+    console.error('[API] apiCreateProject error:', err.message);
+    return null;
   }
 }
 
 export async function apiUpdateProject(id, updates) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request(`/projects/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(updates)
     });
-  } catch {
-    return await directUpdateProject(id, updates);
+  } catch (err) {
+    console.error('[API] apiUpdateProject error:', err.message);
+    return null;
   }
 }
 
 export async function apiDeleteProject(id) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request(`/projects/${encodeURIComponent(id)}`, {
       method: 'DELETE'
     });
-  } catch {
-    return await directDeleteProject(id);
+  } catch (err) {
+    console.error('[API] apiDeleteProject error:', err.message);
+    return null;
   }
 }
 
-// 3. Tasks
+// -----------------------------------------------------------------------------
+// Tasks
+// -----------------------------------------------------------------------------
 export async function apiCreateTask(task) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request('/tasks', {
       method: 'POST',
       body: JSON.stringify(task)
     });
-  } catch {
-    return await directCreateTask(task);
+  } catch (err) {
+    console.error('[API] apiCreateTask error:', err.message);
+    return null;
   }
 }
 
 export async function apiUpdateTask(id, updates) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request(`/tasks/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(updates)
     });
-  } catch {
-    return await directUpdateTask(id, updates);
+  } catch (err) {
+    console.error('[API] apiUpdateTask error:', err.message);
+    return null;
   }
 }
 
 export async function apiDeleteTask(id) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request(`/tasks/${encodeURIComponent(id)}`, {
       method: 'DELETE'
     });
-  } catch {
-    return await directDeleteTask(id);
+  } catch (err) {
+    console.error('[API] apiDeleteTask error:', err.message);
+    return null;
   }
 }
 
-// 4. Meetings
+// -----------------------------------------------------------------------------
+// Meetings
+// -----------------------------------------------------------------------------
 export async function apiCreateMeeting(meeting) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request('/meetings', {
       method: 'POST',
       body: JSON.stringify(meeting)
     });
-  } catch {
-    return await directCreateMeeting(meeting);
+  } catch (err) {
+    console.error('[API] apiCreateMeeting error:', err.message);
+    return null;
   }
 }
 
 export async function apiUpdateMeeting(id, updates) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request(`/meetings/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(updates)
     });
-  } catch {
-    return await directUpdateMeeting(id, updates);
+  } catch (err) {
+    console.error('[API] apiUpdateMeeting error:', err.message);
+    return null;
   }
 }
 
 export async function apiDeleteMeeting(id) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request(`/meetings/${encodeURIComponent(id)}`, {
       method: 'DELETE'
     });
-  } catch {
-    return await directDeleteMeeting(id);
+  } catch (err) {
+    console.error('[API] apiDeleteMeeting error:', err.message);
+    return null;
   }
 }
 
-// 5. Employees & Auth
+// -----------------------------------------------------------------------------
+// Employees
+// -----------------------------------------------------------------------------
 export async function apiCreateEmployee(employee) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request('/employees', {
       method: 'POST',
       body: JSON.stringify(employee)
     });
-  } catch {
-    return await directCreateEmployee(employee);
+  } catch (err) {
+    console.error('[API] apiCreateEmployee error:', err.message);
+    return null;
   }
 }
 
 export async function apiUpdateEmployee(id, updates) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request(`/employees/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(updates)
     });
-  } catch {
-    return await directUpdateEmployee(id, updates);
+  } catch (err) {
+    console.error('[API] apiUpdateEmployee error:', err.message);
+    return null;
   }
 }
 
 export async function apiDeleteEmployee(id) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request(`/employees/${encodeURIComponent(id)}`, {
       method: 'DELETE'
     });
-  } catch {
-    return await directDeleteEmployee(id);
+  } catch (err) {
+    console.error('[API] apiDeleteEmployee error:', err.message);
+    return null;
   }
 }
 
-export async function apiUpdatePassword(email, passwordHash) {
-  if (!isCloudSyncEnabled()) return null;
-  try {
-    return await request('/employees/password', {
-      method: 'POST',
-      body: JSON.stringify({ email, passwordHash })
-    });
-  } catch {
-    return await directUpdatePassword(email, passwordHash);
-  }
-}
-
-// 6. Docs
+// -----------------------------------------------------------------------------
+// Docs
+// -----------------------------------------------------------------------------
 export async function apiCreateDoc(doc) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request('/docs', {
       method: 'POST',
       body: JSON.stringify(doc)
     });
-  } catch {
-    return await directCreateDoc(doc);
+  } catch (err) {
+    console.error('[API] apiCreateDoc error:', err.message);
+    return null;
   }
 }
 
 export async function apiUpdateDoc(id, updates) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request(`/docs/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(updates)
     });
-  } catch {
-    return await directUpdateDoc(id, updates);
+  } catch (err) {
+    console.error('[API] apiUpdateDoc error:', err.message);
+    return null;
   }
 }
 
 export async function apiDeleteDoc(id) {
-  if (!isCloudSyncEnabled()) return null;
   try {
     return await request(`/docs/${encodeURIComponent(id)}`, {
       method: 'DELETE'
     });
-  } catch {
-    return await directDeleteDoc(id);
+  } catch (err) {
+    console.error('[API] apiDeleteDoc error:', err.message);
+    return null;
   }
 }
-

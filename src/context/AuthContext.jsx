@@ -1,6 +1,11 @@
 import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import { useData } from './DataContext';
-import { hashPassword, DEFAULT_PASSWORD_HASH, DEFAULT_DEMO_PASSWORD } from '../utils/crypto';
+import {
+  apiLogin,
+  apiSignup,
+  apiChangePassword,
+  apiResetPassword
+} from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -8,7 +13,7 @@ const AUTH_STORAGE_KEY = 'volvitech_auth_session';
 const LEGACY_USER_KEY = 'tracker_user';
 
 export const AuthProvider = ({ children }) => {
-  const { employees, addEmployee, updateEmployee, updateEmployeeCredentials } = useData();
+  const { employees, updateEmployee } = useData();
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -18,10 +23,8 @@ export const AuthProvider = ({ children }) => {
     try {
       // Check localStorage first, then sessionStorage
       let saved = localStorage.getItem(AUTH_STORAGE_KEY);
-      let isLocal = true;
       if (!saved) {
         saved = sessionStorage.getItem(AUTH_STORAGE_KEY);
-        isLocal = false;
       }
 
       if (saved) {
@@ -65,7 +68,7 @@ export const AuthProvider = ({ children }) => {
     setSession(sessionData);
   }, []);
 
-  // Login with email & password
+  // Login via server API endpoint (/api/auth/login)
   const login = async (email, password, rememberMe = true) => {
     const cleanEmail = (email || '').trim().toLowerCase();
     if (!cleanEmail) {
@@ -75,76 +78,44 @@ export const AuthProvider = ({ children }) => {
       return { success: false, error: 'Please enter your password.' };
     }
 
-    // Lookup in active employees list or fallback to localStorage
-    let targetEmp = (employees || []).find(e => (e.email || '').toLowerCase().trim() === cleanEmail);
-
-    if (!targetEmp) {
-      try {
-        const stored = localStorage.getItem('employees');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
-            targetEmp = parsed.find(e => (e.email || '').toLowerCase().trim() === cleanEmail);
-          }
-        }
-      } catch {}
-    }
-
-    if (!targetEmp) {
-      return { success: false, error: 'No account found with this email address. Please check or create an account.' };
-    }
-
-    const inputHash = await hashPassword(password);
-    const expectedHash = targetEmp.passwordHash || DEFAULT_PASSWORD_HASH;
-
-    // Strict password verification:
-    let isPasswordValid = inputHash === expectedHash;
-
-    // Special allowance ONLY for initial demo accounts if unchanged
-    if (!isPasswordValid && cleanEmail === 'swastikk005@gmail.com') {
-      const isDefaultDemoHash = expectedHash === DEFAULT_PASSWORD_HASH || expectedHash === '380693a778c772cb3353ef69b359f5ffad2e95a7ba9bb31ea41c6d3dfd71c4c1';
-      if (isDefaultDemoHash && (password === DEFAULT_DEMO_PASSWORD || password === 'swastik')) {
-        isPasswordValid = true;
+    try {
+      const res = await apiLogin(cleanEmail, password);
+      if (!res || !res.token || !res.user) {
+        return { success: false, error: 'Authentication failed. Please check your credentials.' };
       }
+
+      const isTargetAdmin = res.user.isAdmin !== undefined
+        ? Boolean(res.user.isAdmin)
+        : (res.user.role || '').toLowerCase() === 'admin';
+
+      const sessionUser = {
+        id: String(res.user.id),
+        fullName: res.user.fullName,
+        email: res.user.email,
+        role: res.user.role || 'Member',
+        avatar: res.user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(res.user.fullName)}&background=0070F3&color=fff`,
+        isAdmin: isTargetAdmin,
+        userType: res.user.userType || 'internal',
+        externalType: res.user.externalType || null,
+        organization: res.user.organization || (res.user.userType === 'external' ? '' : 'Volvitech')
+      };
+
+      const newSession = {
+        token: res.token,
+        user: sessionUser,
+        rememberMe,
+        createdAt: Date.now(),
+        expiresAt: rememberMe ? Date.now() + 30 * 24 * 60 * 60 * 1000 : null
+      };
+
+      persistSession(newSession, rememberMe);
+      return { success: true, user: sessionUser };
+    } catch (err) {
+      return { success: false, error: err.message || 'Invalid email or password.' };
     }
-
-    if (!isPasswordValid && cleanEmail === 'maxma@gmail.com' && (password === 'maxman' || inputHash === '1c88eb7156a1e949c07338da1122e3dbcc36904fd12965354fae1f9a0618241d')) {
-      isPasswordValid = true;
-    }
-
-    if (!isPasswordValid) {
-      return { success: false, error: 'Invalid password. Please check your credentials.' };
-    }
-
-    const isTargetAdmin = targetEmp.isAdmin !== undefined
-      ? Boolean(targetEmp.isAdmin)
-      : (targetEmp.role || '').toLowerCase() === 'admin';
-
-    const sessionUser = {
-      id: targetEmp.id,
-      fullName: targetEmp.fullName,
-      email: targetEmp.email,
-      role: targetEmp.role || 'Member',
-      avatar: targetEmp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(targetEmp.fullName)}&background=0070F3&color=fff`,
-      isAdmin: isTargetAdmin,
-      userType: targetEmp.userType || 'internal',
-      externalType: targetEmp.externalType || null,
-      organization: targetEmp.organization || (targetEmp.userType === 'external' ? '' : 'Volvitech')
-    };
-
-    const newSession = {
-      token: 'volvi_' + Math.random().toString(36).substring(2) + Date.now().toString(36),
-      user: sessionUser,
-      rememberMe,
-      createdAt: Date.now(),
-      expiresAt: rememberMe ? Date.now() + 30 * 24 * 60 * 60 * 1000 : null
-    };
-
-    persistSession(newSession, rememberMe);
-    return { success: true, user: sessionUser };
   };
 
-  // Sign up new user
+  // Sign up via server API endpoint (/api/auth/signup)
   const signup = async ({ fullName, email, password, role, avatar }) => {
     const cleanName = (fullName || '').trim();
     const cleanEmail = (email || '').trim().toLowerCase();
@@ -159,54 +130,47 @@ export const AuthProvider = ({ children }) => {
       return { success: false, error: 'Password must be at least 6 characters long.' };
     }
 
-    const existing = employees.find(e => (e.email || '').toLowerCase() === cleanEmail);
-    if (existing) {
-      return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
+    try {
+      const res = await apiSignup({
+        fullName: cleanName,
+        email: cleanEmail,
+        password,
+        role,
+        avatar
+      });
+
+      if (!res || !res.token || !res.user) {
+        return { success: false, error: 'Failed to create user account.' };
+      }
+
+      const sessionUser = {
+        id: String(res.user.id),
+        fullName: res.user.fullName,
+        email: res.user.email,
+        role: res.user.role || 'Member',
+        avatar: res.user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(res.user.fullName)}&background=0070F3&color=fff`,
+        isAdmin: false,
+        userType: res.user.userType || 'internal',
+        externalType: res.user.externalType || null,
+        organization: res.user.organization || 'Volvitech'
+      };
+
+      const newSession = {
+        token: res.token,
+        user: sessionUser,
+        rememberMe: true,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000
+      };
+
+      persistSession(newSession, true);
+      return { success: true, user: sessionUser };
+    } catch (err) {
+      return { success: false, error: err.message || 'Account registration failed.' };
     }
-
-    const passwordHash = await hashPassword(password);
-    const userAvatar = avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanName)}&background=0070F3&color=fff`;
-
-    // Strictly ensure self-signups cannot grant Admin role
-    let cleanRole = (role || '').trim();
-    if (cleanRole.toLowerCase() === 'admin') {
-      cleanRole = 'Software Engineer';
-    }
-
-    const newEmployee = await addEmployee({
-      fullName: cleanName,
-      email: cleanEmail,
-      role: cleanRole || 'Software Engineer',
-      avatar: userAvatar,
-      passwordHash,
-      isAdmin: false
-    });
-
-    const sessionUser = {
-      id: newEmployee.id,
-      fullName: newEmployee.fullName,
-      email: newEmployee.email,
-      role: newEmployee.role,
-      avatar: newEmployee.avatar,
-      isAdmin: false,
-      userType: newEmployee.userType || 'internal',
-      externalType: newEmployee.externalType || null,
-      organization: newEmployee.organization || 'Volvitech'
-    };
-
-    const newSession = {
-      token: 'volvi_' + Math.random().toString(36).substring(2) + Date.now().toString(36),
-      user: sessionUser,
-      rememberMe: true,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000
-    };
-
-    persistSession(newSession, true);
-    return { success: true, user: sessionUser };
   };
 
-  // Reset password flow
+  // Reset password via server API endpoint (/api/auth/reset-password)
   const resetPassword = async (email, newPassword) => {
     const cleanEmail = (email || '').trim().toLowerCase();
     if (!cleanEmail) {
@@ -216,35 +180,26 @@ export const AuthProvider = ({ children }) => {
       return { success: false, error: 'New password must be at least 6 characters long.' };
     }
 
-    const emp = employees.find(e => (e.email || '').toLowerCase() === cleanEmail);
-    if (!emp) {
-      return { success: false, error: 'No account registered with this email address.' };
+    try {
+      await apiResetPassword(cleanEmail, newPassword);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message || 'Failed to reset password.' };
     }
-
-    const newHash = await hashPassword(newPassword);
-    updateEmployeeCredentials(cleanEmail, newHash);
-    return { success: true };
   };
 
-  // Change password for logged in user
+  // Change password for logged in user via server API endpoint (/api/auth/change-password)
   const changePassword = async (currentPassword, newPassword) => {
     if (!user) return { success: false, error: 'You must be signed in to change your password.' };
     if (!currentPassword) return { success: false, error: 'Please enter your current password.' };
     if (!newPassword || newPassword.length < 6) return { success: false, error: 'New password must be at least 6 characters.' };
 
-    const currentEmp = employees.find(e => e.id === user.id);
-    if (!currentEmp) return { success: false, error: 'User record not found.' };
-
-    const currHash = await hashPassword(currentPassword);
-    const expectedHash = currentEmp.passwordHash || DEFAULT_PASSWORD_HASH;
-
-    if (currHash !== expectedHash && currentPassword !== DEFAULT_DEMO_PASSWORD) {
-      return { success: false, error: 'Incorrect current password.' };
+    try {
+      await apiChangePassword(currentPassword, newPassword);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message || 'Failed to change password.' };
     }
-
-    const newHash = await hashPassword(newPassword);
-    updateEmployeeCredentials(user.email, newHash);
-    return { success: true };
   };
 
   // Logout
@@ -259,7 +214,7 @@ export const AuthProvider = ({ children }) => {
   // Keep authenticated user state synchronized with employees directory
   useEffect(() => {
     if (user && employees && employees.length > 0) {
-      const activeEmp = employees.find(e => e.id === user.id || e.email?.toLowerCase() === user.email?.toLowerCase());
+      const activeEmp = employees.find(e => String(e.id) === String(user.id) || e.email?.toLowerCase() === user.email?.toLowerCase());
       if (activeEmp) {
         const empIsAdmin = activeEmp.isAdmin !== undefined
           ? Boolean(activeEmp.isAdmin)
@@ -319,7 +274,7 @@ export const AuthProvider = ({ children }) => {
       // Ignore serialization errors
     }
 
-    // Update employee record across DataContext & Neon Cloud
+    // Update employee record across DataContext & Server API
     if (updateEmployee) {
       updateEmployee(user.id, { avatar: cleanAvatar });
     }
@@ -328,6 +283,8 @@ export const AuthProvider = ({ children }) => {
   }, [user, updateEmployee]);
 
   const isAdmin = Boolean(user && (user.isAdmin === true || (user.role || '').toLowerCase() === 'admin'));
+  const isAccountant = Boolean(user && (user.role || '').toLowerCase().trim() === 'accountant');
+  const canManageFinance = Boolean(isAdmin || isAccountant);
   const isProjectManager = Boolean(user && !isAdmin && (user.role || '').toLowerCase().trim() === 'project manager');
   const canManageProjects = Boolean(isAdmin || isProjectManager);
 
@@ -336,6 +293,8 @@ export const AuthProvider = ({ children }) => {
       value={{
         user,
         isAdmin,
+        isAccountant,
+        canManageFinance,
         isProjectManager,
         canManageProjects,
         session,

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { loadFinanceData } from '../financeData';
+import { convertToUsd, getExchangeRate, DEFAULT_EXCHANGE_RATES } from '../financeCalcs';
 
 const getLocalDateString = (d = new Date()) => {
   const year = d.getFullYear();
@@ -54,7 +55,7 @@ const RegisterClientPOModal = ({
       return {
         clients: stored.masterDirectory?.filter(d => d.category === 'Client') || [],
         projects: stored.projects || [],
-        exchangeRates: stored.exchangeRates || { USD: 1, AED: 3.67, SAR: 3.75, INR: 83.2 }
+        exchangeRates: stored.exchangeRates || DEFAULT_EXCHANGE_RATES
       };
     } catch {
       return { clients: [], projects: [], exchangeRates: {} };
@@ -219,14 +220,8 @@ const RegisterClientPOModal = ({
     const selectedProj = projectsList.find(p => p.id === linkedProject);
     const projectName = selectedProj ? (selectedProj.projectName || selectedProj.name) : '';
 
-    const rate = rates[currency] || (
-      currency === 'AED' ? 3.67 :
-      currency === 'SAR' ? 3.75 :
-      currency === 'INR' ? 83.2 :
-      currency === 'EUR' ? 0.92 :
-      currency === 'GBP' ? 0.79 : 1.0
-    );
-    const totalValUsd = currency === 'USD' ? numPoValue : (numPoValue / rate);
+    const rate = getExchangeRate(currency, rates);
+    const totalValUsd = convertToUsd(numPoValue, currency, rates);
 
     const finalizedMilestones = milestones.length > 0
       ? milestones.map((m, idx) => ({
@@ -270,6 +265,7 @@ const RegisterClientPOModal = ({
       scope: projectName ? `${projectName}` : (notes.trim() || `Client Order ${poNumber.trim()}`),
       totalValueNative: numPoValue,
       currency,
+      exchangeRate: rate,
       totalValueUsd: Math.round(totalValUsd * 100) / 100,
       invoicedNative: 0,
       drawdownPercent: 0,

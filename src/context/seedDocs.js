@@ -137,15 +137,15 @@ Access our master UI library on Figma: [https://figma.com/@volvitech/design-syst
     id: 'doc-4',
     title: 'API Reference & Neon Cloud Architecture',
     category: 'Engineering',
-    summary: 'Documentation on the Neon PostgreSQL cloud database schema, API routes, and direct client queries.',
+    summary: 'Documentation on the Neon PostgreSQL cloud database schema and API routes.',
     content: `# API Reference & Neon Cloud Architecture
 
-Volvitech Tracker utilizes a hybrid serverless architecture with Neon PostgreSQL for real-time cloud data synchronization.
+Volvitech Tracker utilizes a secure API architecture with Neon PostgreSQL for real-time cloud data synchronization.
 
 ## 1. Architecture Overview
 - **Production Environment:** Serverless Node / Express middleware with serverless connection pooling via \`@neondatabase/serverless\`.
 - **Local Dev Mode:** Zero-latency browser local storage with option to opt into live DB via \`VITE_ENABLE_LOCAL_DB=true\`.
-- **Static Fallback:** Direct browser HTTPS driver via \`src/services/neonDirect.js\` for resilient cloud access.
+- **Client Data Layer:** All data synchronization flows strictly through \`src/services/api.js\` over \`/api/*\` endpoints.
 
 ## 2. Key API Endpoints
 \`\`\`http

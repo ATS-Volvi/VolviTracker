@@ -6,6 +6,8 @@ const FinanceOverview = ({
   projects,
   clientPos,
   supplierPos,
+  isAdmin = false,
+  onOpenExchangeRates,
   onOpenRegisterClientPo,
   onOpenIssueSupplierPo,
   onOpenGenerateInvoice,
@@ -15,10 +17,23 @@ const FinanceOverview = ({
 
   const formatCurrency = (valUsd, nativeVal, nativeCurrency) => {
     if (currencyMode === 'NATIVE' && nativeVal && nativeCurrency) {
-      return `${nativeCurrency} ${nativeVal.toLocaleString()}`;
+      return `${nativeCurrency} ${Number(nativeVal).toLocaleString()}`;
     }
-    return `$${valUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+    return `$${Number(valUsd || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
   };
+
+  const formatCompact = (val) => {
+    const num = Number(val) || 0;
+    if (num >= 1000000) {
+      return `$${(num / 1000000).toFixed(2)}M`;
+    }
+    if (num >= 1000) {
+      return `$${(num / 1000).toFixed(1)}k`;
+    }
+    return `$${num.toLocaleString()}`;
+  };
+
+  const safeKpis = kpis || {};
 
   return (
     <div className="space-y-6 text-left">
@@ -36,10 +51,10 @@ const FinanceOverview = ({
               </div>
               <div className="flex items-baseline gap-2 mt-0.5">
                 <span className="text-xl sm:text-2xl font-black text-gray-900 font-display">
-                  ${kpis.arOutstanding.toLocaleString()}
+                  ${(safeKpis.arOutstanding || 0).toLocaleString()}
                 </span>
                 <span className="text-xs font-semibold text-rose-500">
-                  (Overdue: ${kpis.arOverdue.toLocaleString()} across 3 accounts)
+                  (Overdue: ${(safeKpis.arOverdue || 0).toLocaleString()} across {safeKpis.arOverdueAccountsCount || 0} account{safeKpis.arOverdueAccountsCount === 1 ? '' : 's'})
                 </span>
               </div>
             </div>
@@ -47,7 +62,7 @@ const FinanceOverview = ({
           <div className="hidden sm:flex flex-col items-end text-right">
             <span className="text-[11px] font-mono text-gray-400">DSO Target: 45d</span>
             <span className="text-xs text-emerald-600 font-bold flex items-center gap-0.5 mt-0.5">
-              <span className="material-symbols-outlined text-[15px]">trending_down</span> Current: {kpis.dsoDays} Days
+              <span className="material-symbols-outlined text-[15px]">trending_down</span> Current: {safeKpis.dsoDays ?? 0} Days
             </span>
           </div>
         </div>
@@ -64,10 +79,10 @@ const FinanceOverview = ({
               </div>
               <div className="flex items-baseline gap-2 mt-0.5">
                 <span className="text-xl sm:text-2xl font-black text-gray-900 font-display">
-                  ${kpis.apOutstanding.toLocaleString()}
+                  ${(safeKpis.apOutstanding || 0).toLocaleString()}
                 </span>
                 <span className="text-xs font-semibold text-rose-500">
-                  (Overdue: ${kpis.apOverdue.toLocaleString()} supplier bills)
+                  (Overdue: ${(safeKpis.apOverdue || 0).toLocaleString()} across {safeKpis.apOverdueBillsCount || 0} supplier bill{safeKpis.apOverdueBillsCount === 1 ? '' : 's'})
                 </span>
               </div>
             </div>
@@ -75,7 +90,7 @@ const FinanceOverview = ({
           <div className="hidden sm:flex flex-col items-end text-right">
             <span className="text-[11px] font-mono text-gray-400">DPO Target: 30d</span>
             <span className="text-xs text-blue-600 font-bold flex items-center gap-0.5 mt-0.5">
-              <span className="material-symbols-outlined text-[15px]">check_circle</span> Current: {kpis.dpoDays} Days
+              <span className="material-symbols-outlined text-[15px]">check_circle</span> Current: {safeKpis.dpoDays ?? 0} Days
             </span>
           </div>
         </div>
@@ -92,12 +107,12 @@ const FinanceOverview = ({
               <span className="text-[10px] font-bold uppercase tracking-wider">Client PO Total</span>
               <span className="material-symbols-outlined text-blue-600 text-[18px]">request_quote</span>
             </div>
-            <div className="text-2xl font-black text-gray-900 font-display tracking-tight">$4.85M</div>
-            <div className="text-[11px] text-gray-400 mt-0.5 font-medium">{clientPos.length} Active Sales POs</div>
+            <div className="text-2xl font-black text-gray-900 font-display tracking-tight">{formatCompact(safeKpis.clientPoTotal)}</div>
+            <div className="text-[11px] text-gray-400 mt-0.5 font-medium">{clientPos?.length || 0} Active Sales POs</div>
           </div>
           <div className="mt-3 pt-2 border-t border-gray-50 flex items-center justify-between">
             <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-0.5">
-              <span className="material-symbols-outlined text-[13px]">trending_up</span> +14.2% YoY
+              <span className="material-symbols-outlined text-[13px]">trending_up</span> Base Total
             </span>
             <span className="text-[10px] text-gray-400">Cap Base</span>
           </div>
@@ -110,11 +125,11 @@ const FinanceOverview = ({
               <span className="text-[10px] font-bold uppercase tracking-wider">Invoiced Total</span>
               <span className="material-symbols-outlined text-indigo-600 text-[18px]">receipt</span>
             </div>
-            <div className="text-2xl font-black text-gray-900 font-display tracking-tight">$3.42M</div>
-            <div className="text-[11px] text-indigo-600 font-semibold mt-0.5">70.5% PO Drawdown Rate</div>
+            <div className="text-2xl font-black text-gray-900 font-display tracking-tight">{formatCompact(safeKpis.invoicedTotal)}</div>
+            <div className="text-[11px] text-indigo-600 font-semibold mt-0.5">{safeKpis.poDrawdownRate || 0}% PO Drawdown Rate</div>
           </div>
           <div className="mt-3 pt-2 border-t border-gray-50 flex items-center justify-between">
-            <span className="text-[10px] text-gray-500 font-medium">Unbilled: $1.43M</span>
+            <span className="text-[10px] text-gray-500 font-medium">Unbilled: {formatCompact(safeKpis.unbilledTotal)}</span>
             <span className="text-[10px] font-bold text-gray-400">Milestones</span>
           </div>
         </div>
@@ -126,11 +141,11 @@ const FinanceOverview = ({
               <span className="text-[10px] font-bold uppercase tracking-wider">Collected Cash</span>
               <span className="material-symbols-outlined text-emerald-600 text-[18px]">account_balance_wallet</span>
             </div>
-            <div className="text-2xl font-black text-emerald-600 font-display tracking-tight">$2.98M</div>
-            <div className="text-[11px] text-gray-400 mt-0.5 font-medium">87.1% Collection Efficiency</div>
+            <div className="text-2xl font-black text-emerald-600 font-display tracking-tight">{formatCompact(safeKpis.collectedTotal)}</div>
+            <div className="text-[11px] text-gray-400 mt-0.5 font-medium">{safeKpis.collectionEfficiency || 0}% Collection Efficiency</div>
           </div>
           <div className="mt-3 pt-2 border-t border-gray-50 flex items-center justify-between">
-            <span className="text-[10px] text-gray-500 font-medium">AR Open: $440k</span>
+            <span className="text-[10px] text-gray-500 font-medium">AR Open: {formatCompact(safeKpis.arOutstanding)}</span>
             <span className="text-[10px] font-bold text-emerald-600">Liquid Cash</span>
           </div>
         </div>
@@ -142,8 +157,8 @@ const FinanceOverview = ({
               <span className="text-[10px] font-bold uppercase tracking-wider">Supplier POs</span>
               <span className="material-symbols-outlined text-amber-600 text-[18px]">shopping_bag</span>
             </div>
-            <div className="text-2xl font-black text-gray-900 font-display tracking-tight">$2.12M</div>
-            <div className="text-[11px] text-gray-400 mt-0.5 font-medium">{supplierPos.length} Vendor Purchase Orders</div>
+            <div className="text-2xl font-black text-gray-900 font-display tracking-tight">{formatCompact(safeKpis.supplierPoCommitted)}</div>
+            <div className="text-[11px] text-gray-400 mt-0.5 font-medium">{supplierPos?.length || 0} Vendor Purchase Orders</div>
           </div>
           <div className="mt-3 pt-2 border-t border-gray-50 flex items-center justify-between">
             <span className="text-[10px] text-amber-600 font-bold">Cost Mapped</span>
@@ -158,11 +173,11 @@ const FinanceOverview = ({
               <span className="text-[10px] font-bold uppercase tracking-wider">Supplier Billed</span>
               <span className="material-symbols-outlined text-purple-600 text-[18px]">inventory</span>
             </div>
-            <div className="text-2xl font-black text-gray-900 font-display tracking-tight">$1.65M</div>
-            <div className="text-[11px] text-gray-400 mt-0.5 font-medium">Paid: $1.34M (81.2%)</div>
+            <div className="text-2xl font-black text-gray-900 font-display tracking-tight">{formatCompact(safeKpis.supplierBillsBilled)}</div>
+            <div className="text-[11px] text-gray-400 mt-0.5 font-medium">Paid: {formatCompact(safeKpis.supplierPaid)}</div>
           </div>
           <div className="mt-3 pt-2 border-t border-gray-50 flex items-center justify-between">
-            <span className="text-[10px] text-gray-500">AP Due: $310k</span>
+            <span className="text-[10px] text-gray-500">AP Due: {formatCompact(safeKpis.apOutstanding)}</span>
             <span className="text-[10px] font-bold text-purple-600">3-Way Match</span>
           </div>
         </div>
@@ -174,8 +189,8 @@ const FinanceOverview = ({
               <span className="text-[10px] font-bold uppercase tracking-wider">Gross Margin</span>
               <span className="material-symbols-outlined text-amber-300 text-[18px]">verified</span>
             </div>
-            <div className="text-2xl font-black text-white font-display tracking-tight">$1.77M</div>
-            <div className="text-[11px] text-emerald-300 font-bold mt-0.5">51.8% Realized Margin</div>
+            <div className="text-2xl font-black text-white font-display tracking-tight">{formatCompact(safeKpis.grossMargin)}</div>
+            <div className="text-[11px] text-emerald-300 font-bold mt-0.5">{safeKpis.grossMarginPercent || 0}% Realized Margin</div>
           </div>
           <div className="mt-3 pt-2 border-t border-white/10 flex items-center justify-between">
             <span className="text-[10px] text-blue-200">Target: &gt; 45%</span>
@@ -188,24 +203,36 @@ const FinanceOverview = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Multi-Currency Treasury Book */}
         <div className="lg:col-span-2 bg-white p-5 rounded-2xl shadow-xs border border-gray-100 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-blue-600 text-[20px]">currency_exchange</span>
               <h3 className="text-sm font-bold text-gray-900 font-display">Multi-Currency Exposure & Sovereign Treasury</h3>
             </div>
-            <div className="flex items-center gap-1.5 bg-gray-100 p-0.5 rounded-lg text-xs font-semibold">
-              <button
-                onClick={() => setCurrencyMode('USD')}
-                className={`px-2.5 py-1 rounded-md transition ${currencyMode === 'USD' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-600 hover:text-gray-900'}`}
-              >
-                USD Base
-              </button>
-              <button
-                onClick={() => setCurrencyMode('NATIVE')}
-                className={`px-2.5 py-1 rounded-md transition ${currencyMode === 'NATIVE' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-600 hover:text-gray-900'}`}
-              >
-                Native FX
-              </button>
+            <div className="flex items-center gap-2">
+              {isAdmin && onOpenExchangeRates && (
+                <button
+                  onClick={onOpenExchangeRates}
+                  className="px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition flex items-center gap-1 active:scale-95"
+                  title="Configure live corporate exchange rates"
+                >
+                  <span className="material-symbols-outlined text-[14px]">tune</span>
+                  <span>Edit Rates</span>
+                </button>
+              )}
+              <div className="flex items-center gap-1.5 bg-gray-100 p-0.5 rounded-lg text-xs font-semibold">
+                <button
+                  onClick={() => setCurrencyMode('USD')}
+                  className={`px-2.5 py-1 rounded-md transition ${currencyMode === 'USD' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  USD Base
+                </button>
+                <button
+                  onClick={() => setCurrencyMode('NATIVE')}
+                  className={`px-2.5 py-1 rounded-md transition ${currencyMode === 'NATIVE' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  Native FX
+                </button>
+              </div>
             </div>
           </div>
 
@@ -225,7 +252,9 @@ const FinanceOverview = ({
               <div className="text-lg font-black text-gray-900 mt-1 font-display">
                 {currencyMode === 'NATIVE' ? 'د.إ 4.20M' : '$1.14M'}
               </div>
-              <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">Fixed Peg: 3.6725</div>
+              <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">
+                Rate: {exchangeRates?.AED ?? 3.6725} / USD
+              </div>
             </div>
 
             <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
@@ -235,7 +264,9 @@ const FinanceOverview = ({
               <div className="text-lg font-black text-gray-900 mt-1 font-display">
                 {currencyMode === 'NATIVE' ? '﷼ 1.90M' : '$506k'}
               </div>
-              <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">Fixed Peg: 3.7500</div>
+              <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">
+                Rate: {exchangeRates?.SAR ?? 3.7500} / USD
+              </div>
             </div>
 
             <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
@@ -245,7 +276,9 @@ const FinanceOverview = ({
               <div className="text-lg font-black text-gray-900 mt-1 font-display">
                 {currencyMode === 'NATIVE' ? '₹ 3.80 Cr' : '$456k'}
               </div>
-              <div className="text-[10px] text-blue-600 font-semibold mt-0.5">Rate: ₹83.20 / USD</div>
+              <div className="text-[10px] text-blue-600 font-semibold mt-0.5">
+                Rate: ₹{exchangeRates?.INR ?? 83.20} / USD
+              </div>
             </div>
           </div>
 

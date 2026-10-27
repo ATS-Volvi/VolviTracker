@@ -1,8 +1,10 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 export const FinanceNavTabs = ({ activeTab = 'projects' }) => {
   const location = useLocation();
+  const { isAdmin } = useAuth();
 
   const tabs = [
     {
@@ -26,6 +28,13 @@ export const FinanceNavTabs = ({ activeTab = 'projects' }) => {
       to: '/finance?tab=overview',
       isActive: activeTab === 'overview' || (location.pathname === '/finance' && location.search.includes('tab=overview'))
     },
+    ...(isAdmin ? [{
+      id: 'audit-log',
+      label: 'Audit Log',
+      icon: 'receipt_long',
+      to: '/finance?tab=audit-log',
+      isActive: activeTab === 'audit-log' || (location.pathname === '/finance' && location.search.includes('tab=audit-log'))
+    }] : [])
   ];
 
   return (

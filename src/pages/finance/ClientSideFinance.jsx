@@ -2,8 +2,30 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Navigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { loadFinanceData, saveFinanceData, subscribeFinanceData } from './financeData';
-
+import {
+  loadFinanceData,
+  saveFinanceData,
+  subscribeFinanceData,
+  fetchFinanceData,
+  apiDeletePaymentReceived,
+  apiUpdateClientPo,
+  apiVoidClientPo,
+  apiUpdateInvoice,
+  apiVoidInvoice
+} from './financeData';
+import { FinanceBrowserImportBanner } from '../../components/finance/FinanceBrowserImportBanner';
+import { FinanceLoadingSpinner, FinanceErrorBanner } from '../../components/finance/FinancePageStatus';
+import {
+  getInvoicePayments,
+  calcInvoiceState,
+  validateClientPayment,
+  convertToUsd,
+  createLinkedClientPaymentCashTransaction,
+  applyCashTransactionToAccounts,
+  reverseCashTransactionForPayment,
+  reconcileInvoiceAfterPaymentDeletion,
+  recalculateClientPoDrawdown
+} from './financeCalcs';
 
 import FinanceClientPOs from './tabs/FinanceClientPOs';
 
@@ -12,17 +34,15 @@ import RegisterClientPOModal from './modals/RegisterClientPOModal';
 import GenerateInvoiceModal from './modals/GenerateInvoiceModal';
 import RecordPaymentReceivedModal from './modals/RecordPaymentReceivedModal';
 import SampleInvoiceModal from './modals/SampleInvoiceModal';
+import { EditClientPOModal } from './modals/EditClientPOModal';
+import { EditInvoiceModal } from './modals/EditInvoiceModal';
+import { VoidEntityModal } from './modals/VoidEntityModal';
 
 export const ClientSideFinance = () => {
-  const { user, loading } = useAuth();
+  const { user, canManageFinance, loading } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-
-  // Redirect unauthenticated users immediately
-  if (!loading && !user) {
-    return <Navigate to="/login" replace />;
-  }
 
   // Map URL tab to sub-tab identifier
   const tabParam = (searchParams.get('tab') || 'pos').toUpperCase();
@@ -37,11 +57,28 @@ export const ClientSideFinance = () => {
     setSearchParams({ tab: newTab.toLowerCase() });
   };
 
-  // State loaded from localStorage or defaults
+  // State loaded from API or memory cache
   const [data, setData] = useState(() => loadFinanceData());
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Subscribe to real-time updates
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const res = await fetchFinanceData();
+      setData(res);
+    } catch (err) {
+      console.error('[ClientFinance] Error loading data:', err);
+      setError(err.message || 'Failed to load client finance records.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Subscribe to real-time updates and fetch from API on mount
   useEffect(() => {
+    loadData();
     const unsub = subscribeFinanceData((updatedData) => {
       setData(updatedData);
     });
@@ -61,6 +98,87 @@ export const ClientSideFinance = () => {
   const [sampleInvoiceModalOpen, setSampleInvoiceModalOpen] = useState(false);
   const [selectedInvoiceForSample, setSelectedInvoiceForSample] = useState(null);
 
+  // Edit & Void modals state
+  const [editClientPoModalOpen, setEditClientPoModalOpen] = useState(false);
+  const [selectedPoForEdit, setSelectedPoForEdit] = useState(null);
+  const [editInvoiceModalOpen, setEditInvoiceModalOpen] = useState(false);
+  const [selectedInvoiceForEdit, setSelectedInvoiceForEdit] = useState(null);
+  const [voidModalOpen, setVoidModalOpen] = useState(false);
+  const [entityToVoid, setEntityToVoid] = useState(null);
+  const [entityTypeToVoid, setEntityTypeToVoid] = useState('Invoice');
+  const [isSubmittingMutation, setIsSubmittingMutation] = useState(false);
+
+  const handleOpenEditClientPo = (cpo) => {
+    setSelectedPoForEdit(cpo);
+    setEditClientPoModalOpen(true);
+  };
+
+  const handleSaveEditClientPo = async (updatedPo) => {
+    try {
+      setIsSubmittingMutation(true);
+      await apiUpdateClientPo(updatedPo.id, updatedPo);
+      addToast(`Client PO ${updatedPo.poNumber} updated successfully!`, 'success');
+      setEditClientPoModalOpen(false);
+      loadData();
+    } catch (err) {
+      addToast(err.message || 'Failed to update Client PO', 'error');
+    } finally {
+      setIsSubmittingMutation(false);
+    }
+  };
+
+  const handleOpenVoidClientPo = (cpo) => {
+    setEntityToVoid(cpo);
+    setEntityTypeToVoid('Client PO');
+    setVoidModalOpen(true);
+  };
+
+  const handleOpenEditInvoice = (inv) => {
+    setSelectedInvoiceForEdit(inv);
+    setEditInvoiceModalOpen(true);
+  };
+
+  const handleSaveEditInvoice = async (updatedInv) => {
+    try {
+      setIsSubmittingMutation(true);
+      await apiUpdateInvoice(updatedInv.id, updatedInv);
+      addToast(`Invoice ${updatedInv.invoiceNumber} updated and PO drawdown recalculated!`, 'success');
+      setEditInvoiceModalOpen(false);
+      loadData();
+    } catch (err) {
+      addToast(err.message || 'Failed to update invoice', 'error');
+    } finally {
+      setIsSubmittingMutation(false);
+    }
+  };
+
+  const handleOpenVoidInvoice = (inv) => {
+    setEntityToVoid(inv);
+    setEntityTypeToVoid('Invoice');
+    setVoidModalOpen(true);
+  };
+
+  const handleConfirmVoid = async (reason) => {
+    if (!entityToVoid) return;
+    try {
+      setIsSubmittingMutation(true);
+      if (entityTypeToVoid === 'Invoice') {
+        await apiVoidInvoice(entityToVoid.id, reason);
+        addToast(`Invoice ${entityToVoid.invoiceNumber} voided successfully. PO drawdown recalculated!`, 'success');
+      } else if (entityTypeToVoid === 'Client PO') {
+        await apiVoidClientPo(entityToVoid.id, reason);
+        addToast(`Client PO ${entityToVoid.poNumber} marked as Void!`, 'success');
+      }
+      setVoidModalOpen(false);
+      setEntityToVoid(null);
+      loadData();
+    } catch (err) {
+      addToast(err.message || `Failed to void ${entityTypeToVoid}`, 'error');
+    } finally {
+      setIsSubmittingMutation(false);
+    }
+  };
+
   useEffect(() => {
     const action = searchParams.get('action');
     if (action === 'add-po' || action === 'add-client-po') {
@@ -69,11 +187,6 @@ export const ClientSideFinance = () => {
       setGenerateInvoiceOpen(true);
     }
   }, [searchParams]);
-
-  // Sync state to localStorage whenever it changes
-  useEffect(() => {
-    saveFinanceData(data);
-  }, [data]);
 
   // Handlers for creating new records
   const handleSaveClientPo = (newPo) => {
@@ -115,8 +228,10 @@ export const ClientSideFinance = () => {
 
       // Record automatic receipt if partial or full payment was received upfront
       const nextPaymentsReceived = [...(prev.paymentsReceived || [])];
+      let nextCashAccounts = prev.cashAccounts || [];
+      let nextCashTransactions = prev.cashTransactions || [];
       if (newInv.amountReceivedSoFar > 0) {
-        nextPaymentsReceived.unshift({
+        const autoPmt = {
           id: `PMT-${Date.now()}`,
           date: newInv.paidDate || newInv.invoicingDate || new Date().toISOString().split('T')[0],
           clientName: newInv.clientName,
@@ -127,8 +242,21 @@ export const ClientSideFinance = () => {
           amountNative: newInv.amountReceivedSoFar,
           currency: newInv.currency,
           amountUsd: newInv.receivedUsd || 0,
+          exchangeRate: newInv.exchangeRate || 1.0,
           status: 'Cleared'
-        });
+        };
+        nextPaymentsReceived.unshift(autoPmt);
+
+        const chosenAccount = (prev.cashAccounts || []).find(a => a.currency === newInv.currency) || (prev.cashAccounts || [])[0];
+        if (chosenAccount) {
+          const cashTx = createLinkedClientPaymentCashTransaction({
+            payment: autoPmt,
+            chosenAccount,
+            invoiceNumber: newInv.invoiceNumber
+          });
+          nextCashAccounts = applyCashTransactionToAccounts(cashTx, nextCashAccounts);
+          nextCashTransactions = [cashTx, ...nextCashTransactions];
+        }
       }
 
       const nextData = {
@@ -136,12 +264,8 @@ export const ClientSideFinance = () => {
         invoices: [newInv, ...prev.invoices],
         clientPos: nextClientPos,
         paymentsReceived: nextPaymentsReceived,
-        kpis: {
-          ...prev.kpis,
-          invoicedTotal: (prev.kpis.invoicedTotal || 0) + newInv.amountUsd,
-          arOutstanding: (prev.kpis.arOutstanding || 0) + (newInv.balanceUsd ?? newInv.amountUsd),
-          collectedTotal: (prev.kpis.collectedTotal || 0) + (newInv.receivedUsd || 0)
-        }
+        cashAccounts: nextCashAccounts,
+        cashTransactions: nextCashTransactions,
       };
       saveFinanceData(nextData);
       return nextData;
@@ -150,34 +274,94 @@ export const ClientSideFinance = () => {
   };
 
   const handleRecordClientPayment = (newPayment, invoiceNumber) => {
+    const targetInvoice = (data.invoices || []).find(inv => inv.invoiceNumber === invoiceNumber);
+    if (!targetInvoice) {
+      addToast(`Invoice ${invoiceNumber} not found.`, 'error');
+      return;
+    }
+
+    const linked = getInvoicePayments(invoiceNumber, data.paymentsReceived || []);
+    const pmtUsd = newPayment.amountUsd !== undefined && newPayment.amountUsd !== null
+      ? newPayment.amountUsd
+      : convertToUsd(newPayment.amountNative, newPayment.currency, data.exchangeRates);
+
+    const validation = validateClientPayment(targetInvoice, linked, pmtUsd);
+    if (!validation.valid) {
+      addToast(validation.error, 'error');
+      return;
+    }
+
     setData(prev => {
+      const nextPaymentsReceived = [newPayment, ...(prev.paymentsReceived || [])];
+      const updatedLinked = [newPayment, ...linked];
+      const state = calcInvoiceState(targetInvoice, updatedLinked, { exchangeRates: prev.exchangeRates });
+
       const nextInvoices = prev.invoices.map(inv => {
         if (inv.invoiceNumber === invoiceNumber) {
           return {
             ...inv,
-            status: 'Paid',
-            balanceUsd: 0,
-            receivedUsd: inv.amountUsd
+            receivedUsd: state.receivedUsd,
+            balanceUsd: state.balanceUsd,
+            status: state.status,
           };
         }
         return inv;
       });
 
-      const nextPaymentsReceived = [newPayment, ...(prev.paymentsReceived || [])];
+      // Automatically create matching cash_transactions entry linked by payment id
+      const chosenAccount = (prev.cashAccounts || []).find(a => a.id === newPayment.accountId) || (prev.cashAccounts || [])[0];
+      const cashTx = createLinkedClientPaymentCashTransaction({
+        payment: newPayment,
+        chosenAccount,
+        invoiceNumber
+      });
+      const nextCashAccounts = applyCashTransactionToAccounts(cashTx, prev.cashAccounts || []);
+      const nextCashTransactions = [cashTx, ...(prev.cashTransactions || [])];
+
       const nextData = {
         ...prev,
         invoices: nextInvoices,
         paymentsReceived: nextPaymentsReceived,
-        kpis: {
-          ...prev.kpis,
-          collectedTotal: (prev.kpis.collectedTotal || 0) + newPayment.amountUsd,
-          arOutstanding: Math.max(0, (prev.kpis.arOutstanding || 0) - newPayment.amountUsd)
-        }
+        cashAccounts: nextCashAccounts,
+        cashTransactions: nextCashTransactions,
       };
       saveFinanceData(nextData);
       return nextData;
     });
-    addToast(`Payment of $${newPayment.amountUsd?.toLocaleString()} recorded for invoice ${invoiceNumber}!`, 'success');
+
+    addToast(`Payment of $${Number(pmtUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} recorded for invoice ${invoiceNumber}!`, 'success');
+  };
+
+  const handleDeleteClientPayment = async (paymentId, invoiceNumber) => {
+    try {
+      await apiDeletePaymentReceived(paymentId);
+    } catch (err) {
+      console.warn('[Finance Client] Remote delete failed or offline, updating local state:', err);
+    }
+    setData(prev => {
+      const remainingPmts = (prev.paymentsReceived || []).filter(p => p.id !== paymentId);
+      const { updatedAccounts, remainingTransactions } = reverseCashTransactionForPayment(
+        paymentId,
+        prev.cashTransactions || [],
+        prev.cashAccounts || []
+      );
+      const nextInvoices = reconcileInvoiceAfterPaymentDeletion(
+        invoiceNumber,
+        remainingPmts,
+        prev.invoices || [],
+        prev.exchangeRates || {}
+      );
+      const nextData = {
+        ...prev,
+        paymentsReceived: remainingPmts,
+        invoices: nextInvoices,
+        cashAccounts: updatedAccounts,
+        cashTransactions: remainingTransactions
+      };
+      saveFinanceData(nextData);
+      return nextData;
+    });
+    addToast(`Payment ${paymentId} deleted and linked cash transaction reversed.`, 'success');
   };
 
   const openSampleInvoice = (inv = null) => {
@@ -222,6 +406,10 @@ export const ClientSideFinance = () => {
     : activeSubTab === 'STATEMENTS'
     ? 'Consolidated client statements of account, lifetime billing, and remittance history'
     : 'Institutional client PO contract intake, drawdowns, multi-tax invoicing, and payment reconciliation';
+
+  if (!loading && !user) {
+    return <Navigate to="/login" replace />;
+  }
 
   return (
     <div className="w-full min-h-screen bg-[#FBFBFC] px-4 sm:px-8 py-6 space-y-6 text-left">
@@ -302,7 +490,7 @@ export const ClientSideFinance = () => {
         </div>
         <div className="flex items-center gap-3">
           <Link
-            to="/purchases/supplier-pos"
+            to="/finance/supplier"
             className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1"
           >
             <span>Supplier Side (AP)</span>
@@ -319,18 +507,35 @@ export const ClientSideFinance = () => {
         </div>
       </div>
 
-      {/* Client-Side Workflow Component */}
-      <FinanceClientPOs
-        clientPos={data.clientPos}
-        invoices={data.invoices}
-        paymentsReceived={data.paymentsReceived || []}
-        activeSubTab={activeSubTab}
-        onTabChange={handleTabChange}
-        onOpenRegisterClientPo={() => setRegisterClientPoOpen(true)}
-        onOpenGenerateInvoice={() => setGenerateInvoiceOpen(true)}
-        onOpenRecordPayment={() => setRecordClientPaymentOpen(true)}
-        onViewSampleInvoice={openSampleInvoice}
-      />
+      {/* Admin One-Time Browser Import Banner */}
+      <FinanceBrowserImportBanner onImportSuccess={setData} />
+
+      {/* Loading & Error States */}
+      {error && <FinanceErrorBanner error={error} onRetry={loadData} />}
+
+      {isLoading ? (
+        <FinanceLoadingSpinner message="Loading client POs and billing records..." />
+      ) : (
+        /* Client-Side Workflow Component */
+        <FinanceClientPOs
+          clientPos={data.clientPos}
+          invoices={data.invoices}
+          paymentsReceived={data.paymentsReceived || []}
+          exchangeRates={data.exchangeRates || {}}
+          activeSubTab={activeSubTab}
+          onTabChange={handleTabChange}
+          canManageFinance={canManageFinance}
+          onOpenRegisterClientPo={() => setRegisterClientPoOpen(true)}
+          onOpenGenerateInvoice={() => setGenerateInvoiceOpen(true)}
+          onOpenRecordPayment={() => setRecordClientPaymentOpen(true)}
+          onViewSampleInvoice={openSampleInvoice}
+          onDeletePayment={handleDeleteClientPayment}
+          onEditClientPo={handleOpenEditClientPo}
+          onVoidClientPo={handleOpenVoidClientPo}
+          onEditInvoice={handleOpenEditInvoice}
+          onVoidInvoice={handleOpenVoidInvoice}
+        />
+      )}
 
       {/* Modals */}
       <RegisterClientPOModal
@@ -364,7 +569,10 @@ export const ClientSideFinance = () => {
       <RecordPaymentReceivedModal
         isOpen={recordClientPaymentOpen}
         onClose={() => setRecordClientPaymentOpen(false)}
-        invoices={data.invoices}
+        invoices={data.invoices || []}
+        paymentsReceived={data.paymentsReceived || []}
+        cashAccounts={data.cashAccounts || []}
+        exchangeRates={data.exchangeRates || {}}
         onSave={handleRecordClientPayment}
       />
 
@@ -372,6 +580,34 @@ export const ClientSideFinance = () => {
         isOpen={sampleInvoiceModalOpen}
         onClose={() => setSampleInvoiceModalOpen(false)}
         invoice={selectedInvoiceForSample}
+      />
+
+      <EditClientPOModal
+        isOpen={editClientPoModalOpen}
+        onClose={() => setEditClientPoModalOpen(false)}
+        clientPo={selectedPoForEdit}
+        lockedPeriods={data.lockedPeriods || []}
+        onSave={handleSaveEditClientPo}
+        isSubmitting={isSubmittingMutation}
+      />
+
+      <EditInvoiceModal
+        isOpen={editInvoiceModalOpen}
+        onClose={() => setEditInvoiceModalOpen(false)}
+        invoice={selectedInvoiceForEdit}
+        clientPos={data.clientPos || []}
+        lockedPeriods={data.lockedPeriods || []}
+        onSave={handleSaveEditInvoice}
+        isSubmitting={isSubmittingMutation}
+      />
+
+      <VoidEntityModal
+        isOpen={voidModalOpen}
+        onClose={() => setVoidModalOpen(false)}
+        entityType={entityTypeToVoid}
+        entity={entityToVoid}
+        onConfirm={handleConfirmVoid}
+        isSubmitting={isSubmittingMutation}
       />
     </div>
   );

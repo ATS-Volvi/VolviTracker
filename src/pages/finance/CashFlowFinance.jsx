@@ -6,32 +6,48 @@ import {
   loadFinanceData,
   saveFinanceData,
   subscribeFinanceData,
+  fetchFinanceData,
   INITIAL_CASH_ACCOUNTS,
   INITIAL_CASH_TRANSACTIONS,
   INITIAL_EXCHANGE_RATES,
   INITIAL_MASTER_DIRECTORY
 } from './financeData';
+import { FinanceBrowserImportBanner } from '../../components/finance/FinanceBrowserImportBanner';
+import { FinanceLoadingSpinner, FinanceErrorBanner } from '../../components/finance/FinancePageStatus';
+import { convertToUsd } from './financeCalcs';
 
 import RecordCashTransactionModal from './modals/RecordCashTransactionModal';
 import { isExtraPaymentTxn, isSalaryTxn, isVendorOutflowTxn } from './CashBookFinance';
 
 export const CashFlowFinance = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, canManageFinance } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
 
-  // Redirect unauthenticated users
-  if (!loading && !user) {
-    return <Navigate to="/login" replace />;
-  }
-
   const [data, setData] = useState(() => loadFinanceData());
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState('ALL');
   const [selectedEntity, setSelectedEntity] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [recordModalOpen, setRecordModalOpen] = useState(false);
 
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const res = await fetchFinanceData();
+      setData(res);
+    } catch (err) {
+      console.error('[CashFlow] Error loading data:', err);
+      setError(err.message || 'Failed to load cashflow data.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
+    loadData();
     const unsub = subscribeFinanceData((updatedData) => {
       setData(updatedData);
     });
@@ -45,10 +61,7 @@ export const CashFlowFinance = () => {
 
   // Convert to USD helper
   const toUsd = (amt, curr) => {
-    if (!amt) return 0;
-    if (!curr || curr === 'USD') return Number(amt);
-    const rate = exchangeRates[curr] || 1;
-    return Number(amt) / rate;
+    return convertToUsd(amt, curr, exchangeRates);
   };
 
   // Format currency helper
@@ -186,6 +199,10 @@ export const CashFlowFinance = () => {
     addToast('Cash flow statement exported to CSV successfully.', 'success');
   };
 
+  if (!loading && !user) {
+    return <Navigate to="/login" replace />;
+  }
+
   return (
     <div className="w-full min-h-screen bg-[#FBFBFC] px-4 sm:px-8 py-6 space-y-6 text-left">
       {/* Top Banner & Header Bar */}
@@ -230,17 +247,29 @@ export const CashFlowFinance = () => {
             <span>Export Statement</span>
           </button>
 
-          <button
-            onClick={() => setRecordModalOpen(true)}
-            className="px-3.5 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition shadow-xs flex items-center gap-1.5 active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[16px]">add_circle</span>
-            <span>+ Record Cash Entry</span>
-          </button>
+          {canManageFinance && (
+            <button
+              onClick={() => setRecordModalOpen(true)}
+              className="px-3.5 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition shadow-xs flex items-center gap-1.5 active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[16px]">add_circle</span>
+              <span>+ Record Cash Entry</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Filter Toolbar */}
+      {/* Admin Browser Storage Import Banner */}
+      <FinanceBrowserImportBanner onImportSuccess={setData} />
+
+      {/* Error state */}
+      {error && <FinanceErrorBanner error={error} onRetry={loadData} />}
+
+      {isLoading ? (
+        <FinanceLoadingSpinner message="Loading cashflow and liquidity reports..." />
+      ) : (
+        <>
+          {/* Filter Toolbar */}
       <div className="bg-white rounded-2xl border border-gray-200/80 p-4 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-2 w-full md:w-auto">
           {/* Operating Entity Dropdown */}
@@ -535,6 +564,8 @@ export const CashFlowFinance = () => {
           </table>
         </div>
       </div>
+      </>
+      )}
 
       {/* Record Modal */}
       <RecordCashTransactionModal

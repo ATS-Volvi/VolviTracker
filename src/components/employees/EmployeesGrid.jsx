@@ -15,9 +15,6 @@ export const EmployeesGrid = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  // If not admin, do not render employee directory
-  if (!isAdmin) return null;
-
   // Counts
   const counts = useMemo(() => {
     let internal = 0;
@@ -66,6 +63,9 @@ export const EmployeesGrid = () => {
       return true;
     });
   }, [empList, activeFilter, searchQuery]);
+
+  // If not admin, do not render employee directory
+  if (!isAdmin) return null;
 
   return (
     <>

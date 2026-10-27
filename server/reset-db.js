@@ -5,8 +5,19 @@ async function resetDatabase() {
   console.log('[DB Reset] Connecting to Neon PostgreSQL...');
   
   try {
-    // Drop existing tables in order
     console.log('[DB Reset] Dropping existing tables...');
+    await sql`DROP TABLE IF EXISTS document_vault CASCADE;`;
+    await sql`DROP TABLE IF EXISTS master_directory CASCADE;`;
+    await sql`DROP TABLE IF EXISTS cash_transactions CASCADE;`;
+    await sql`DROP TABLE IF EXISTS cash_accounts CASCADE;`;
+    await sql`DROP TABLE IF EXISTS payments_made CASCADE;`;
+    await sql`DROP TABLE IF EXISTS payments_received CASCADE;`;
+    await sql`DROP TABLE IF EXISTS supplier_pos CASCADE;`;
+    await sql`DROP TABLE IF EXISTS invoices CASCADE;`;
+    await sql`DROP TABLE IF EXISTS client_pos CASCADE;`;
+    await sql`DROP TABLE IF EXISTS finance_projects CASCADE;`;
+    await sql`DROP TABLE IF EXISTS exchange_rates CASCADE;`;
+    await sql`DROP TABLE IF EXISTS docs CASCADE;`;
     await sql`DROP TABLE IF EXISTS meetings CASCADE;`;
     await sql`DROP TABLE IF EXISTS tasks CASCADE;`;
     await sql`DROP TABLE IF EXISTS projects CASCADE;`;

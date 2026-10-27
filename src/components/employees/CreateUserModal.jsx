@@ -2,11 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { useToast } from '../../context/ToastContext';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
-import { hashPassword } from '../../utils/crypto';
 import { getFinanceData } from '../../pages/finance/financeData';
 import { Avatar } from '../widgets/Avatar';
 
 const INTERNAL_ROLE_SUGGESTIONS = [
+  'Accountant',
   'Software Engineer',
   'Frontend Developer',
   'Backend Developer',
@@ -173,7 +173,6 @@ export const CreateUserModal = ({ isOpen, onClose, onCreated }) => {
 
     setSubmitting(true);
     try {
-      const passwordHash = await hashPassword(cleanPassword);
       const isUserAdmin = userType === 'internal' ? isAdminChecked : false;
 
       const newUserData = {
@@ -181,7 +180,7 @@ export const CreateUserModal = ({ isOpen, onClose, onCreated }) => {
         email: cleanEmail,
         role: cleanRole,
         avatar: resolvedAvatar,
-        passwordHash,
+        password: cleanPassword,
         isAdmin: isUserAdmin,
         userType,
         externalType: userType === 'external' ? externalType : null,

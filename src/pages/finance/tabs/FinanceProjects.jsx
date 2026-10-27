@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
+import { DEFAULT_EXCHANGE_RATES, getExchangeRate } from '../financeCalcs';
 
 const FinanceProjects = ({
   projects = [],
-  exchangeRates = { USD: 1, AED: 3.67, SAR: 3.75, INR: 83.2 },
+  exchangeRates = DEFAULT_EXCHANGE_RATES,
   onOpenCreateProject
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -12,7 +13,7 @@ const FinanceProjects = ({
   const [expandedProjectId, setExpandedProjectId] = useState(projects[0]?.id || null);
 
   // FX Rate helper
-  const fxMultiplier = exchangeRates[currencyMode] || 1;
+  const fxMultiplier = getExchangeRate(currencyMode, exchangeRates);
   const currencySymbol = currencyMode === 'USD' ? '$' : currencyMode === 'INR' ? '₹' : currencyMode === 'AED' ? 'د.إ ' : '﷼ ';
 
   const formatMoney = (usdVal) => {
