@@ -1,7 +1,4 @@
-// Client-side Finance API service connecting to backend PostgreSQL endpoints
-import { getAuthToken } from './api';
-
-const API_BASE = '/api';
+import { getAuthToken, API_BASE } from './api';
 
 export const EMPTY_FINANCE_SUITE = {
   kpis: {

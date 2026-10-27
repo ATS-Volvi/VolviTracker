@@ -1,5 +1,7 @@
 // Client-side API Service for Cloud Sync with Neon PostgreSQL via Server Endpoints
-const API_BASE = '/api';
+export const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL)
+  ? import.meta.env.VITE_API_URL.replace(/\/+$/, '')
+  : '/api';
 
 /**
  * Retrieves the active session authentication token from browser storage.
@@ -43,7 +45,14 @@ async function request(endpoint, options = {}) {
     try {
       errBody = await res.json();
     } catch {}
-    const message = errBody?.error || errBody?.message || `Endpoint ${endpoint} returned status ${res.status}`;
+    let message = errBody?.error || errBody?.message;
+    if (!message) {
+      if (contentType.includes('text/html')) {
+        message = `API returned HTML instead of JSON (HTTP ${res.status}). The app must run as a Render "Web Service" with "npm start" (not a Static Site) so /api routes reach Node.js.`;
+      } else {
+        message = `Endpoint ${endpoint} returned status ${res.status}`;
+      }
+    }
     const err = new Error(message);
     err.status = res.status;
     err.body = errBody;
