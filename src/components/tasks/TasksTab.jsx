@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { Avatar } from '../widgets/Avatar';
@@ -6,15 +8,43 @@ import { StatusSelect } from '../widgets/StatusSelect';
 import { PriorityPill } from '../widgets/PriorityPill';
 import { TaskForm } from '../forms/TaskForm';
 import { sortTasks } from '../../utils/taskSort';
+import { downloadTaskTemplateExcel, parseTaskExcelFile } from '../../utils/excelTaskImport';
 
 const STATUSES = ['In progress', 'Not started', 'Done'];
+const PRIORITIES = ['Low', 'Medium', 'High'];
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
 
-export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = 'Tasks Tracker' }) => {
-  const { tasks: allTasks = [], projects: allProjects = [], getEmployee, updateTask, removeTask } = useData();
+const getLocalDateString = (d = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const addDaysToDate = (days) => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return getLocalDateString(d);
+};
+
+export const TasksTab = ({
+  tasks: tasksProp,
+  projects: projectsProp,
+  heading = 'Tasks Tracker',
+  defaultProjectId = null,
+  showBackToProjects = false,
+  showQuickInlineAdd = true,
+  showExcelActions = true
+}) => {
+  const { user, isAdmin, isProjectManager } = useAuth();
+  const canAssignAnyone = Boolean(isAdmin || isProjectManager);
+  const { tasks: allTasks = [], projects: allProjects = [], employees = [], getEmployee, addTask, updateTask, removeTask } = useData();
   const { addToast } = useToast();
   const tasks = tasksProp || allTasks;
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlProjectId = searchParams.get('projectId');
 
   // Available project tabs:
   // 1. If projectsProp is explicitly passed (e.g. employee's assigned projects), show only those projects.
@@ -25,11 +55,48 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
     : (tasksProp ? allProjects.filter(p => tasks.some(t => String(t.projectId) === String(p.id))) : allProjects);
 
   // Project-based segregation tabs
-  const [activeProjectTab, setActiveProjectTab] = useState('all'); // 'all', projectId, or 'unassigned'
+  const [activeProjectTab, setActiveProjectTab] = useState(() => {
+    return defaultProjectId || urlProjectId || 'all';
+  });
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'active', 'done'
   const [viewMode, setViewMode] = useState('table'); // 'table', 'cards', 'checklist', 'status'
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+
+  // Quick inline task adder state
+  const [quickTitle, setQuickTitle] = useState('');
+  const [quickDeadline, setQuickDeadline] = useState(getLocalDateString());
+  const [quickPriority, setQuickPriority] = useState('Medium');
+  const [quickAssigneeIds, setQuickAssigneeIds] = useState([]);
+  const [showQuickAssigneeDropdown, setShowQuickAssigneeDropdown] = useState(false);
+  const quickAssigneeRef = useRef(null);
+
+  // Excel import/export state
+  const excelFileInputRef = useRef(null);
+  const [isImporting, setIsImporting] = useState(false);
+
+  // Sync active project when defaultProjectId or urlProjectId changes
+  useEffect(() => {
+    if (defaultProjectId) {
+      setActiveProjectTab(defaultProjectId);
+    } else if (urlProjectId) {
+      setActiveProjectTab(urlProjectId);
+    }
+  }, [defaultProjectId, urlProjectId]);
+
+  const handleSelectProjectTab = (pId) => {
+    setActiveProjectTab(pId);
+    setIsProjectDropdownOpen(false);
+    if (searchParams.has('projectId') || urlProjectId || defaultProjectId) {
+      const nextParams = new URLSearchParams(searchParams);
+      if (pId === 'all') {
+        nextParams.delete('projectId');
+      } else {
+        nextParams.set('projectId', pId);
+      }
+      setSearchParams(nextParams, { replace: true });
+    }
+  };
 
   // Project Dropdown state
   const projectDropdownRef = useRef(null);
@@ -39,6 +106,9 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
     const handleClickOutside = (e) => {
       if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target)) {
         setIsProjectDropdownOpen(false);
+      }
+      if (quickAssigneeRef.current && !quickAssigneeRef.current.contains(e.target)) {
+        setShowQuickAssigneeDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -248,6 +318,100 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
     setOpen(true);
   };
 
+  const handleQuickAddTask = (e) => {
+    if (e) e.preventDefault();
+    const title = quickTitle.trim();
+    if (!title) {
+      addToast('Please enter a task title.', 'warning', 2500);
+      return;
+    }
+
+    const targetProjectId = (activeProjectTab !== 'all' && activeProjectTab !== 'unassigned')
+      ? activeProjectTab
+      : '';
+
+    const assignedIds = (!canAssignAnyone && user?.id)
+      ? [user.id]
+      : [...quickAssigneeIds];
+
+    const newTask = {
+      name: title,
+      dueDate: quickDeadline || getLocalDateString(),
+      priority: quickPriority,
+      status: 'Not started',
+      projectId: targetProjectId,
+      assigneeIds: assignedIds,
+      assigneeId: assignedIds[0] || '',
+      description: ''
+    };
+
+    addTask(newTask);
+    setQuickTitle('');
+    setQuickDeadline(getLocalDateString());
+    setQuickAssigneeIds([]);
+    addToast(`Added task "${title}"!`, 'success', 2500);
+  };
+
+  const handleDownloadTemplate = () => {
+    try {
+      downloadTaskTemplateExcel(employees);
+      addToast('Tasks template downloaded!', 'success', 3000);
+    } catch (err) {
+      console.error('Template download error:', err);
+      addToast('Failed to download template', 'error', 3000);
+    }
+  };
+
+  const handleImportExcelFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const targetProjectId = (activeProjectTab !== 'all' && activeProjectTab !== 'unassigned') ? activeProjectTab : '';
+      const { tasks: parsedTasks, count } = await parseTaskExcelFile(
+        file,
+        employees,
+        quickDeadline || getLocalDateString()
+      );
+
+      if (count === 0) {
+        addToast('No tasks found in the uploaded file.', 'warning', 4000);
+      } else {
+        const idMap = new Map();
+        parsedTasks.forEach(t => {
+          if (!t.id || String(t.id).startsWith('temp_')) {
+            idMap.set(t.id, 'task_' + Date.now() + Math.random().toString(36).substr(2, 6));
+          }
+        });
+
+        parsedTasks.forEach(t => {
+          const finalId = idMap.get(t.id) || t.id;
+          const finalParentId = t.parentId ? (idMap.get(t.parentId) || t.parentId) : null;
+          const assignedIds = (!canAssignAnyone && user?.id)
+            ? [user.id]
+            : (Array.isArray(t.assigneeIds) ? t.assigneeIds : (t.assigneeId ? [t.assigneeId] : []));
+
+          addTask({
+            ...t,
+            id: finalId,
+            parentId: finalParentId,
+            projectId: targetProjectId || t.projectId || '',
+            assigneeId: assignedIds[0] || '',
+            assigneeIds: assignedIds
+          });
+        });
+        addToast(`Successfully imported ${count} task${count > 1 ? 's' : ''}!`, 'success', 4000);
+      }
+    } catch (err) {
+      console.error('Excel import error:', err);
+      addToast(err.message || 'Failed to parse Excel file.', 'error', 4000);
+    } finally {
+      setIsImporting(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
   const Th = ({ children }) => <th className="py-2.5 pr-4 font-semibold text-gray-500 text-xs uppercase tracking-wider">{children}</th>;
   const Td = ({ children, className = '' }) => <td className={`py-3 pr-4 align-middle ${className}`}>{children}</td>;
 
@@ -308,12 +472,54 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
             </div>
           )}
         </div>
-        <button
-          className="btn-primary text-sm flex items-center gap-1.5 shrink-0"
-          onClick={handleNewTask}
-        >
-          <span className="font-bold">+</span> New task
-        </button>
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
+          {showExcelActions && (
+            <>
+              {/* Template Download Button */}
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                title="Download formatted Excel template for tasks"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 rounded-lg shadow-2xs transition hover:border-slate-400 focus:outline-none cursor-pointer"
+              >
+                <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span className="hidden sm:inline">Download</span> Template
+              </button>
+
+              {/* Import Excel Button */}
+              <button
+                type="button"
+                onClick={() => excelFileInputRef.current?.click()}
+                disabled={isImporting}
+                title="Import tasks from an Excel file (.xlsx, .xls, .csv)"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 border border-emerald-600 rounded-lg shadow-2xs transition cursor-pointer"
+              >
+                <svg className="w-3.5 h-3.5 text-white shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                <span>{isImporting ? 'Importing...' : 'Import Excel'}</span>
+              </button>
+
+              {/* Hidden file input */}
+              <input
+                ref={excelFileInputRef}
+                type="file"
+                accept=".xlsx, .xls, .csv"
+                className="hidden"
+                onChange={handleImportExcelFile}
+              />
+            </>
+          )}
+
+          <button
+            className="btn-primary text-xs sm:text-sm flex items-center gap-1.5 shrink-0"
+            onClick={handleNewTask}
+          >
+            <span className="font-bold">+</span> New task
+          </button>
+        </div>
       </div>
 
       {/* Sub-toolbar: Project Filter Dropdown + Status Filter Pills + View Switcher */}
@@ -364,10 +570,7 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                 {/* All Tasks Option */}
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveProjectTab('all');
-                    setIsProjectDropdownOpen(false);
-                  }}
+                  onClick={() => handleSelectProjectTab('all')}
                   className={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition ${
                     activeProjectTab === 'all'
                       ? 'bg-blue-50 text-blue-700 font-bold'
@@ -396,10 +599,7 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => {
-                        setActiveProjectTab(p.id);
-                        setIsProjectDropdownOpen(false);
-                      }}
+                      onClick={() => handleSelectProjectTab(p.id)}
                       className={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition ${
                         isActive
                           ? 'bg-blue-50 text-blue-700 font-bold'
@@ -548,6 +748,143 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
           </button>
         </div>
       </div>
+
+      {/* Quick Inline Task Adder Bar */}
+      {showQuickInlineAdd && (
+        <form onSubmit={handleQuickAddTask} className="mb-4 p-3.5 rounded-xl border border-gray-200/90 bg-slate-50/70 space-y-2.5">
+          <div className="text-xs font-bold text-gray-700 flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <span>{canAssignAnyone ? 'Quick Add Task with Deadlines & Assignees' : 'Quick Add Task (Self-assigned)'}</span>
+            </div>
+            {activeProjectObj ? (
+              <span className="text-[11px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                Project: {activeProjectObj.name}
+              </span>
+            ) : (
+              <span className="text-[11px] font-medium text-gray-500">
+                All Projects mode
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-start">
+            {/* Title */}
+            <div className="sm:col-span-5">
+              <input
+                type="text"
+                placeholder="Task title (e.g. Design wireframes, Review contract)..."
+                className="input-field text-xs h-9 bg-white"
+                value={quickTitle}
+                onChange={(e) => setQuickTitle(e.target.value)}
+              />
+            </div>
+
+            {/* Deadline */}
+            <div className="sm:col-span-3">
+              <input
+                type="date"
+                className="input-field text-xs h-9 bg-white"
+                value={quickDeadline}
+                onChange={(e) => setQuickDeadline(e.target.value)}
+              />
+              <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-500">
+                <button
+                  type="button"
+                  onClick={() => setQuickDeadline(getLocalDateString())}
+                  className="px-1.5 py-0.5 rounded bg-gray-200/70 hover:bg-gray-300 transition text-gray-700"
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickDeadline(addDaysToDate(3))}
+                  className="px-1.5 py-0.5 rounded bg-gray-200/70 hover:bg-gray-300 transition text-gray-700"
+                >
+                  +3d
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickDeadline(addDaysToDate(7))}
+                  className="px-1.5 py-0.5 rounded bg-gray-200/70 hover:bg-gray-300 transition text-gray-700"
+                >
+                  +1w
+                </button>
+              </div>
+            </div>
+
+            {/* Assignees */}
+            {canAssignAnyone ? (
+              <div className="sm:col-span-2 relative" ref={quickAssigneeRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickAssigneeDropdown(prev => !prev)}
+                  className="w-full h-9 px-2.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-left text-xs flex items-center justify-between text-gray-700"
+                >
+                  <span className="truncate">
+                    {quickAssigneeIds.length === 0
+                      ? 'Assign team (0)'
+                      : `${quickAssigneeIds.length} assigned`}
+                  </span>
+                  <span className="material-symbols-outlined text-[16px] text-gray-400">expand_more</span>
+                </button>
+
+                {showQuickAssigneeDropdown && (
+                  <div className="absolute left-0 top-10 w-56 bg-white border border-gray-200 rounded-xl shadow-xl p-2 z-40 max-h-48 overflow-y-auto">
+                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1">
+                      Select Assignees
+                    </div>
+                    {employees.map(emp => {
+                      const isSel = quickAssigneeIds.includes(emp.id);
+                      return (
+                        <div
+                          key={emp.id}
+                          onClick={() => {
+                            setQuickAssigneeIds(prev =>
+                              prev.includes(emp.id) ? prev.filter(id => id !== emp.id) : [...prev, emp.id]
+                            );
+                          }}
+                          className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer text-xs ${
+                            isSel ? 'bg-blue-50 text-blue-700 font-semibold' : 'hover:bg-gray-50 text-gray-700'
+                          }`}
+                        >
+                          <Avatar src={emp.avatar} alt={emp.fullName} className="h-5 w-5" />
+                          <span className="truncate flex-1">{emp.fullName}</span>
+                          {isSel && <span className="text-blue-600 font-bold">✓</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="sm:col-span-2 flex items-center h-9 px-2 text-xs text-gray-600 bg-gray-100/70 rounded-lg">
+                Self (You)
+              </div>
+            )}
+
+            {/* Priority & Submit */}
+            <div className="sm:col-span-2 flex items-center gap-2">
+              <select
+                className="input-field text-xs h-9 bg-white flex-1"
+                value={quickPriority}
+                onChange={(e) => setQuickPriority(e.target.value)}
+              >
+                {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+
+              <button
+                type="submit"
+                className="btn-primary text-xs h-9 px-4 font-bold shadow-2xs shrink-0"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
 
       {/* Main Content Area */}
       {displayedTasks.length === 0 ? (
@@ -726,16 +1063,36 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                         <Td className="text-gray-600 text-xs">{fmtDate(t.dueDate)}</Td>
                         <Td><PriorityPill priority={t.priority} /></Td>
                         <Td>
-                          <button
-                            type="button"
-                            onClick={(e) => handleDeleteTask(e, t)}
-                            className="text-gray-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-md transition"
-                            title="Remove task"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => { setEditing({ parentId: t.id, projectId: t.projectId }); setOpen(true); }}
+                              className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-md border border-blue-200 transition shrink-0"
+                              title={`Add subtask under "${t.name}"`}
+                            >
+                              + Subtask
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setEditing(t); setOpen(true); }}
+                              className="text-gray-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded-md transition"
+                              title="Edit task"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteTask(e, t)}
+                              className="text-gray-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-md transition"
+                              title="Remove task"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
                         </Td>
                       </tr>
                     );
@@ -806,6 +1163,14 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
                         </span>
                       )}
                       <PriorityPill priority={t.priority} />
+                      <button
+                        type="button"
+                        onClick={() => { setEditing({ parentId: t.id, projectId: t.projectId }); setOpen(true); }}
+                        className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 transition shrink-0"
+                        title={`Add subtask under "${t.name}"`}
+                      >
+                        + Subtask
+                      </button>
                       <button
                         type="button"
                         onClick={(e) => handleDeleteTask(e, t)}

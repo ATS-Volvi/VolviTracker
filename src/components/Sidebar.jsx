@@ -50,10 +50,12 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
   const currentAction = (searchParams.get('action') || '').toLowerCase();
 
   // Active status calculations
-  const isProjectsActive = location.pathname === '/projects' || 
+  const isProjectsActive = (location.pathname === '/projects' || 
     location.pathname === '/dashboard' || 
     (location.pathname === '/' && canManageProjects) || 
-    Boolean(user && !canManageProjects && location.pathname === `/employee/${user?.id}`);
+    Boolean(user && !canManageProjects && location.pathname === `/employee/${user?.id}`)) && !location.pathname.includes('/tasks');
+
+  const isTasksActive = location.pathname.startsWith('/tasks') || location.pathname.includes('/tasks');
 
   const isClientPosActive = (location.pathname === '/finance/client' || location.pathname === '/sales/client-pos') && (!currentTab || currentTab === 'pos');
 
@@ -181,6 +183,22 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                 </Link>
                 <div className="absolute left-full ml-3 px-2.5 py-1 bg-gray-900 text-white text-xs font-medium rounded-lg shadow-lg whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
                   Projects
+                  <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                </div>
+              </div>
+
+              {/* Tasks Collapsed */}
+              <div className="relative group">
+                <Link
+                  to="/tasks"
+                  className={`flex items-center justify-center p-3 rounded-xl transition-all duration-150 ${
+                    isTasksActive ? 'bg-blue-50 text-blue-600 shadow-2xs' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[20px]">task_alt</span>
+                </Link>
+                <div className="absolute left-full ml-3 px-2.5 py-1 bg-gray-900 text-white text-xs font-medium rounded-lg shadow-lg whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
+                  Tasks
                   <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
                 </div>
               </div>
@@ -451,6 +469,21 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                   </span>
                   <span>Projects</span>
                   {isProjectsActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />}
+                </Link>
+
+                <Link
+                  to="/tasks"
+                  className={`group flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-150 ${
+                    isTasksActive
+                      ? 'bg-blue-50 text-blue-600 font-bold shadow-2xs'
+                      : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className={`material-symbols-outlined text-[19px] ${isTasksActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                    task_alt
+                  </span>
+                  <span>Tasks</span>
+                  {isTasksActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />}
                 </Link>
               </div>
 
