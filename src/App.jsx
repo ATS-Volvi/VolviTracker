@@ -192,79 +192,79 @@ const App = () => {
               />
               <Route
                 path="/sales"
-                element={<Navigate to="/finance/client" replace />}
+                element={<RequireAuth><RequireAdmin><Navigate to="/finance/client" replace /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/sales/client-pos"
-                element={<Navigate to="/finance/client" replace />}
+                element={<RequireAuth><RequireAdmin><Navigate to="/finance/client" replace /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/purchases"
-                element={<Navigate to="/finance/supplier" replace />}
+                element={<RequireAuth><RequireAdmin><Navigate to="/finance/supplier" replace /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/purchases/supplier-pos"
-                element={<Navigate to="/finance/supplier" replace />}
+                element={<RequireAuth><RequireAdmin><Navigate to="/finance/supplier" replace /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/client"
-                element={<RequireAuth><ClientSideFinance /></RequireAuth>}
+                element={<RequireAuth><RequireAdmin><ClientSideFinance /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/client-invoices"
-                element={<Navigate to="/finance/client?tab=invoices" replace />}
+                element={<RequireAuth><RequireAdmin><Navigate to="/finance/client?tab=invoices" replace /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/receipts"
-                element={<Navigate to="/finance/client?tab=receipts" replace />}
+                element={<RequireAuth><RequireAdmin><Navigate to="/finance/client?tab=receipts" replace /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/ar-ageing"
-                element={<Navigate to="/finance/client?tab=ageing" replace />}
+                element={<RequireAuth><RequireAdmin><Navigate to="/finance/client?tab=ageing" replace /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/client-statements"
-                element={<Navigate to="/finance/client?tab=statements" replace />}
+                element={<RequireAuth><RequireAdmin><Navigate to="/finance/client?tab=statements" replace /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/supplier"
-                element={<RequireAuth><SupplierSideFinance /></RequireAuth>}
+                element={<RequireAuth><RequireAdmin><SupplierSideFinance /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/supplier-invoices"
-                element={<Navigate to="/finance/supplier?tab=invoices" replace />}
+                element={<RequireAuth><RequireAdmin><Navigate to="/finance/supplier?tab=invoices" replace /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/payments"
-                element={<Navigate to="/finance/supplier?tab=payments" replace />}
+                element={<RequireAuth><RequireAdmin><Navigate to="/finance/supplier?tab=payments" replace /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/ap-ageing"
-                element={<Navigate to="/finance/supplier?tab=ageing" replace />}
+                element={<RequireAuth><RequireAdmin><Navigate to="/finance/supplier?tab=ageing" replace /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/supplier-statements"
-                element={<Navigate to="/finance/supplier?tab=statements" replace />}
+                element={<RequireAuth><RequireAdmin><Navigate to="/finance/supplier?tab=statements" replace /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/cash-book"
-                element={<RequireAuth><CashBookFinance /></RequireAuth>}
+                element={<RequireAuth><RequireAdmin><CashBookFinance /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/tax"
-                element={<RequireAuth><TaxFinance /></RequireAuth>}
+                element={<RequireAuth><RequireAdmin><TaxFinance /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/cash-flow"
-                element={<RequireAuth><CashFlowFinance /></RequireAuth>}
+                element={<RequireAuth><RequireAdmin><CashFlowFinance /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance"
-                element={<RequireAuth><Finance /></RequireAuth>}
+                element={<RequireAuth><RequireAdmin><Finance /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/finance/*"
-                element={<RequireAuth><Finance /></RequireAuth>}
+                element={<RequireAuth><RequireAdmin><Finance /></RequireAdmin></RequireAuth>}
               />
               <Route
                 path="/docs"

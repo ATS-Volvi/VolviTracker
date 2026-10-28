@@ -185,7 +185,9 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                 </div>
               </div>
 
-              {/* Sales Client POs Collapsed */}
+              {isAdmin && (
+                <>
+                  {/* Sales Client POs Collapsed */}
               <div className="relative group">
                 <Link
                   to="/finance/client"
@@ -413,6 +415,8 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                   <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
                 </div>
               </div>
+                </>
+              )}
 
               {/* Master Data Collapsed */}
               <div className="relative group pt-2 border-t border-gray-100">
@@ -454,7 +458,9 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                 </Link>
               </div>
 
-              {/* 2. Sales Section */}
+              {isAdmin && (
+                <>
+                  {/* 2. Sales Section */}
               <div className="space-y-1">
                 <div className="px-3 text-[11px] font-semibold text-gray-400 tracking-wider">
                   Sales
@@ -762,6 +768,8 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                   {isCashFlowActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />}
                 </Link>
               </div>
+                </>
+              )}
 
               {/* 5. Master Data Section */}
               <div className="space-y-1 pt-1 border-t border-gray-100">
