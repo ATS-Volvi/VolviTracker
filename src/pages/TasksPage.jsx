@@ -61,6 +61,20 @@ export const TasksPage = () => {
     return ids.map(id => employees.find(e => String(e.id) === String(id))).filter(Boolean);
   }, [activeProject, employees]);
 
+  // Ensure active project and its full task list are available on its dedicated subpage
+  const pageProjects = useMemo(() => {
+    if (!activeProject) return baseProjects;
+    const exists = baseProjects.some(p => String(p.id) === String(activeProject.id));
+    return exists ? baseProjects : [activeProject, ...baseProjects];
+  }, [baseProjects, activeProject]);
+
+  const pageTasks = useMemo(() => {
+    if (!activeProject) return baseTasks;
+    const projectTaskIds = new Set(projectTasks.map(t => String(t.id)));
+    const otherTasks = baseTasks.filter(t => !projectTaskIds.has(String(t.id)));
+    return [...projectTasks, ...otherTasks];
+  }, [projectTasks, baseTasks, activeProject]);
+
   return (
     <div className="w-full min-h-screen bg-[#FBFBFC] px-4 sm:px-8 py-6 space-y-6 animate-fade-in">
       {/* Top Breadcrumb & Navigation */}
@@ -238,10 +252,10 @@ export const TasksPage = () => {
       {/* Main TasksTab Component */}
       <div className="w-full">
         <TasksTab
-          tasks={baseTasks}
-          projects={baseProjects}
+          tasks={pageTasks}
+          projects={pageProjects}
           heading={activeProject ? `${activeProject.name} — Tasks & Deadlines` : 'Project Tasks & Deadlines'}
-          defaultProjectId={activeProjectId}
+          defaultProjectId={activeProject ? String(activeProject.id) : (activeProjectId || 'all')}
           showBackToProjects={true}
         />
       </div>

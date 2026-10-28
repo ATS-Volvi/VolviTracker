@@ -47,21 +47,34 @@ export const TasksTab = ({
   const urlProjectId = searchParams.get('projectId');
 
   // Available project tabs:
-  // 1. If projectsProp is explicitly passed (e.g. employee's assigned projects), show only those projects.
-  // 2. Else if tasksProp is passed, restrict project tabs to projects that actually have tasks in tasksProp.
-  // 3. Otherwise (global dashboard), show all projects.
-  const relevantProjects = projectsProp !== undefined
-    ? projectsProp
-    : (tasksProp ? allProjects.filter(p => tasks.some(t => String(t.projectId) === String(p.id))) : allProjects);
-
   // Project-based segregation tabs
   const [activeProjectTab, setActiveProjectTab] = useState(() => {
-    return defaultProjectId || urlProjectId || 'all';
+    return (defaultProjectId && defaultProjectId !== 'all') ? String(defaultProjectId) : (urlProjectId || 'all');
   });
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'active', 'done'
   const [viewMode, setViewMode] = useState('table'); // 'table', 'cards', 'checklist', 'status'
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+
+  // Available project tabs:
+  // 1. If projectsProp is explicitly passed (e.g. employee's assigned projects), show those projects.
+  // 2. Else if tasksProp is passed, restrict project tabs to projects that actually have tasks in tasksProp.
+  // 3. Otherwise (global dashboard), show all projects.
+  const relevantProjects = useMemo(() => {
+    let list = projectsProp !== undefined
+      ? [...projectsProp]
+      : (tasksProp ? allProjects.filter(p => tasks.some(t => String(t.projectId) === String(p.id))) : [...allProjects]);
+
+    const targetPid = (activeProjectTab && activeProjectTab !== 'all' && activeProjectTab !== 'unassigned')
+      ? activeProjectTab
+      : (defaultProjectId && defaultProjectId !== 'all' && defaultProjectId !== 'unassigned' ? defaultProjectId : null);
+
+    if (targetPid && !list.some(p => String(p.id) === String(targetPid))) {
+      const found = allProjects.find(p => String(p.id) === String(targetPid));
+      if (found) list.unshift(found);
+    }
+    return list;
+  }, [projectsProp, tasksProp, allProjects, tasks, activeProjectTab, defaultProjectId]);
 
   // Quick inline task adder state
   const [quickTitle, setQuickTitle] = useState('');
@@ -77,10 +90,10 @@ export const TasksTab = ({
 
   // Sync active project when defaultProjectId or urlProjectId changes
   useEffect(() => {
-    if (defaultProjectId) {
-      setActiveProjectTab(defaultProjectId);
+    if (defaultProjectId && defaultProjectId !== 'all') {
+      setActiveProjectTab(String(defaultProjectId));
     } else if (urlProjectId) {
-      setActiveProjectTab(urlProjectId);
+      setActiveProjectTab(String(urlProjectId));
     }
   }, [defaultProjectId, urlProjectId]);
 
@@ -115,14 +128,20 @@ export const TasksTab = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Auto-reset activeProjectTab if the selected project tab is no longer in relevantProjects
+  // Auto-reset activeProjectTab if the selected project tab is no longer valid
   useEffect(() => {
-    if (activeProjectTab !== 'all' && activeProjectTab !== 'unassigned') {
+    if (relevantProjects.length > 0 && activeProjectTab !== 'all' && activeProjectTab !== 'unassigned') {
+      if (defaultProjectId && String(defaultProjectId) === String(activeProjectTab)) {
+        return;
+      }
+      if (allProjects.some(p => String(p.id) === String(activeProjectTab))) {
+        return;
+      }
       if (!relevantProjects.some(p => String(p.id) === String(activeProjectTab))) {
         setActiveProjectTab('all');
       }
     }
-  }, [relevantProjects, activeProjectTab]);
+  }, [relevantProjects, activeProjectTab, defaultProjectId, allProjects]);
 
   const getProject = (pId) => allProjects.find(p => String(p.id) === String(pId));
   const unassignedCount = (allTasks || tasks).filter(t => !t.projectId || !allProjects.some(p => String(p.id) === String(t.projectId))).length;
@@ -142,7 +161,8 @@ export const TasksTab = ({
         progress: null
       };
     }
-    const p = relevantProjects.find(item => String(item.id) === String(activeProjectTab));
+    const p = relevantProjects.find(item => String(item.id) === String(activeProjectTab))
+      || allProjects.find(item => String(item.id) === String(activeProjectTab));
     if (!p) {
       return { label: 'All Tasks', count: tasks.length, progress: null };
     }
@@ -153,7 +173,7 @@ export const TasksTab = ({
       count,
       progress: count > 0 ? pPct : null
     };
-  }, [activeProjectTab, tasks, relevantProjects, allTasks, unassignedCount]);
+  }, [activeProjectTab, tasks, relevantProjects, allProjects, unassignedCount]);
 
   // Tasks segregated by active project tab:
   // When 'all', show current tasks collection (tasksProp or allTasks)
