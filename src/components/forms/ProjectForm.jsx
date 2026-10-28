@@ -223,10 +223,6 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
         endValue: 100,
         progress: prog
       });
-
-      setNewTaskDeadline(today);
-      setNewTaskAssigneeIds([]);
-      setEditingTaskId(null);
     } else {
       const today = getLocalDateString();
       const twoWeeksLaterDate = new Date();
@@ -374,54 +370,6 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
         ? prev.assigneeIds.filter(id => id !== empId)
         : [...prev.assigneeIds, empId];
       return { ...prev, assigneeIds: newIds };
-    });
-  };
-
-  const toggleNewTaskAssignee = (empId) => {
-    setNewTaskAssigneeIds(prev =>
-      prev.includes(empId) ? prev.filter(id => id !== empId) : [...prev, empId]
-    );
-  };
-
-  const toggleEditTaskAssignee = (empId) => {
-    setEditTaskForm(prev => ({
-      ...prev,
-      assigneeIds: prev.assigneeIds.includes(empId)
-        ? prev.assigneeIds.filter(id => id !== empId)
-        : [...prev.assigneeIds, empId]
-    }));
-  };
-
-  const getTaskAssignees = (task) => {
-    if (Array.isArray(task.assigneeIds) && task.assigneeIds.length > 0) {
-      return task.assigneeIds.map(id => employees.find(e => e.id === id)).filter(Boolean);
-    }
-    if (task.assigneeId) {
-      const emp = employees.find(e => e.id === task.assigneeId);
-      return emp ? [emp] : [];
-    }
-    return [];
-  };
-
-  // Sort employees so chosen team members (project assignees or selected task assignees) come to the top
-  const sortEmployeesWithChosenFirst = (empList = [], selectedIds = [], projectAssigneeIds = []) => {
-    return [...empList].sort((a, b) => {
-      const aProj = projectAssigneeIds.includes(a.id);
-      const bProj = projectAssigneeIds.includes(b.id);
-      const aTask = selectedIds.includes(a.id);
-      const bTask = selectedIds.includes(b.id);
-
-      const aChosen = aProj || aTask;
-      const bChosen = bProj || bTask;
-
-      if (aChosen && !bChosen) return -1;
-      if (!aChosen && bChosen) return 1;
-
-      // Within chosen, prioritize those explicitly selected for the current task
-      if (aTask && !bTask) return -1;
-      if (!aTask && bTask) return 1;
-
-      return (a.fullName || '').localeCompare(b.fullName || '');
     });
   };
 
