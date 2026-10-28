@@ -458,7 +458,11 @@ export async function apiHandler(req, res, next) {
       if (!v.success) {
         return sendJson(res, 400, { error: v.error, details: v.issues });
       }
-      const task = await createTaskRecord(v.data);
+      const data = {
+        ...v.data,
+        name: (v.data.name || v.data.title || '').trim()
+      };
+      const task = await createTaskRecord(data);
       return sendJson(res, 201, task);
     }
 
@@ -489,7 +493,11 @@ export async function apiHandler(req, res, next) {
       if (!v.success) {
         return sendJson(res, 400, { error: v.error, details: v.issues });
       }
-      const meeting = await createMeetingRecord(v.data);
+      const data = {
+        ...v.data,
+        name: (v.data.name || v.data.title || '').trim()
+      };
+      const meeting = await createMeetingRecord(data);
       return sendJson(res, 201, meeting);
     }
 
@@ -591,7 +599,11 @@ export async function apiHandler(req, res, next) {
       if (!v.success) {
         return sendJson(res, 400, { error: v.error, details: v.issues });
       }
-      const doc = await createDocRecord(v.data);
+      const data = {
+        ...v.data,
+        title: (v.data.title || v.data.name || '').trim()
+      };
+      const doc = await createDocRecord(data);
       return sendJson(res, 201, doc);
     }
 

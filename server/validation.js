@@ -69,14 +69,22 @@ export const projectPostSchema = z.union([
 export const projectPutSchema = z.object({}).passthrough();
 
 export const taskPostSchema = z.object({
-  title: z.string().trim().min(1, 'Task title is required'),
+  name: z.string().optional(),
+  title: z.string().optional(),
   projectId: z.any().optional()
+}).refine(data => Boolean((data.name && data.name.trim()) || (data.title && data.title.trim())), {
+  message: 'Task name is required',
+  path: ['name']
 }).passthrough();
 
 export const taskPutSchema = z.object({}).passthrough();
 
 export const meetingPostSchema = z.object({
-  title: z.string().trim().min(1, 'Meeting title is required')
+  name: z.string().optional(),
+  title: z.string().optional()
+}).refine(data => Boolean((data.name && data.name.trim()) || (data.title && data.title.trim())), {
+  message: 'Meeting name is required',
+  path: ['name']
 }).passthrough();
 
 export const meetingPutSchema = z.object({}).passthrough();
@@ -90,7 +98,11 @@ export const employeePostSchema = z.object({
 export const employeePutSchema = z.object({}).passthrough();
 
 export const docPostSchema = z.object({
-  name: z.string().trim().min(1, 'Document name is required')
+  title: z.string().optional(),
+  name: z.string().optional()
+}).refine(data => Boolean((data.title && data.title.trim()) || (data.name && data.name.trim())), {
+  message: 'Document title is required',
+  path: ['title']
 }).passthrough();
 
 export const docPutSchema = z.object({}).passthrough();

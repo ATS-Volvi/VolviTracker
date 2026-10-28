@@ -891,7 +891,7 @@ export const TasksTab = ({ tasks: tasksProp, projects: projectsProp, heading = '
       )}
 
       {/* Task Modal Form */}
-      <TaskForm isOpen={open} open={open} onClose={() => setOpen(false)} initial={editing} />
+      <TaskForm isOpen={open} open={open} onClose={() => setOpen(false)} initial={editing} projects={allProjects} />
     </section>
   );
 };

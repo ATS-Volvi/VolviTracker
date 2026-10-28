@@ -298,16 +298,6 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
   const canAssignAnyone = Boolean(isAdmin || isProjectManager);
   const { addToast } = useToast();
 
-  const accessibleProjects = useMemo(() => {
-    if (projectsProp && Array.isArray(projectsProp)) return projectsProp;
-    if (isAdmin) return dataProjects;
-    if (isProjectManager) return dataProjects.filter(p => String(p.createdBy || '') === String(user?.id));
-    return dataProjects.filter(p =>
-      (Array.isArray(p.assigneeIds) && p.assigneeIds.some(aid => String(aid) === String(user?.id))) ||
-      String(p.assigneeId) === String(user?.id)
-    );
-  }, [projectsProp, dataProjects, isAdmin, isProjectManager, user?.id]);
-
   const [form, setForm] = useState({
     name: '',
     projectId: '',
@@ -322,6 +312,39 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
   });
 
   const isEditing = Boolean(initial && initial.id);
+
+  const accessibleProjects = useMemo(() => {
+    let list;
+    if (projectsProp && Array.isArray(projectsProp) && projectsProp.length > 0) {
+      list = [...projectsProp];
+    } else if (isAdmin) {
+      list = [...dataProjects];
+    } else if (isProjectManager) {
+      list = dataProjects.filter(p => String(p.createdBy || '') === String(user?.id));
+    } else {
+      list = dataProjects.filter(p =>
+        (Array.isArray(p.assigneeIds) && p.assigneeIds.some(aid => String(aid) === String(user?.id))) ||
+        String(p.assigneeId) === String(user?.id) ||
+        tasks.some(t => String(t.projectId) === String(p.id) &&
+          ((Array.isArray(t.assigneeIds) && t.assigneeIds.some(aid => String(aid) === String(user?.id))) || String(t.assigneeId) === String(user?.id))
+        )
+      );
+      if (list.length === 0) {
+        list = [...dataProjects];
+      }
+    }
+
+    // Always guarantee that the task's current project is in accessibleProjects so it is never missing or unselected
+    const currentProjectId = form.projectId || initial?.projectId;
+    if (currentProjectId && !list.some(p => String(p.id) === String(currentProjectId))) {
+      const match = dataProjects.find(p => String(p.id) === String(currentProjectId));
+      if (match) {
+        list.push(match);
+      }
+    }
+
+    return list;
+  }, [projectsProp, dataProjects, isAdmin, isProjectManager, user?.id, tasks, form.projectId, initial?.projectId]);
 
   // Parent task info for breadcrumbs & hierarchy (n levels)
   const parentTaskInfo = useMemo(() => {
@@ -382,7 +405,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
   };
 
   useEffect(() => {
-    if (initial) {
+    if (isEditing) {
       let initialAssigneeIds = [];
       if (Array.isArray(initial.assigneeIds) && initial.assigneeIds.length > 0) {
         initialAssigneeIds = initial.assigneeIds;
@@ -406,18 +429,26 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
         parentId: initial.parentId || ''
       });
     } else {
-      const defaultAssignees = !canAssignAnyone && user?.id ? [user.id] : [];
+      let defaultAssignees = [];
+      if (Array.isArray(initial?.assigneeIds) && initial.assigneeIds.length > 0) {
+        defaultAssignees = initial.assigneeIds;
+      } else if (initial?.assigneeId) {
+        defaultAssignees = [initial.assigneeId];
+      } else if (user?.id) {
+        defaultAssignees = [user.id];
+      }
+
       setForm({
-        name: '',
-        projectId: '',
+        name: initial?.name || '',
+        projectId: initial?.projectId || '',
         assigneeIds: defaultAssignees,
         assigneeId: defaultAssignees[0] || '',
-        status: 'Not started',
+        status: initial?.status || 'Not started',
         createdDate: getLocalDateString(),
-        dueDate: '',
-        priority: 'Medium',
-        description: '',
-        parentId: ''
+        dueDate: initial?.dueDate ? initial.dueDate.slice(0, 10) : '',
+        priority: initial?.priority || 'Medium',
+        description: initial?.description || '',
+        parentId: initial?.parentId || ''
       });
     }
 
@@ -428,7 +459,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
     setNewSubtaskDueDate(initial?.dueDate ? initial.dueDate.slice(0, 10) : getLocalDateString());
     setNewSubtaskPriority('Medium');
     setEditingSubtaskId(null);
-  }, [initial, isModalOpen, employees, user?.id]);
+  }, [initial, isEditing, isModalOpen, employees, user?.id]);
 
   // Compute potential parent tasks for subtask nesting at any depth n
   const potentialParents = useMemo(() => {
@@ -651,10 +682,14 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
 
           <div>
             <label className="mb-1 block text-xs font-semibold text-gray-700">Project (Optional)</label>
-            <select className="input-field text-sm bg-white" value={form.projectId} onChange={set('projectId')}>
+            <select
+              className="input-field text-sm bg-white"
+              value={form.projectId ? String(form.projectId) : ''}
+              onChange={set('projectId')}
+            >
               <option value="">Select project (Optional)</option>
               {accessibleProjects.map(p => (
-                <option key={p.id} value={p.id}>
+                <option key={p.id} value={String(p.id)}>
                   {p.name}
                 </option>
               ))}

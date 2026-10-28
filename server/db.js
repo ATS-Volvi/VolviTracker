@@ -992,6 +992,7 @@ export async function deleteProjectRecord(id) {
 export async function createTaskRecord(task) {
   await initDb();
   const id = task.id && !task.id.startsWith('temp_') ? task.id : ('task_' + Date.now() + Math.random().toString(36).substring(2, 6));
+  const taskName = (task.name || task.title || '').trim();
   const assigneeIdsJson = JSON.stringify(Array.isArray(task.assigneeIds) ? task.assigneeIds : []);
   const assigneeId = (task.assigneeIds && task.assigneeIds[0]) || task.assigneeId || '';
   const projectId = task.projectId || '';
@@ -1002,9 +1003,19 @@ export async function createTaskRecord(task) {
     INSERT INTO tasks (
       id, name, project_id, parent_id, status, due_date, priority, description, assignee_ids, assignee_id
     ) VALUES (
-      ${id}, ${task.name}, ${projectId}, ${parentId}, ${status}, ${task.dueDate || ''},
+      ${id}, ${taskName}, ${projectId}, ${parentId}, ${status}, ${task.dueDate || ''},
       ${task.priority || 'Medium'}, ${task.description || ''}, ${assigneeIdsJson}::jsonb, ${assigneeId}
-    );
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name,
+      project_id = EXCLUDED.project_id,
+      parent_id = EXCLUDED.parent_id,
+      status = EXCLUDED.status,
+      due_date = EXCLUDED.due_date,
+      priority = EXCLUDED.priority,
+      description = EXCLUDED.description,
+      assignee_ids = EXCLUDED.assignee_ids,
+      assignee_id = EXCLUDED.assignee_id;
   `;
 
   // Auto-recalculate project progress if associated with a project
@@ -1070,6 +1081,7 @@ export async function deleteTaskRecord(id) {
 export async function createMeetingRecord(meeting) {
   await initDb();
   const id = meeting.id || ('meet_' + Date.now() + Math.random().toString(36).substring(2, 6));
+  const meetingName = (meeting.name || meeting.title || '').trim();
   const attendeeIdsJson = JSON.stringify(Array.isArray(meeting.attendeeIds) ? meeting.attendeeIds : []);
   const attendeeId = (meeting.attendeeIds && meeting.attendeeIds[0]) || meeting.attendeeId || '';
 
@@ -1077,9 +1089,16 @@ export async function createMeetingRecord(meeting) {
     INSERT INTO meetings (
       id, name, date_time, status, url, attendee_ids, attendee_id
     ) VALUES (
-      ${id}, ${meeting.name}, ${meeting.dateTime || ''}, ${meeting.status || 'Not started'},
+      ${id}, ${meetingName}, ${meeting.dateTime || ''}, ${meeting.status || 'Not started'},
       ${meeting.url || ''}, ${attendeeIdsJson}::jsonb, ${attendeeId}
-    );
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name,
+      date_time = EXCLUDED.date_time,
+      status = EXCLUDED.status,
+      url = EXCLUDED.url,
+      attendee_ids = EXCLUDED.attendee_ids,
+      attendee_id = EXCLUDED.attendee_id;
   `;
 
   const created = await sql`SELECT * FROM meetings WHERE id = ${id}`;

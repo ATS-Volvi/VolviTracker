@@ -122,6 +122,7 @@ export const DataProvider = ({ children }) => {
   const dataRef = useRef(data);
   dataRef.current = data;
   const deletedEmployeeIds = useRef(new Set());
+  const deletedTaskIds = useRef(new Set());
 
   // Persist changes to localStorage cache
   const saveLocal = useCallback((key, value) => {
@@ -173,6 +174,25 @@ export const DataProvider = ({ children }) => {
         // Filter out any locally deleted employees that remote Neon might still be returning
         if (deletedEmployeeIds.current.size > 0) {
           remoteEmployees = remoteEmployees.filter(re => !deletedEmployeeIds.current.has(re.id));
+        }
+
+        // Automatic Local-to-Cloud Sync & preservation for Tasks:
+        // Ensure any locally created tasks are preserved and synced to Neon DB
+        // instead of being wiped out if the remote database fetch happens before or during writes!
+        const localTasks = dataRef.current?.tasks || [];
+        for (const lt of localTasks) {
+          if (!lt || !lt.id) continue;
+          if (deletedTaskIds.current.has(lt.id)) continue;
+          const exists = remoteTasks.some(rt => String(rt.id) === String(lt.id));
+          if (!exists) {
+            remoteTasks.push(lt);
+            apiCreateTask(lt).catch(e => console.error('[Cloud Sync] Failed to sync local task to Neon:', e));
+          }
+        }
+
+        // Filter out any locally deleted tasks that remote Neon might still be returning
+        if (deletedTaskIds.current.size > 0) {
+          remoteTasks = remoteTasks.filter(rt => !deletedTaskIds.current.has(rt.id));
         }
 
         // Automatic Local-to-Cloud Sync:
@@ -660,6 +680,7 @@ export const DataProvider = ({ children }) => {
 
     // Sync to Neon Cloud
     toDelete.forEach(delId => {
+      deletedTaskIds.current.add(delId);
       apiDeleteTask(delId).catch(e => console.error('[Neon Error] removeTask:', e));
     });
   };
