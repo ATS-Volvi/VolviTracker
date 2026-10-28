@@ -15,6 +15,7 @@ const TaxFinance = lazy(() => import('./pages/finance/TaxFinance'));
 const CashFlowFinance = lazy(() => import('./pages/finance/CashFlowFinance'));
 const MasterData = lazy(() => import('./pages/masterData/MasterData'));
 const TasksPage = lazy(() => import('./pages/TasksPage'));
+const ProjectEditPage = lazy(() => import('./pages/ProjectEditPage'));
 
 const PageLoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -134,6 +135,30 @@ const App = () => {
                     <RequireProjectAccess>
                       <Dashboard />
                     </RequireProjectAccess>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/projects/new"
+                element={
+                  <RequireAuth>
+                    <ProjectEditPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/projects/:id/edit"
+                element={
+                  <RequireAuth>
+                    <ProjectEditPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/projects/:id"
+                element={
+                  <RequireAuth>
+                    <ProjectEditPage />
                   </RequireAuth>
                 }
               />

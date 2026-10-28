@@ -15,7 +15,7 @@ const getLocalDateString = (d = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
-export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
+export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false }) => {
   const navigate = useNavigate();
   const { employees, addProjectWithTasks, updateProjectWithTasks, getProjectTasks } = useData();
   const { user, isAdmin, isProjectManager } = useAuth();
@@ -25,10 +25,10 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   // Load registered master entities (Clients & Suppliers)
   const [financeData, setFinanceData] = useState(() => loadFinanceData());
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen || isPage) {
       setFinanceData(loadFinanceData());
     }
-  }, [isOpen]);
+  }, [isOpen, isPage]);
 
   const masterDirectory = financeData.masterDirectory || [];
   const clientsList = useMemo(() => masterDirectory.filter(e => e.category === 'Client'), [masterDirectory]);
@@ -404,12 +404,12 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
 
     if (initial) {
       updateProjectWithTasks(initial.id, payload, projectTasks);
-      onClose();
-      navigate(`/tasks?projectId=${initial.id}`);
+      if (onClose && !isPage) onClose();
+      navigate(`/projects/${initial.id}/tasks`);
     } else {
       const created = addProjectWithTasks(payload, []);
-      onClose();
-      navigate(`/tasks?projectId=${created.id}`);
+      if (onClose && !isPage) onClose();
+      navigate(`/projects/${created.id}/tasks`);
     }
   };
 
@@ -451,34 +451,22 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
       addProjectWithTasks(payload, formattedTasks);
       addToast(`Created project "${form.name}" with ${formattedTasks.length} tasks!`, 'success');
     }
-    onClose();
+    if (onClose) {
+      onClose();
+    } else {
+      navigate('/projects');
+    }
   };
 
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={initial ? 'Edit Project' : 'Create New Project'}
-      maxWidth="max-w-5xl xl:max-w-6xl"
-      noPadding={true}
-      containerClassName="h-[90vh]"
-      headerActions={
-        <button
-          type="submit"
-          form="project-form-modal"
-          className="btn-primary text-xs font-bold px-3.5 py-1.5 flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition"
-          title="Save project and all tasks"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-          </svg>
-          <span>{initial ? 'Save Project' : 'Create Project'}</span>
-        </button>
-      }
-    >
-      <form id="project-form-modal" onSubmit={submit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
-        {/* Scrollable Form Body */}
-        <div className="p-6 space-y-6 overflow-y-auto flex-1 min-h-0">
+
+  const handleBack = () => {
+    if (onClose) onClose();
+    else navigate('/projects');
+  };
+
+  const formFields = (
+    <div className="space-y-6">
+
         {/* Top: Project Info & Team */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Core Fields */}
@@ -1254,6 +1242,185 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
           </div>
         </div>
 
+        
+    </div>
+  );
+
+  if (isPage) {
+    return (
+      <div className="w-full min-h-screen bg-[#FBFBFC] px-4 sm:px-8 py-6 pb-28 space-y-6 animate-fade-in">
+        {/* Top Breadcrumb & Navigation */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-200/80">
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 flex-wrap">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-1.5 text-gray-600 hover:text-blue-600 font-semibold transition group cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px] text-gray-400 group-hover:text-blue-600">arrow_back</span>
+              <span>Projects</span>
+            </button>
+            <span className="text-gray-300">/</span>
+            <span className="text-gray-800 font-bold truncate max-w-[200px] sm:max-w-[320px]">
+              {form.name || initial?.name || (initial ? 'Edit Project' : 'New Project')}
+            </span>
+            <span className="text-gray-300">/</span>
+            <span className="text-blue-600 font-semibold">Project Details</span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-2xs transition cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px] text-gray-500">folder</span>
+              <span>Back to Projects</span>
+            </button>
+            {initial && (
+              <button
+                type="button"
+                onClick={handleGoToTasksPage}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-xs font-bold transition shadow-2xs cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px]">task_alt</span>
+                <span>Manage Tasks ({totalTasks}) →</span>
+              </button>
+            )}
+            <button
+              type="submit"
+              form="project-form-main"
+              className="btn-primary text-xs font-bold px-4 py-1.5 flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
+              <span>{initial ? 'Save Project' : 'Create Project'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Project Header Banner & Subpage Navigation Tabs */}
+        <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-xs">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="space-y-1.5 min-w-0">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 font-bold text-base shrink-0">
+                  📁
+                </span>
+                <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight truncate">
+                  {form.name || initial?.name || (initial ? 'Edit Project' : 'Create New Project')}
+                </h1>
+                <span
+                  className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                    form.status === 'Done'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : form.status === 'In progress'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-gray-100 text-gray-600 border-gray-200'
+                  }`}
+                >
+                  {form.status || 'Not started'}
+                </span>
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {hasTasks ? autoProgress : form.progress}% Progress
+                </span>
+              </div>
+              <p className="text-xs text-gray-500">
+                {initial
+                  ? 'Update project commercial terms, client/supplier links, stakeholder contacts, and team assignments.'
+                  : 'Enter project details, assign client and suppliers, and set deadlines.'}
+              </p>
+            </div>
+
+            {/* Subpage navigation tabs if editing existing project */}
+            {initial && (
+              <div className="flex items-center bg-gray-100/80 p-1 rounded-xl self-start lg:self-auto shrink-0 border border-gray-200/50">
+                <button
+                  type="button"
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-white text-blue-600 shadow-2xs cursor-default flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-[16px]">edit_document</span>
+                  <span>Project Details</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGoToTasksPage}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-white/60 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px] text-gray-400">task_alt</span>
+                  <span>Tasks Subpage ({totalTasks})</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Main Form Body in full-width Card */}
+        <div className="bg-white border border-gray-200/90 rounded-2xl p-6 sm:p-7 shadow-xs">
+          <form id="project-form-main" onSubmit={submit}>
+            {formFields}
+          </form>
+        </div>
+
+        {/* Sticky Bottom Action Bar */}
+        <div className="fixed bottom-0 left-0 right-0 lg:left-64 z-30 bg-white/95 backdrop-blur-md border-t border-gray-200 px-6 py-3.5 shadow-lg flex items-center justify-between">
+          <div className="text-xs text-gray-500">
+            {hasTasks ? (
+              <span>
+                Progress: <strong className="text-emerald-600">{autoProgress}%</strong> ({completedTasks}/{totalTasks} tasks done)
+              </span>
+            ) : (
+              <span>Progress: <strong className="text-gray-700">{form.progress}%</strong></span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="btn-ghost text-xs px-4 py-2 cursor-pointer"
+              onClick={handleBack}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="project-form-main"
+              className="btn-primary text-xs font-bold px-5 py-2 shadow-xs cursor-pointer"
+            >
+              {initial ? 'Save Project' : 'Create Project'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={initial ? 'Edit Project' : 'Create New Project'}
+      maxWidth="max-w-5xl xl:max-w-6xl"
+      noPadding={true}
+      containerClassName="h-[90vh]"
+      headerActions={
+        <button
+          type="submit"
+          form="project-form-modal"
+          className="btn-primary text-xs font-bold px-3.5 py-1.5 flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition"
+          title="Save project and all tasks"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+          </svg>
+          <span>{initial ? 'Save Project' : 'Create Project'}</span>
+        </button>
+      }
+    >
+      <form id="project-form-modal" onSubmit={submit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div className="p-6 space-y-6 overflow-y-auto flex-1 min-h-0">
+          {formFields}
         </div>
 
         {/* Pinned Bottom Footer Actions (Always Visible) */}

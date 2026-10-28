@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
@@ -46,6 +47,7 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
   const { employees, addProject, updateProject, removeProject, getEmployee, addTask, tasks } = useData();
   const { user, isAdmin, isProjectManager } = useAuth();
   const { addToast } = useToast();
+  const navigate = useNavigate();
 
   // Active View: 'table', 'board', 'timeline', 'cards'
   const [currentView, setCurrentView] = useState('table');
@@ -439,7 +441,7 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
 
             {/* New Project Button */}
             <button
-              onClick={() => { setEditingProject(null); setModalOpen(true); }}
+              onClick={() => navigate('/projects/new')}
               className="bg-[#0070F3] hover:bg-blue-600 text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-1.5 transition active:scale-95 shadow-sm ml-1.5"
             >
               <span className="text-base font-bold leading-none">+</span>
@@ -593,7 +595,7 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                         <div className="flex items-center justify-between group/cell">
                           <div className="min-w-0 pr-2">
                             <button
-                              onClick={() => { setEditingProject(p); setModalOpen(true); }}
+                              onClick={() => navigate(`/projects/${p.id}/edit`)}
                               className="text-left font-medium text-gray-800 hover:text-blue-600 transition truncate hover:underline cursor-pointer block"
                               title="Click to edit project"
                             >
@@ -637,7 +639,7 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                           </div>
                           <div className="opacity-0 group-hover/cell:opacity-100 flex items-center gap-1">
                             <button
-                              onClick={() => { setEditingProject(p); setModalOpen(true); }}
+                              onClick={() => navigate(`/projects/${p.id}/edit`)}
                               title="Full Edit"
                               className="text-gray-400 hover:text-blue-600 p-0.5 rounded transition text-[11px]"
                             >
@@ -1021,7 +1023,7 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <button
-                              onClick={() => { setEditingProject(p); setModalOpen(true); }}
+                              onClick={() => navigate(`/projects/${p.id}/edit`)}
                               className="font-bold text-sm text-gray-800 text-left hover:text-blue-600 transition block truncate"
                             >
                               {p.name}
@@ -1176,7 +1178,7 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                   <div key={p.id} className="flex items-center gap-4 group">
                     <div className="w-48 text-xs font-semibold text-gray-800 truncate flex items-center justify-between pr-2">
                       <button
-                        onClick={() => { setEditingProject(p); setModalOpen(true); }}
+                        onClick={() => navigate(`/projects/${p.id}/edit`)}
                         className="truncate font-semibold text-gray-800 text-left hover:text-blue-600 hover:underline transition cursor-pointer"
                         title="Click to edit project"
                       >
@@ -1195,7 +1197,7 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                     <div className="flex-1 grid grid-cols-12 gap-1 relative h-10 bg-gray-50/70 rounded-lg p-1 items-center">
                       <div
                         style={{ gridColumnStart: startM + 1, gridColumnEnd: `span ${colSpan}` }}
-                        onClick={() => { setEditingProject(p); setModalOpen(true); }}
+                        onClick={() => navigate(`/projects/${p.id}/edit`)}
                         className="h-8 bg-gray-100 border border-gray-200/90 rounded-lg shadow-xs relative overflow-hidden flex items-center cursor-pointer transition-all group/bar hover:border-blue-400 hover:shadow-sm"
                         title={`${p.name}: ${pct}% completed (${p.startDate ? p.startDate.slice(0, 10) : '—'} to ${p.endDate ? p.endDate.slice(0, 10) : '—'})`}
                       >
@@ -1269,7 +1271,7 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                       ✨
                     </button>
                     <button
-                      onClick={() => { setEditingProject(p); setModalOpen(true); }}
+                      onClick={() => navigate(`/projects/${p.id}/edit`)}
                       className="text-xs p-1 text-gray-400 hover:text-gray-700 rounded"
                     >
                       ✏️
@@ -1278,7 +1280,7 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                 </div>
 
                 <h3
-                  onClick={() => { setEditingProject(p); setModalOpen(true); }}
+                  onClick={() => navigate(`/projects/${p.id}/edit`)}
                   className="text-base font-bold text-gray-900 mt-3 hover:text-blue-600 transition cursor-pointer hover:underline truncate"
                   title="Click to edit project"
                 >

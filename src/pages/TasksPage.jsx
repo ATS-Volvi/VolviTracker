@@ -78,9 +78,13 @@ export const TasksPage = () => {
           <span className="text-gray-300">/</span>
           {activeProject ? (
             <>
-              <span className="text-gray-800 font-bold truncate max-w-[200px] sm:max-w-[320px]">
+              <Link
+                to={`/projects/${activeProject.id}/edit`}
+                className="text-gray-800 hover:text-blue-600 font-bold truncate max-w-[200px] sm:max-w-[320px] transition hover:underline"
+                title="Go to Project Details"
+              >
                 {activeProject.name}
-              </span>
+              </Link>
               <span className="text-gray-300">/</span>
               <span className="text-blue-600 font-semibold">Tasks & Deadlines</span>
             </>
@@ -89,7 +93,16 @@ export const TasksPage = () => {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {activeProject && (
+            <Link
+              to={`/projects/${activeProject.id}/edit`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-2xs transition"
+            >
+              <span className="material-symbols-outlined text-[16px] text-blue-600">edit_document</span>
+              <span>Project Details</span>
+            </Link>
+          )}
           <Link
             to="/projects"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-2xs transition"
@@ -203,6 +216,21 @@ export const TasksPage = () => {
             <span className="text-xs font-bold text-gray-700 tabular-nums shrink-0">
               {completedTasksCount} of {totalTasksCount} tasks completed ({progressPct}%)
             </span>
+          </div>
+
+          {/* Subpage navigation tabs */}
+          <div className="mt-3.5 pt-3 border-t border-gray-100 flex items-center gap-2">
+            <Link
+              to={`/projects/${activeProject.id}/edit`}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-[16px] text-gray-400">edit_document</span>
+              <span>Project Details</span>
+            </Link>
+            <div className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/60 shadow-2xs flex items-center gap-1.5 cursor-default">
+              <span className="material-symbols-outlined text-[16px] text-blue-600">task_alt</span>
+              <span>Tasks & Deadlines ({totalTasksCount})</span>
+            </div>
           </div>
         </div>
       )}
