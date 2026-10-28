@@ -173,9 +173,17 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
   const excelFileInputRef = useRef(null);
   const [isImporting, setIsImporting] = useState(false);
 
+  // Project team members dropdown state
+  const [showProjectTeamDropdown, setShowProjectTeamDropdown] = useState(false);
+  const [projectTeamSearch, setProjectTeamSearch] = useState('');
+  const projectTeamDropdownRef = useRef(null);
+
   // Close assignee dropdowns when clicking outside
   useEffect(() => {
     const handleDocClick = (e) => {
+      if (projectTeamDropdownRef.current && !projectTeamDropdownRef.current.contains(e.target)) {
+        setShowProjectTeamDropdown(false);
+      }
       if (assigneeDropdownRef.current && !assigneeDropdownRef.current.contains(e.target)) {
         setShowAssigneeDropdown(false);
       }
@@ -1074,8 +1082,8 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
               </div>
             </div>
 
-            {/* Project Team Members (Assignees) */}
-            <div>
+            {/* Project Team Members (Assignees Dropdown) */}
+            <div className="relative" ref={projectTeamDropdownRef}>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-semibold text-gray-700">
                   Project Team Members {canAssignAnyone ? '(Assign any team member)' : ''}
@@ -1085,27 +1093,235 @@ export const ProjectForm = ({ isOpen, onClose, initial = null }) => {
                 </span>
               </div>
               {canAssignAnyone ? (
-                <div className="flex flex-wrap gap-1.5 p-2 bg-gray-50 border border-gray-200 rounded-lg max-h-28 overflow-y-auto custom-scrollbar">
-                  {employees.map(emp => {
-                    const isSelected = form.assigneeIds.includes(emp.id);
-                    return (
-                      <button
-                        key={emp.id}
-                        type="button"
-                        onClick={() => toggleAssignee(emp.id)}
-                        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition cursor-pointer ${
-                          isSelected
-                            ? 'bg-purple-600 text-white shadow-2xs font-bold'
-                            : 'bg-white text-gray-700 border border-gray-200 hover:border-purple-300 hover:bg-purple-50/50'
-                        }`}
-                      >
-                        <img src={emp.avatar} alt={emp.fullName} className="w-4 h-4 rounded-full object-cover" />
-                        <span className="truncate max-w-[110px]">{emp.fullName}</span>
-                        {isSelected && <span className="text-[10px] font-bold">✓</span>}
-                      </button>
-                    );
-                  })}
-                </div>
+                <>
+                  {/* Dropdown trigger button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowProjectTeamDropdown(!showProjectTeamDropdown)}
+                    className="input-field text-xs min-h-[38px] py-1.5 px-3 bg-white flex items-center justify-between gap-2 w-full text-left cursor-pointer hover:border-purple-400 transition"
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1 truncate">
+                      {form.assigneeIds.length === 0 ? (
+                        <div className="flex items-center gap-1.5 text-gray-400">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                          </svg>
+                          <span>Select team members...</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 min-w-0 flex-1 truncate">
+                          <div className="flex items-center -space-x-1.5 shrink-0 overflow-hidden">
+                            {form.assigneeIds.slice(0, 4).map(id => {
+                              const emp = employees.find(e => e.id === id);
+                              return emp ? (
+                                <img
+                                  key={id}
+                                  src={emp.avatar}
+                                  alt={emp.fullName}
+                                  className="w-5 h-5 rounded-full object-cover ring-2 ring-white shadow-2xs"
+                                  onError={(ev) => {
+                                    ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.fullName)}&background=8b5cf6&color=fff`;
+                                  }}
+                                />
+                              ) : null;
+                            })}
+                          </div>
+                          <span className="text-xs font-semibold text-gray-800 truncate">
+                            {form.assigneeIds.length === 1
+                              ? employees.find(e => e.id === form.assigneeIds[0])?.fullName
+                              : form.assigneeIds.length <= 3
+                              ? form.assigneeIds.map(id => employees.find(e => e.id === id)?.fullName.split(' ')[0]).filter(Boolean).join(', ')
+                              : `${form.assigneeIds.length} team members selected`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 text-gray-400">
+                      {form.assigneeIds.length > 0 && (
+                        <span
+                          role="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setForm(prev => ({ ...prev, assigneeIds: [] }));
+                          }}
+                          className="hover:text-rose-500 hover:bg-rose-50 rounded p-0.5 text-xs font-bold transition px-1"
+                          title="Clear all"
+                        >
+                          ✕
+                        </span>
+                      )}
+                      <svg className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${showProjectTeamDropdown ? 'rotate-180 text-purple-600' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {showProjectTeamDropdown && (
+                    <div className="absolute z-40 left-0 right-0 mt-1.5 rounded-xl bg-white border border-gray-200 shadow-xl p-2.5 space-y-2 animate-slide-up text-left">
+                      {/* Search box inside dropdown */}
+                      <div className="relative">
+                        <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        <input
+                          type="text"
+                          placeholder="Search members by name or role..."
+                          value={projectTeamSearch}
+                          onChange={(e) => setProjectTeamSearch(e.target.value)}
+                          className="w-full text-xs pl-8 pr-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-hidden focus:bg-white focus:ring-1 focus:ring-purple-500"
+                          autoFocus
+                        />
+                      </div>
+
+                      {/* Action Bar */}
+                      <div className="flex items-center justify-between pb-1.5 border-b border-gray-100 text-[11px] px-1">
+                        <span className="font-semibold text-gray-600">
+                          {form.assigneeIds.length} of {employees.length} selected
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const allIds = employees.map(e => e.id);
+                              setForm(prev => ({ ...prev, assigneeIds: allIds }));
+                            }}
+                            className="text-purple-600 hover:text-purple-800 font-semibold hover:underline"
+                          >
+                            Select all
+                          </button>
+                          <span className="text-gray-300">|</span>
+                          <button
+                            type="button"
+                            onClick={() => setForm(prev => ({ ...prev, assigneeIds: [] }))}
+                            className="text-gray-400 hover:text-gray-600 hover:underline"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Member list */}
+                      <div className="max-h-56 overflow-y-auto space-y-1 custom-scrollbar pr-0.5">
+                        {(() => {
+                          const query = projectTeamSearch.toLowerCase().trim();
+                          const filtered = employees.filter(e =>
+                            !query ||
+                            (e.fullName && e.fullName.toLowerCase().includes(query)) ||
+                            (e.role && e.role.toLowerCase().includes(query)) ||
+                            (e.email && e.email.toLowerCase().includes(query))
+                          );
+
+                          if (filtered.length === 0) {
+                            return (
+                              <div className="p-3 text-center text-xs text-gray-400">
+                                No matching team members found
+                              </div>
+                            );
+                          }
+
+                          // Sort so selected members appear first
+                          const sorted = [...filtered].sort((a, b) => {
+                            const aSel = form.assigneeIds.includes(a.id);
+                            const bSel = form.assigneeIds.includes(b.id);
+                            if (aSel && !bSel) return -1;
+                            if (!aSel && bSel) return 1;
+                            return (a.fullName || '').localeCompare(b.fullName || '');
+                          });
+
+                          return sorted.map(emp => {
+                            const isSelected = form.assigneeIds.includes(emp.id);
+                            return (
+                              <div
+                                key={emp.id}
+                                onClick={() => toggleAssignee(emp.id)}
+                                className={`flex items-center justify-between p-2 rounded-lg text-xs transition cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-purple-50 text-purple-900 border border-purple-200/80 font-medium'
+                                    : 'hover:bg-gray-50 text-gray-700 border border-transparent'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition shrink-0 ${
+                                    isSelected
+                                      ? 'bg-purple-600 border-purple-600 text-white'
+                                      : 'border-gray-300 bg-white'
+                                  }`}>
+                                    {isSelected && (
+                                      <svg className="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                      </svg>
+                                    )}
+                                  </div>
+                                  <img
+                                    src={emp.avatar}
+                                    alt={emp.fullName}
+                                    className="w-6 h-6 rounded-full object-cover shrink-0 ring-1 ring-gray-200"
+                                    onError={(ev) => {
+                                      ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.fullName)}&background=8b5cf6&color=fff`;
+                                    }}
+                                  />
+                                  <div className="min-w-0 flex-1 truncate">
+                                    <div className="font-semibold text-gray-900 truncate flex items-center gap-1.5">
+                                      <span>{emp.fullName}</span>
+                                      {emp.userType === 'external' && (
+                                        <span className="text-[9px] px-1 py-0.2 bg-amber-50 text-amber-700 rounded border border-amber-200 font-normal">
+                                          External
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-gray-500 truncate">
+                                      {emp.role || 'Member'}{emp.organization ? ` • ${emp.organization}` : ''}
+                                    </div>
+                                  </div>
+                                </div>
+                                {isSelected && (
+                                  <span className="text-[11px] font-bold text-purple-600 shrink-0 ml-2">
+                                    ✓
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Selected members chips preview */}
+                  {form.assigneeIds.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2 pt-1">
+                      {form.assigneeIds.map(id => {
+                        const emp = employees.find(e => e.id === id);
+                        if (!emp) return null;
+                        return (
+                          <span
+                            key={id}
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-purple-50 text-purple-800 border border-purple-200 shadow-2xs"
+                          >
+                            <img
+                              src={emp.avatar}
+                              alt={emp.fullName}
+                              className="w-3.5 h-3.5 rounded-full object-cover"
+                              onError={(ev) => {
+                                ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.fullName)}&background=8b5cf6&color=fff`;
+                              }}
+                            />
+                            <span className="max-w-[120px] truncate">{emp.fullName}</span>
+                            <button
+                              type="button"
+                              onClick={() => toggleAssignee(id)}
+                              className="text-purple-400 hover:text-purple-700 hover:bg-purple-200/50 rounded-full w-3.5 h-3.5 flex items-center justify-center text-[10px] font-bold ml-0.5 transition"
+                              title="Remove"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="p-2 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 flex items-center gap-2">
                   <span className="font-semibold">{user?.fullName || 'You'}</span>
