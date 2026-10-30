@@ -1241,15 +1241,16 @@ export async function updatePasswordByEmail(email, newPasswordHash) {
 export async function deleteEmployeeRecord(id) {
   await initDb();
   if (!id) return { success: false };
-  await sql`DELETE FROM employees WHERE id = ${id}`;
+  const strId = String(id).trim();
+  await sql`DELETE FROM employees WHERE id = ${strId} OR LOWER(email) = LOWER(${strId})`;
   try {
-    await sql`UPDATE projects SET assignee_id = '' WHERE assignee_id = ${id}`;
-    await sql`UPDATE tasks SET assignee_id = '' WHERE assignee_id = ${id}`;
-    await sql`UPDATE meetings SET attendee_id = '' WHERE attendee_id = ${id}`;
+    await sql`UPDATE projects SET assignee_id = '' WHERE assignee_id = ${strId}`;
+    await sql`UPDATE tasks SET assignee_id = '' WHERE assignee_id = ${strId}`;
+    await sql`UPDATE meetings SET attendee_id = '' WHERE attendee_id = ${strId}`;
   } catch (err) {
     console.warn('[DB] Non-critical warning cleaning up employee references:', err.message);
   }
-  return { success: true, id };
+  return { success: true, id: strId };
 }
 
 // Helper: Calculate project progress from its tasks in DB
