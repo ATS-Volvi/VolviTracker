@@ -1,36 +1,43 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
-  @apply bg-[#FBFBFC] text-[#111827] antialiased selection:bg-blue-500 selection:text-white;
+  @apply bg-[#F8FAFC] text-[#0F172A] antialiased selection:bg-blue-600 selection:text-white;
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: -0.011em;
 }
 
 @layer components {
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-tight;
   }
   .btn-primary {
-    @apply bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-sm hover:shadow active:scale-[0.98];
+    @apply bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold px-4 py-2 rounded-xl transition-all duration-150 shadow-sm hover:shadow active:scale-[0.98] cursor-pointer inline-flex items-center justify-center gap-1.5 text-sm;
+  }
+  .btn-secondary {
+    @apply bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 font-semibold px-3.5 py-2 rounded-xl border border-slate-200/90 shadow-sm hover:border-slate-300 transition-all duration-150 active:scale-[0.98] cursor-pointer inline-flex items-center justify-center gap-1.5 text-sm;
   }
   .btn-ghost {
-    @apply bg-gray-100 text-gray-700 px-3.5 py-1.5 rounded-lg hover:bg-gray-200 transition text-xs font-medium active:scale-[0.98];
+    @apply bg-slate-100/80 hover:bg-slate-200/80 active:bg-slate-200 text-slate-700 font-semibold px-3 py-1.5 rounded-xl transition-all duration-150 text-xs active:scale-[0.98] cursor-pointer inline-flex items-center justify-center gap-1.5;
   }
   .input-field {
-    @apply w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition bg-white;
+    @apply w-full border border-slate-200/90 rounded-xl px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/15 focus:border-blue-500 transition-all duration-150 bg-white;
   }
   .card {
-    @apply bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03)] border border-gray-200/80;
+    @apply bg-white rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04),0_1px_2px_rgba(0,0,0,0.02)] border border-slate-200/80;
+  }
+  .card-hover {
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300/80;
   }
 }
 
 @keyframes slideUp {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(0.96);
+    transform: translateY(10px) scale(0.97);
   }
   to {
     opacity: 1;
@@ -39,7 +46,7 @@ body {
 }
 
 .animate-slide-up {
-  animation: slideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes pulseGlow {
@@ -71,7 +78,7 @@ body {
 .custom-scrollbar,
 .modal-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(156, 163, 175, 0.4) transparent;
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
 }
 .custom-scrollbar::-webkit-scrollbar,
 .modal-scrollbar::-webkit-scrollbar {
@@ -85,12 +92,12 @@ body {
 }
 .custom-scrollbar::-webkit-scrollbar-thumb,
 .modal-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.35);
+  background: rgba(148, 163, 184, 0.35);
   border-radius: 9999px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover,
 .modal-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(156, 163, 175, 0.65);
+  background: rgba(148, 163, 184, 0.65);
 }
 .custom-scrollbar::-webkit-scrollbar-button,
 .modal-scrollbar::-webkit-scrollbar-button {

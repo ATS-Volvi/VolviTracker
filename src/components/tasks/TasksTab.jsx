@@ -35,7 +35,12 @@ export const TasksTab = ({
   defaultProjectId = null,
   showBackToProjects = false,
   showQuickInlineAdd = true,
-  showExcelActions = true
+  showExcelActions = true,
+  hideProjectFilter = false,
+  lockToProject = false,
+  hideProjectDetailsHeader = false,
+  disableUrlSync = false,
+  asCard = true
 }) => {
   const { user, isAdmin, isProjectManager } = useAuth();
   const canAssignAnyone = Boolean(isAdmin || isProjectManager);
@@ -49,12 +54,14 @@ export const TasksTab = ({
   // Available project tabs:
   // Project-based segregation tabs
   const [activeProjectTab, setActiveProjectTab] = useState(() => {
+    if (lockToProject && defaultProjectId) return String(defaultProjectId);
     return (defaultProjectId && defaultProjectId !== 'all') ? String(defaultProjectId) : (urlProjectId || 'all');
   });
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'active', 'done'
   const [viewMode, setViewMode] = useState('table'); // 'table', 'cards', 'checklist', 'status'
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
 
   // Available project tabs:
   // 1. If projectsProp is explicitly passed (e.g. employee's assigned projects), show those projects.
@@ -90,17 +97,22 @@ export const TasksTab = ({
 
   // Sync active project when defaultProjectId or urlProjectId changes
   useEffect(() => {
+    if (lockToProject && defaultProjectId) {
+      setActiveProjectTab(String(defaultProjectId));
+      return;
+    }
     if (defaultProjectId && defaultProjectId !== 'all') {
       setActiveProjectTab(String(defaultProjectId));
     } else if (urlProjectId) {
       setActiveProjectTab(String(urlProjectId));
     }
-  }, [defaultProjectId, urlProjectId]);
+  }, [defaultProjectId, urlProjectId, lockToProject]);
 
   const handleSelectProjectTab = (pId) => {
+    if (lockToProject) return;
     setActiveProjectTab(pId);
     setIsProjectDropdownOpen(false);
-    if (searchParams.has('projectId') || urlProjectId || defaultProjectId) {
+    if (!disableUrlSync && (searchParams.has('projectId') || urlProjectId || defaultProjectId)) {
       const nextParams = new URLSearchParams(searchParams);
       if (pId === 'all') {
         nextParams.delete('projectId');
@@ -130,6 +142,7 @@ export const TasksTab = ({
 
   // Auto-reset activeProjectTab if the selected project tab is no longer valid
   useEffect(() => {
+    if (lockToProject) return;
     if (relevantProjects.length > 0 && activeProjectTab !== 'all' && activeProjectTab !== 'unassigned') {
       if (defaultProjectId && String(defaultProjectId) === String(activeProjectTab)) {
         return;
@@ -141,7 +154,7 @@ export const TasksTab = ({
         setActiveProjectTab('all');
       }
     }
-  }, [relevantProjects, activeProjectTab, defaultProjectId, allProjects]);
+  }, [relevantProjects, activeProjectTab, defaultProjectId, allProjects, lockToProject]);
 
   const getProject = (pId) => allProjects.find(p => String(p.id) === String(pId));
   const unassignedCount = (allTasks || tasks).filter(t => !t.projectId || !allProjects.some(p => String(p.id) === String(t.projectId))).length;
@@ -206,6 +219,229 @@ export const TasksTab = ({
       return emp ? [emp] : [];
     }
     return [];
+  };
+
+  const subtasksMap = useMemo(() => {
+    const map = new Map();
+    (allTasks || []).forEach(t => {
+      if (t.parentId) {
+        const pId = String(t.parentId);
+        if (!map.has(pId)) map.set(pId, { total: 0, done: 0 });
+        const entry = map.get(pId);
+        entry.total += 1;
+        if (String(t.status || '').toLowerCase() === 'done') {
+          entry.done += 1;
+        }
+      }
+    });
+    return map;
+  }, [allTasks]);
+
+  const fmtFullDate = (d) => {
+    if (!d) return '—';
+    try {
+      const date = new Date(d);
+      if (isNaN(date.getTime())) return d;
+      return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+    } catch {
+      return d;
+    }
+  };
+
+  const getDueMeta = (dueDate, status) => {
+    if (!dueDate) return { isOverdue: false, subtext: null };
+    const isDone = String(status || '').toLowerCase() === 'done';
+    if (isDone) return { isOverdue: false, subtext: null };
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const due = new Date(dueDate);
+    due.setHours(0, 0, 0, 0);
+
+    const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) {
+      return { isOverdue: true, subtext: `Overdue by ${Math.abs(diffDays)}d` };
+    }
+    if (diffDays === 0) {
+      return { isOverdue: false, subtext: 'Due today' };
+    }
+    if (diffDays <= 3) {
+      return { isOverdue: false, subtext: `Due in ${diffDays}d` };
+    }
+    return { isOverdue: false, subtext: null };
+  };
+
+  const getTaskTags = (task) => {
+    if (Array.isArray(task.tags) && task.tags.length > 0) return task.tags;
+    if (typeof task.tags === 'string' && task.tags.trim()) {
+      return task.tags.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    if (task.category) return [task.category];
+
+    const tags = [];
+    const nameLower = String(task.name || '').toLowerCase();
+    if (nameLower.includes('finance') || nameLower.includes('bill') || nameLower.includes('pay') || nameLower.includes('invoice') || nameLower.includes('tax')) {
+      tags.push('Finance');
+    }
+    if (nameLower.includes('ops') || nameLower.includes('agency') || nameLower.includes('affiliate') || nameLower.includes('contract')) {
+      tags.push('Ops');
+    }
+    if (nameLower.includes('market') || nameLower.includes('growth') || nameLower.includes('seo') || nameLower.includes('social')) {
+      tags.push('Marketing');
+    }
+    if (nameLower.includes('design') || nameLower.includes('ui') || nameLower.includes('ux') || nameLower.includes('visual')) {
+      tags.push('Design');
+    }
+    if (nameLower.includes('dev') || nameLower.includes('api') || nameLower.includes('tech') || nameLower.includes('code')) {
+      tags.push('Engineering');
+    }
+    return tags;
+  };
+
+  const handleToggleSelectTask = (taskId) => {
+    setSelectedTaskIds(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = (displayedList) => {
+    if (displayedList.length > 0 && displayedList.every(t => selectedTaskIds.has(t.id))) {
+      setSelectedTaskIds(new Set());
+    } else {
+      setSelectedTaskIds(new Set(displayedList.map(t => t.id)));
+    }
+  };
+
+  const renderPriorityPill = (priority) => {
+    const p = priority || 'Medium';
+    const pLower = String(p).toLowerCase();
+    if (pLower === 'high' || pLower === 'critical') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
+          <span>High</span>
+        </span>
+      );
+    }
+    if (pLower === 'low') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+          <span>Low</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+        <span>Medium</span>
+      </span>
+    );
+  };
+
+  const TaskStatusCell = ({ task, onStatusChange }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const statusRef = useRef(null);
+
+    useEffect(() => {
+      const handleOutside = (e) => {
+        if (statusRef.current && !statusRef.current.contains(e.target)) {
+          setIsOpen(false);
+        }
+      };
+      if (isOpen) {
+        document.addEventListener('mousedown', handleOutside);
+      }
+      return () => document.removeEventListener('mousedown', handleOutside);
+    }, [isOpen]);
+
+    const rawStatus = task.status || 'Not started';
+    const isDone = String(rawStatus).toLowerCase() === 'done';
+
+    let isOverdue = false;
+    if (!isDone && task.dueDate) {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const due = new Date(task.dueDate);
+      due.setHours(0, 0, 0, 0);
+      if (due.getTime() < now.getTime()) {
+        isOverdue = true;
+      }
+    }
+
+    const displayLabel = isOverdue ? 'Overdue' : rawStatus;
+    const dotColor = isOverdue
+      ? 'bg-rose-600'
+      : isDone
+      ? 'bg-emerald-600'
+      : rawStatus === 'In progress'
+      ? 'bg-blue-600'
+      : rawStatus === 'In review'
+      ? 'bg-sky-500'
+      : 'bg-gray-400';
+
+    const pillClass = isOverdue
+      ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+      : isDone
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+      : rawStatus === 'In progress'
+      ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+      : rawStatus === 'In review'
+      ? 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100'
+      : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200';
+
+    const options = ['Not started', 'In progress', 'In review', 'Done'];
+
+    return (
+      <div className="relative inline-block" ref={statusRef}>
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border transition shadow-2xs cursor-pointer ${pillClass}`}
+          title="Click to update status"
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+          <span>{displayLabel}</span>
+        </button>
+
+        {isOpen && (
+          <div className="absolute left-0 z-20 mt-1 w-36 rounded-xl bg-white shadow-xl border border-gray-200 py-1 animate-fade-in text-xs font-semibold">
+            {options.map(opt => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => {
+                  onStatusChange(opt);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-gray-50 transition cursor-pointer ${
+                  rawStatus === opt ? 'bg-blue-50/70 text-blue-700 font-bold' : 'text-gray-700'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    opt === 'Done'
+                      ? 'bg-emerald-600'
+                      : opt === 'In progress'
+                      ? 'bg-blue-600'
+                      : opt === 'In review'
+                      ? 'bg-sky-500'
+                      : 'bg-gray-400'
+                  }`}
+                />
+                <span>{opt}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const AssigneesDisplay = ({ task }) => {
@@ -439,276 +675,287 @@ export const TasksTab = ({
     ? getProject(activeProjectTab)
     : null;
 
+  const hasHeaderContent = Boolean(heading || (activeProjectObj && !hideProjectDetailsHeader) || showExcelActions);
+  const Container = asCard ? 'section' : 'div';
+  const containerClasses = asCard ? 'card p-5' : 'space-y-4';
+
   return (
-    <section className="card p-5">
+    <Container className={containerClasses}>
       {/* Header */}
-      <div className="mb-3 flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-bold text-gray-900">{heading}</h2>
-          {activeProjectObj && (
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-gray-500">
-                Project: <strong className="text-gray-800 font-semibold">{activeProjectObj.name}</strong>
-              </span>
-              {activeProjectObj.clientName && (
+      {hasHeaderContent && (
+        <div className="mb-3 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            {heading && <h2 className="text-lg font-bold text-gray-900">{heading}</h2>}
+            {activeProjectObj && !hideProjectDetailsHeader && (
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                 <span className="text-gray-500">
-                  Client: <strong className="text-gray-700 font-medium">{activeProjectObj.clientName}</strong>
+                  Project: <strong className="text-gray-800 font-semibold">{activeProjectObj.name}</strong>
                 </span>
-              )}
-              {(activeProjectObj.pocName || activeProjectObj.contactDesignation || activeProjectObj.clientDesignation) && (
-                <span className="text-gray-500">
-                  POC: <strong className="text-gray-700 font-medium">{activeProjectObj.pocName || 'Contact'}</strong>
-                  {(activeProjectObj.contactDesignation || activeProjectObj.clientDesignation) && (
-                    <span className="text-gray-400 font-normal"> ({activeProjectObj.contactDesignation || activeProjectObj.clientDesignation})</span>
-                  )}
+                {activeProjectObj.clientName && (
+                  <span className="text-gray-500">
+                    Client: <strong className="text-gray-700 font-medium">{activeProjectObj.clientName}</strong>
+                  </span>
+                )}
+                {(activeProjectObj.pocName || activeProjectObj.contactDesignation || activeProjectObj.clientDesignation) && (
+                  <span className="text-gray-500">
+                    POC: <strong className="text-gray-700 font-medium">{activeProjectObj.pocName || 'Contact'}</strong>
+                    {(activeProjectObj.contactDesignation || activeProjectObj.clientDesignation) && (
+                      <span className="text-gray-400 font-normal"> ({activeProjectObj.contactDesignation || activeProjectObj.clientDesignation})</span>
+                    )}
+                  </span>
+                )}
+                {activeProjectObj.contactEmail && (
+                  <a href={`mailto:${activeProjectObj.contactEmail}`} className="text-blue-600 hover:underline inline-flex items-center gap-0.5" title={activeProjectObj.contactEmail}>
+                    ✉️ {activeProjectObj.contactEmail}
+                  </a>
+                )}
+                {activeProjectObj.contactNumber && (
+                  <a href={`tel:${activeProjectObj.contactNumber}`} className="text-emerald-700 hover:underline inline-flex items-center gap-0.5" title={activeProjectObj.contactNumber}>
+                    📞 {activeProjectObj.contactNumber}
+                  </a>
+                )}
+                {activeProjectObj.refererName && (
+                  <span className="text-gray-500">
+                    Ref: <span className="text-gray-600 italic">{activeProjectObj.refererName}</span>
+                  </span>
+                )}
+                <span className={`badge text-[10px] font-semibold ${
+                  activeProjectObj.status === 'Done' ? 'bg-emerald-100 text-emerald-800' :
+                  activeProjectObj.status === 'In progress' ? 'bg-blue-100 text-blue-800' :
+                  'bg-gray-100 text-gray-700'
+                }`}>
+                  {activeProjectObj.status || 'Not started'}
                 </span>
-              )}
-              {activeProjectObj.contactEmail && (
-                <a href={`mailto:${activeProjectObj.contactEmail}`} className="text-blue-600 hover:underline inline-flex items-center gap-0.5" title={activeProjectObj.contactEmail}>
-                  ✉️ {activeProjectObj.contactEmail}
-                </a>
-              )}
-              {activeProjectObj.contactNumber && (
-                <a href={`tel:${activeProjectObj.contactNumber}`} className="text-emerald-700 hover:underline inline-flex items-center gap-0.5" title={activeProjectObj.contactNumber}>
-                  📞 {activeProjectObj.contactNumber}
-                </a>
-              )}
-              {activeProjectObj.refererName && (
-                <span className="text-gray-500">
-                  Ref: <span className="text-gray-600 italic">{activeProjectObj.refererName}</span>
+                <span className="badge bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                  {Math.round((activeProjectObj.progress <= 1 && activeProjectObj.progress > 0 ? activeProjectObj.progress * 100 : (activeProjectObj.progress || 0)))}% Progress
+                  {currentProjectTasks.length > 0 && ` (${completedCount}/${currentProjectTasks.length} tasks)`}
                 </span>
-              )}
-              <span className={`badge text-[10px] font-semibold ${
-                activeProjectObj.status === 'Done' ? 'bg-emerald-100 text-emerald-800' :
-                activeProjectObj.status === 'In progress' ? 'bg-blue-100 text-blue-800' :
-                'bg-gray-100 text-gray-700'
-              }`}>
-                {activeProjectObj.status || 'Not started'}
-              </span>
-              <span className="badge bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                {Math.round((activeProjectObj.progress <= 1 && activeProjectObj.progress > 0 ? activeProjectObj.progress * 100 : (activeProjectObj.progress || 0)))}% Progress
-                {currentProjectTasks.length > 0 && ` (${completedCount}/${currentProjectTasks.length} tasks)`}
-              </span>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
+            {showExcelActions && (
+              <>
+                {/* Template Download Button */}
+                <button
+                  type="button"
+                  onClick={handleDownloadTemplate}
+                  title="Download formatted Excel template for tasks"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 rounded-lg shadow-2xs transition hover:border-slate-400 focus:outline-none cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span className="hidden sm:inline">Download</span> Template
+                </button>
+
+                {/* Import Excel Button */}
+                <button
+                  type="button"
+                  onClick={() => excelFileInputRef.current?.click()}
+                  disabled={isImporting}
+                  title="Import tasks from an Excel file (.xlsx, .xls, .csv)"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 border border-emerald-600 rounded-lg shadow-2xs transition cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5 text-white shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  <span>{isImporting ? 'Importing...' : 'Import Excel'}</span>
+                </button>
+
+                {/* Hidden file input */}
+                <input
+                  ref={excelFileInputRef}
+                  type="file"
+                  accept=".xlsx, .xls, .csv"
+                  className="hidden"
+                  onChange={handleImportExcelFile}
+                />
+              </>
+            )}
+
+            <button
+              className="btn-primary text-xs sm:text-sm flex items-center gap-1.5 shrink-0"
+              onClick={handleNewTask}
+            >
+              <span className="font-bold">+</span> New task
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap shrink-0">
-          {showExcelActions && (
-            <>
-              {/* Template Download Button */}
-              <button
-                type="button"
-                onClick={handleDownloadTemplate}
-                title="Download formatted Excel template for tasks"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 rounded-lg shadow-2xs transition hover:border-slate-400 focus:outline-none cursor-pointer"
-              >
-                <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                <span className="hidden sm:inline">Download</span> Template
-              </button>
-
-              {/* Import Excel Button */}
-              <button
-                type="button"
-                onClick={() => excelFileInputRef.current?.click()}
-                disabled={isImporting}
-                title="Import tasks from an Excel file (.xlsx, .xls, .csv)"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 border border-emerald-600 rounded-lg shadow-2xs transition cursor-pointer"
-              >
-                <svg className="w-3.5 h-3.5 text-white shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                <span>{isImporting ? 'Importing...' : 'Import Excel'}</span>
-              </button>
-
-              {/* Hidden file input */}
-              <input
-                ref={excelFileInputRef}
-                type="file"
-                accept=".xlsx, .xls, .csv"
-                className="hidden"
-                onChange={handleImportExcelFile}
-              />
-            </>
-          )}
-
-          <button
-            className="btn-primary text-xs sm:text-sm flex items-center gap-1.5 shrink-0"
-            onClick={handleNewTask}
-          >
-            <span className="font-bold">+</span> New task
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Sub-toolbar: Project Filter Dropdown + Status Filter Pills + View Switcher */}
       <div className="flex flex-wrap items-center justify-between gap-3 py-3 border-b border-gray-100 mb-4 text-xs">
         {/* Left: Project Selector Dropdown + Status Filter */}
         <div className="flex items-center gap-2.5 flex-wrap">
           {/* Project Dropdown */}
-          <div className="relative" ref={projectDropdownRef}>
-            <button
-              type="button"
-              onClick={() => setIsProjectDropdownOpen(prev => !prev)}
-              className="h-8 px-3 rounded-lg border border-gray-200/90 bg-white hover:bg-gray-50/90 text-gray-800 font-medium flex items-center gap-2 text-xs shadow-2xs transition"
-              title="Filter tasks by project"
-            >
-              <svg className="w-3.5 h-3.5 text-blue-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
-              <span className="text-gray-400 font-normal">Project:</span>
-              <span className="font-semibold text-gray-900 truncate max-w-[130px] sm:max-w-[200px]">
-                {selectedProjectInfo.label}
-              </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-blue-100 text-blue-700">
-                {selectedProjectInfo.count}
-              </span>
-              {selectedProjectInfo.progress !== null && (
-                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                  {selectedProjectInfo.progress}%
-                </span>
-              )}
-              <svg
-                className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isProjectDropdownOpen ? 'rotate-180 text-blue-600' : ''}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-
-            {/* Dropdown Menu Popup */}
-            {isProjectDropdownOpen && (
-              <div className="absolute left-0 mt-1.5 w-72 sm:w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-30 py-1.5 overflow-hidden animate-slide-up max-h-80 overflow-y-auto">
-                <div className="px-3 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-                  <span>Filter by Project</span>
-                  <span className="text-[10px] font-normal text-gray-400">{relevantProjects.length} projects</span>
-                </div>
-
-                {/* All Tasks Option */}
+          {!hideProjectFilter && !lockToProject && (
+            <>
+              <div className="relative" ref={projectDropdownRef}>
                 <button
                   type="button"
-                  onClick={() => handleSelectProjectTab('all')}
-                  className={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition ${
-                    activeProjectTab === 'all'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-gray-700 hover:bg-gray-50 font-medium'
-                  }`}
+                  onClick={() => setIsProjectDropdownOpen(prev => !prev)}
+                  className="h-8 px-3 rounded-lg border border-gray-200/90 bg-white hover:bg-gray-50/90 text-gray-800 font-medium flex items-center gap-2 text-xs shadow-2xs transition"
+                  title="Filter tasks by project"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-blue-600 text-sm">📋</span>
-                    <span>All Tasks</span>
-                  </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                    activeProjectTab === 'all' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {tasks.length}
+                  <svg className="w-3.5 h-3.5 text-blue-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                  <span className="text-gray-400 font-normal">Project:</span>
+                  <span className="font-semibold text-gray-900 truncate max-w-[130px] sm:max-w-[200px]">
+                    {selectedProjectInfo.label}
                   </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-blue-100 text-blue-700">
+                    {selectedProjectInfo.count}
+                  </span>
+                  {selectedProjectInfo.progress !== null && (
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                      {selectedProjectInfo.progress}%
+                    </span>
+                  )}
+                  <svg
+                    className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isProjectDropdownOpen ? 'rotate-180 text-blue-600' : ''}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </button>
 
-                <div className="my-1 border-t border-gray-100" />
+                {/* Dropdown Menu Popup */}
+                {isProjectDropdownOpen && (
+                  <div className="absolute left-0 mt-1.5 w-72 sm:w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-30 py-1.5 overflow-hidden animate-slide-up max-h-80 overflow-y-auto">
+                    <div className="px-3 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                      <span>Filter by Project</span>
+                      <span className="text-[10px] font-normal text-gray-400">{relevantProjects.length} projects</span>
+                    </div>
 
-                {/* Individual Projects */}
-                {relevantProjects.map(p => {
-                  const count = (allTasks || tasks).filter(t => String(t.projectId) === String(p.id)).length;
-                  const isActive = String(activeProjectTab) === String(p.id);
-                  const pPct = Math.round((p.progress <= 1 && p.progress > 0 ? p.progress * 100 : (p.progress || 0)));
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => handleSelectProjectTab(p.id)}
-                      className={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition ${
-                        isActive
-                          ? 'bg-blue-50 text-blue-700 font-bold'
-                          : 'text-gray-700 hover:bg-gray-50 font-medium'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
-                        <span className="text-gray-400 text-sm shrink-0">📁</span>
-                        <span className="truncate">{p.name}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                          isActive ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {count}
-                        </span>
-                        {count > 0 && (
-                          <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
-                            {pPct}%
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-
-                {/* Unassigned Tasks (if any) */}
-                {unassignedCount > 0 && (
-                  <>
-                    <div className="my-1 border-t border-gray-100" />
+                    {/* All Tasks Option */}
                     <button
                       type="button"
-                      onClick={() => {
-                        setActiveProjectTab('unassigned');
-                        setIsProjectDropdownOpen(false);
-                      }}
+                      onClick={() => handleSelectProjectTab('all')}
                       className={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition ${
-                        activeProjectTab === 'unassigned'
+                        activeProjectTab === 'all'
                           ? 'bg-blue-50 text-blue-700 font-bold'
                           : 'text-gray-700 hover:bg-gray-50 font-medium'
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-gray-400 text-sm">📄</span>
-                        <span>No Project (Unassigned)</span>
+                        <span className="text-blue-600 text-sm">📋</span>
+                        <span>All Tasks</span>
                       </div>
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                        activeProjectTab === 'unassigned' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                        activeProjectTab === 'all' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
                       }`}>
-                        {unassignedCount}
+                        {tasks.length}
                       </span>
                     </button>
-                  </>
+
+                    <div className="my-1 border-t border-gray-100" />
+
+                    {/* Individual Projects */}
+                    {relevantProjects.map(p => {
+                      const count = (allTasks || tasks).filter(t => String(t.projectId) === String(p.id)).length;
+                      const isActive = String(activeProjectTab) === String(p.id);
+                      const pPct = Math.round((p.progress <= 1 && p.progress > 0 ? p.progress * 100 : (p.progress || 0)));
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => handleSelectProjectTab(p.id)}
+                          className={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition ${
+                            isActive
+                              ? 'bg-blue-50 text-blue-700 font-bold'
+                              : 'text-gray-700 hover:bg-gray-50 font-medium'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+                            <span className="text-gray-400 text-sm shrink-0">📁</span>
+                            <span className="truncate">{p.name}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                              isActive ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {count}
+                            </span>
+                            {count > 0 && (
+                              <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                                {pPct}%
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+
+                    {/* Unassigned Tasks (if any) */}
+                    {unassignedCount > 0 && (
+                      <>
+                        <div className="my-1 border-t border-gray-100" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveProjectTab('unassigned');
+                            setIsProjectDropdownOpen(false);
+                          }}
+                          className={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition ${
+                            activeProjectTab === 'unassigned'
+                              ? 'bg-blue-50 text-blue-700 font-bold'
+                              : 'text-gray-700 hover:bg-gray-50 font-medium'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400 text-sm">📄</span>
+                            <span>No Project (Unassigned)</span>
+                          </div>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                            activeProjectTab === 'unassigned' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {unassignedCount}
+                          </span>
+                        </button>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
+              <div className="h-4 w-px bg-gray-200 hidden sm:block" />
+            </>
+          )}
 
-          <div className="h-4 w-px bg-gray-200 hidden sm:block" />
-
-          {/* Status Filter */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-gray-400 font-medium mr-1 hidden md:inline">Status:</span>
+          {/* Status Filter Pills */}
+          <div className="flex items-center gap-1.5 bg-slate-100/90 p-1 rounded-xl border border-slate-200/70 shadow-2xs">
             <button
+              type="button"
               onClick={() => setStatusFilter('all')}
-              className={`px-2.5 py-1 rounded-lg font-medium transition ${
+              className={`px-3 py-1 rounded-lg font-bold text-xs transition-all duration-150 cursor-pointer ${
                 statusFilter === 'all'
-                  ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
-                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
+                  ? 'bg-white text-blue-700 shadow-xs ring-1 ring-blue-150'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
               }`}
             >
               All ({currentProjectTasks.length})
             </button>
             <button
+              type="button"
               onClick={() => setStatusFilter('active')}
-              className={`px-2.5 py-1 rounded-lg font-medium transition ${
+              className={`px-3 py-1 rounded-lg font-bold text-xs transition-all duration-150 cursor-pointer ${
                 statusFilter === 'active'
-                  ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
+                  ? 'bg-white text-amber-700 shadow-xs ring-1 ring-amber-150'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
               }`}
             >
               Active ({activeCount})
             </button>
             <button
+              type="button"
               onClick={() => setStatusFilter('done')}
-              className={`px-2.5 py-1 rounded-lg font-medium transition flex items-center gap-1 ${
+              className={`px-3 py-1 rounded-lg font-bold text-xs transition-all duration-150 flex items-center gap-1 cursor-pointer ${
                 statusFilter === 'done'
-                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
+                  ? 'bg-white text-emerald-700 shadow-xs ring-1 ring-emerald-150'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
               }`}
             >
               <span>✓</span> Done ({completedCount})
@@ -717,52 +964,56 @@ export const TasksTab = ({
         </div>
 
         {/* View Mode Switcher */}
-        <div className="flex items-center bg-gray-100/80 p-0.5 rounded-lg border border-gray-200/60 ml-auto">
+        <div className="flex items-center bg-slate-100/90 p-1 rounded-xl border border-slate-200/70 ml-auto shadow-2xs">
           <button
+            type="button"
             onClick={() => setViewMode('table')}
             title="Table View"
-            className={`px-2 py-1 rounded-md transition flex items-center gap-1 font-medium ${
-              viewMode === 'table' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
+            className={`px-3 py-1.5 rounded-lg transition-all duration-150 flex items-center gap-1.5 font-bold text-xs cursor-pointer ${
+              viewMode === 'table' ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
             }`}
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
             <span className="hidden sm:inline">Table</span>
           </button>
           <button
+            type="button"
             onClick={() => setViewMode('cards')}
             title="Card Grid View"
-            className={`px-2 py-1 rounded-md transition flex items-center gap-1 font-medium ${
-              viewMode === 'cards' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
+            className={`px-3 py-1.5 rounded-lg transition-all duration-150 flex items-center gap-1.5 font-bold text-xs cursor-pointer ${
+              viewMode === 'cards' ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
             }`}
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
             </svg>
             <span className="hidden sm:inline">Cards</span>
           </button>
           <button
+            type="button"
             onClick={() => setViewMode('checklist')}
             title="Checklist View"
-            className={`px-2 py-1 rounded-md transition flex items-center gap-1 font-medium ${
-              viewMode === 'checklist' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
+            className={`px-3 py-1.5 rounded-lg transition-all duration-150 flex items-center gap-1.5 font-bold text-xs cursor-pointer ${
+              viewMode === 'checklist' ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
             }`}
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
             </svg>
             <span className="hidden sm:inline">Checklist</span>
           </button>
           <button
+            type="button"
             onClick={() => setViewMode('status')}
             title="Grouped By Status"
-            className={`px-2 py-1 rounded-md transition flex items-center gap-1 font-medium ${
-              viewMode === 'status' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
+            className={`px-3 py-1.5 rounded-lg transition-all duration-150 flex items-center gap-1.5 font-bold text-xs cursor-pointer ${
+              viewMode === 'status' ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
             }`}
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+            <svg className="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
             </svg>
             <span className="hidden sm:inline">By Status</span>
           </button>
@@ -771,20 +1022,28 @@ export const TasksTab = ({
 
       {/* Quick Inline Task Adder Bar */}
       {showQuickInlineAdd && (
-        <form onSubmit={handleQuickAddTask} className="mb-4 p-3.5 rounded-xl border border-gray-200/90 bg-slate-50/70 space-y-2.5">
-          <div className="text-xs font-bold text-gray-700 flex items-center justify-between">
+        <div
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleQuickAddTask(e);
+            }
+          }}
+          className="mb-4 p-4 rounded-2xl border border-slate-200/90 bg-slate-50/70 shadow-2xs space-y-3"
+        >
+          <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              <span>{canAssignAnyone ? 'Quick Add Task with Deadlines & Assignees' : 'Quick Add Task (Self-assigned)'}</span>
+              <span className="w-5 h-5 rounded-md bg-blue-100/80 text-blue-600 flex items-center justify-center font-bold text-xs">
+                +
+              </span>
+              <span>{canAssignAnyone ? 'Quick Add Task' : 'Quick Add Task (Self-assigned)'}</span>
             </div>
             {activeProjectObj ? (
-              <span className="text-[11px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                Project: {activeProjectObj.name}
+              <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200/70">
+                📁 {activeProjectObj.name}
               </span>
             ) : (
-              <span className="text-[11px] font-medium text-gray-500">
+              <span className="text-[11px] font-medium text-slate-500">
                 All Projects mode
               </span>
             )}
@@ -796,7 +1055,7 @@ export const TasksTab = ({
               <input
                 type="text"
                 placeholder="Task title (e.g. Design wireframes, Review contract)..."
-                className="input-field text-xs h-9 bg-white"
+                className="input-field text-xs h-9.5 bg-white shadow-2xs"
                 value={quickTitle}
                 onChange={(e) => setQuickTitle(e.target.value)}
               />
@@ -806,29 +1065,29 @@ export const TasksTab = ({
             <div className="sm:col-span-3">
               <input
                 type="date"
-                className="input-field text-xs h-9 bg-white"
+                className="input-field text-xs h-9.5 bg-white shadow-2xs"
                 value={quickDeadline}
                 onChange={(e) => setQuickDeadline(e.target.value)}
               />
-              <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-500">
+              <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-500">
                 <button
                   type="button"
                   onClick={() => setQuickDeadline(getLocalDateString())}
-                  className="px-1.5 py-0.5 rounded bg-gray-200/70 hover:bg-gray-300 transition text-gray-700"
+                  className="px-2 py-0.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 transition text-slate-700 font-semibold cursor-pointer"
                 >
                   Today
                 </button>
                 <button
                   type="button"
                   onClick={() => setQuickDeadline(addDaysToDate(3))}
-                  className="px-1.5 py-0.5 rounded bg-gray-200/70 hover:bg-gray-300 transition text-gray-700"
+                  className="px-2 py-0.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 transition text-slate-700 font-semibold cursor-pointer"
                 >
                   +3d
                 </button>
                 <button
                   type="button"
                   onClick={() => setQuickDeadline(addDaysToDate(7))}
-                  className="px-1.5 py-0.5 rounded bg-gray-200/70 hover:bg-gray-300 transition text-gray-700"
+                  className="px-2 py-0.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 transition text-slate-700 font-semibold cursor-pointer"
                 >
                   +1w
                 </button>
@@ -841,19 +1100,19 @@ export const TasksTab = ({
                 <button
                   type="button"
                   onClick={() => setShowQuickAssigneeDropdown(prev => !prev)}
-                  className="w-full h-9 px-2.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-left text-xs flex items-center justify-between text-gray-700"
+                  className="w-full h-9.5 px-3 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 text-left text-xs flex items-center justify-between text-slate-700 shadow-2xs transition cursor-pointer"
                 >
-                  <span className="truncate">
+                  <span className="truncate font-semibold">
                     {quickAssigneeIds.length === 0
                       ? 'Assign team (0)'
                       : `${quickAssigneeIds.length} assigned`}
                   </span>
-                  <span className="material-symbols-outlined text-[16px] text-gray-400">expand_more</span>
+                  <span className="material-symbols-outlined text-[16px] text-slate-400">expand_more</span>
                 </button>
 
                 {showQuickAssigneeDropdown && (
-                  <div className="absolute left-0 top-10 w-56 bg-white border border-gray-200 rounded-xl shadow-xl p-2 z-40 max-h-48 overflow-y-auto">
-                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1">
+                  <div className="absolute left-0 top-11 w-60 bg-white border border-slate-200 rounded-xl shadow-xl p-2 z-40 max-h-52 overflow-y-auto">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
                       Select Assignees
                     </div>
                     {employees.map(emp => {
@@ -866,11 +1125,11 @@ export const TasksTab = ({
                               prev.includes(emp.id) ? prev.filter(id => id !== emp.id) : [...prev, emp.id]
                             );
                           }}
-                          className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer text-xs ${
-                            isSel ? 'bg-blue-50 text-blue-700 font-semibold' : 'hover:bg-gray-50 text-gray-700'
+                          className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer text-xs transition ${
+                            isSel ? 'bg-blue-50 text-blue-700 font-bold' : 'hover:bg-slate-50 text-slate-700 font-medium'
                           }`}
                         >
-                          <Avatar src={emp.avatar} alt={emp.fullName} className="h-5 w-5" />
+                          <Avatar src={emp.avatar} alt={emp.fullName} className="h-5 w-5 ring-1 ring-slate-200" />
                           <span className="truncate flex-1">{emp.fullName}</span>
                           {isSel && <span className="text-blue-600 font-bold">✓</span>}
                         </div>
@@ -880,7 +1139,7 @@ export const TasksTab = ({
                 )}
               </div>
             ) : (
-              <div className="sm:col-span-2 flex items-center h-9 px-2 text-xs text-gray-600 bg-gray-100/70 rounded-lg">
+              <div className="sm:col-span-2 flex items-center h-9.5 px-3 text-xs text-slate-600 bg-slate-100/80 border border-slate-200 rounded-xl font-medium">
                 Self (You)
               </div>
             )}
@@ -888,22 +1147,23 @@ export const TasksTab = ({
             {/* Priority & Submit */}
             <div className="sm:col-span-2 flex items-center gap-2">
               <select
-                className="input-field text-xs h-9 bg-white flex-1"
+                className="input-field text-xs h-9.5 bg-white shadow-2xs flex-1 font-semibold text-slate-700"
                 value={quickPriority}
                 onChange={(e) => setQuickPriority(e.target.value)}
               >
-                {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                {PRIORITIES.map(p => <option key={p} value={p}>{p} Priority</option>)}
               </select>
 
               <button
-                type="submit"
-                className="btn-primary text-xs h-9 px-4 font-bold shadow-2xs shrink-0"
+                type="button"
+                onClick={handleQuickAddTask}
+                className="btn-primary text-xs h-9.5 px-4 font-bold shadow-2xs shrink-0 cursor-pointer"
               >
-                Add
+                + Add
               </button>
             </div>
           </div>
-        </form>
+        </div>
       )}
 
       {/* Main Content Area */}
@@ -1007,118 +1267,255 @@ export const TasksTab = ({
 
           {/* TABLE VIEW */}
           {viewMode === 'table' && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 text-left text-gray-500">
-                    <Th>Task</Th>
-                    {activeProjectTab === 'all' && <Th>Project</Th>}
-                    <Th>Assignee</Th>
-                    <Th>Status</Th>
-                    <Th>Created</Th>
-                    <Th>Due</Th>
-                    <Th>Priority</Th>
-                    <Th>Action</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {hierarchicalDisplayedTasks.map(t => {
-                    const proj = getProject(t.projectId);
-                    return (
-                      <tr key={t.id} className="border-b border-gray-50 hover:bg-slate-50/60 transition">
-                        <Td>
-                          <div
-                            className="flex items-center gap-2"
-                            style={{ paddingLeft: t.level > 0 ? `${t.level * 20}px` : undefined }}
-                          >
-                            {t.level > 0 && (
-                              <span
-                                className={`font-bold text-xs select-none ${
-                                  t.level === 1 ? 'text-blue-500' : t.level === 2 ? 'text-purple-500' : 'text-indigo-500'
-                                }`}
-                              >
-                                {'↳'.repeat(Math.min(t.level, 3))}
-                              </span>
-                            )}
-                            {t.level === 1 && (
-                              <span className="text-[9px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 shrink-0">
-                                Subtask
-                              </span>
-                            )}
-                            {t.level === 2 && (
-                              <span className="text-[9px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 shrink-0">
-                                Sub-sub
-                              </span>
-                            )}
-                            {t.level >= 3 && (
-                              <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0">
-                                L{t.level} Sub
-                              </span>
-                            )}
-                            <button
-                              className="font-medium text-gray-800 hover:text-indigo-600 text-left truncate"
-                              onClick={() => { setEditing(t); setOpen(true); }}
+            <div className="space-y-2">
+              {/* Bulk Selection Toolbar */}
+              {selectedTaskIds.size > 0 && (
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-blue-50/90 border border-blue-200 rounded-xl text-xs shadow-2xs animate-fade-in">
+                  <div className="font-bold text-blue-900 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[18px] text-blue-600">check_circle</span>
+                    <span>{selectedTaskIds.size} task{selectedTaskIds.size > 1 ? 's' : ''} selected</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        selectedTaskIds.forEach(id => updateTask(id, { status: 'Done' }));
+                        addToast(`Marked ${selectedTaskIds.size} task(s) as Done`, 'success');
+                      }}
+                      className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-bold text-xs shadow-2xs transition cursor-pointer"
+                    >
+                      ✓ Mark Done
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        selectedTaskIds.forEach(id => updateTask(id, { status: 'In progress' }));
+                        addToast(`Marked ${selectedTaskIds.size} task(s) as In progress`, 'success');
+                      }}
+                      className="px-2.5 py-1 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 rounded-lg font-bold text-xs shadow-2xs transition cursor-pointer"
+                    >
+                      Mark In Progress
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`Are you sure you want to delete ${selectedTaskIds.size} selected tasks?`)) {
+                          selectedTaskIds.forEach(id => deleteTask(id));
+                          setSelectedTaskIds(new Set());
+                          addToast(`Deleted selected tasks`, 'success');
+                        }
+                      }}
+                      className="px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 rounded-lg font-bold text-xs shadow-2xs transition cursor-pointer"
+                    >
+                      Delete Selected
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTaskIds(new Set())}
+                      className="text-gray-500 hover:text-gray-800 px-2 py-1 font-medium cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-x-auto rounded-xl border border-gray-200/80 bg-white">
+                <table className="w-full text-sm">
+                  <thead className="bg-[#f8fafc] border-b border-gray-200 text-gray-600">
+                    <tr>
+                      <th className="py-3 px-3.5 text-left w-10">
+                        <input
+                          type="checkbox"
+                          checked={hierarchicalDisplayedTasks.length > 0 && hierarchicalDisplayedTasks.every(t => selectedTaskIds.has(t.id))}
+                          onChange={() => handleToggleSelectAll(hierarchicalDisplayedTasks)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                          title="Select all tasks"
+                        />
+                      </th>
+                      <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-20">ID</th>
+                      <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left">Task Description & Tags</th>
+                      <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-44">Assignee</th>
+                      <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-32">Status</th>
+                      <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-28">Created</th>
+                      <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-32">Due Date</th>
+                      <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-28">Priority</th>
+                      <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-right pr-4 w-28">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {hierarchicalDisplayedTasks.map((t, idx) => {
+                      const proj = getProject(t.projectId);
+                      const assignees = getTaskAssignees(t);
+                      const taskTags = getTaskTags(t);
+                      const subInfo = subtasksMap.get(String(t.id));
+                      const dueMeta = getDueMeta(t.dueDate, t.status);
+                      const taskIdCode = t.taskCode || t.code || `TSK-${String(idx + 1).padStart(2, '0')}`;
+                      const isSelected = selectedTaskIds.has(t.id);
+
+                      return (
+                        <tr
+                          key={t.id}
+                          className={`hover:bg-slate-50/80 transition ${isSelected ? 'bg-blue-50/30' : ''}`}
+                        >
+                          {/* 1. Checkbox */}
+                          <td className="py-3.5 px-3.5 w-10 align-middle">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectTask(t.id)}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                            />
+                          </td>
+
+                          {/* 2. ID */}
+                          <td className="py-3.5 px-3 w-20 align-middle">
+                            <span className="font-mono text-xs font-semibold text-gray-600">
+                              {taskIdCode}
+                            </span>
+                          </td>
+
+                          {/* 3. Task Description & Tags */}
+                          <td className="py-3.5 px-3 align-middle">
+                            <div
+                              className="space-y-1.5"
+                              style={{ paddingLeft: t.level > 0 ? `${t.level * 20}px` : undefined }}
                             >
-                              {t.name}
-                            </button>
-                          </div>
-                        </Td>
-                        {activeProjectTab === 'all' && (
-                          <Td className="text-gray-600 text-xs">
-                            {proj ? (
-                              <button
-                                onClick={() => setActiveProjectTab(proj.id)}
-                                className="badge bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-semibold transition"
-                              >
-                                {proj.name}
-                              </button>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {t.level > 0 && (
+                                  <span className="text-blue-500 font-bold text-xs select-none">
+                                    {'↳'.repeat(Math.min(t.level, 3))}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  className="font-bold text-gray-900 hover:text-blue-600 text-left text-sm tracking-tight transition cursor-pointer"
+                                  onClick={() => { setEditing(t); setOpen(true); }}
+                                >
+                                  {t.name}
+                                </button>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {taskTags.map((tag, tIdx) => (
+                                  <span
+                                    key={tIdx}
+                                    className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/70"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                                {subInfo && subInfo.total > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-700 border border-gray-200">
+                                    <span>☑</span>
+                                    <span>{subInfo.done}/{subInfo.total}</span>
+                                  </span>
+                                )}
+                                {activeProjectTab === 'all' && proj && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveProjectTab(proj.id)}
+                                    className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200 transition cursor-pointer"
+                                  >
+                                    📁 {proj.name}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 4. Assignee */}
+                          <td className="py-3.5 px-3 w-44 align-middle">
+                            {assignees.length === 0 ? (
+                              <span className="text-xs text-gray-400 italic">Unassigned</span>
                             ) : (
-                              <span className="text-gray-400 italic text-[11px]">Unassigned</span>
+                              <div className="flex items-center gap-2 min-w-0" title={assignees.map(e => e.fullName).join(', ')}>
+                                <Avatar
+                                  src={assignees[0].avatar}
+                                  alt={assignees[0].fullName}
+                                  className="h-6 w-6 ring-1 ring-gray-200 rounded-full shrink-0"
+                                />
+                                <span className="text-xs font-semibold text-gray-800 truncate">
+                                  {assignees[0].fullName}
+                                  {assignees.length > 1 && (
+                                    <span className="text-gray-400 font-normal ml-1">+{assignees.length - 1}</span>
+                                  )}
+                                </span>
+                              </div>
                             )}
-                          </Td>
-                        )}
-                        <Td><AssigneesDisplay task={t} /></Td>
-                        <Td><StatusSelect value={t.status} onChange={(s) => handleStatusChange(t.id, s, t.name)} /></Td>
-                        <Td className="text-gray-500 text-xs">{fmtDate(t.createdDate || t.createdAt)}</Td>
-                        <Td className="text-gray-600 text-xs">{fmtDate(t.dueDate)}</Td>
-                        <Td><PriorityPill priority={t.priority} /></Td>
-                        <Td>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => { setEditing({ parentId: t.id, projectId: t.projectId }); setOpen(true); }}
-                              className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-md border border-blue-200 transition shrink-0"
-                              title={`Add subtask under "${t.name}"`}
-                            >
-                              + Subtask
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setEditing(t); setOpen(true); }}
-                              className="text-gray-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded-md transition"
-                              title="Edit task"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => handleDeleteTask(e, t)}
-                              className="text-gray-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-md transition"
-                              title="Remove task"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </div>
-                        </Td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          </td>
+
+                          {/* 5. Status */}
+                          <td className="py-3.5 px-3 w-32 align-middle">
+                            <TaskStatusCell
+                              task={t}
+                              onStatusChange={(s) => handleStatusChange(t.id, s, t.name)}
+                            />
+                          </td>
+
+                          {/* 6. Created */}
+                          <td className="py-3.5 px-3 w-28 text-xs text-gray-600 font-medium align-middle">
+                            {fmtFullDate(t.createdDate || t.createdAt)}
+                          </td>
+
+                          {/* 7. Due Date */}
+                          <td className="py-3.5 px-3 w-32 align-middle">
+                            <div>
+                              <div className={`text-xs font-semibold ${dueMeta.isOverdue ? 'text-rose-700' : 'text-gray-800'}`}>
+                                {fmtFullDate(t.dueDate)}
+                              </div>
+                              {dueMeta.subtext && (
+                                <div className={`text-[10px] font-semibold leading-tight ${dueMeta.isOverdue ? 'text-rose-600' : 'text-blue-600'}`}>
+                                  {dueMeta.subtext}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* 8. Priority */}
+                          <td className="py-3.5 px-3 w-28 align-middle">
+                            {renderPriorityPill(t.priority)}
+                          </td>
+
+                          {/* 9. Actions */}
+                          <td className="py-3.5 px-3 text-right pr-4 w-28 align-middle">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => { setEditing({ parentId: t.id, projectId: t.projectId }); setOpen(true); }}
+                                className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-md border border-blue-200 transition shrink-0 cursor-pointer"
+                                title={`Add subtask under "${t.name}"`}
+                              >
+                                + Subtask
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setEditing(t); setOpen(true); }}
+                                className="text-gray-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded-md transition cursor-pointer"
+                                title="Edit task"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteTask(e, t)}
+                                className="text-gray-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-md transition cursor-pointer"
+                                title="Remove task"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -1277,7 +1674,7 @@ export const TasksTab = ({
 
       {/* Task Modal Form */}
       <TaskForm isOpen={open} open={open} onClose={() => setOpen(false)} initial={editing} projects={allProjects} />
-    </section>
+    </Container>
   );
 };
 

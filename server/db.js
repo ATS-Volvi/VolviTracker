@@ -1242,6 +1242,13 @@ export async function deleteEmployeeRecord(id) {
   await initDb();
   if (!id) return { success: false };
   await sql`DELETE FROM employees WHERE id = ${id}`;
+  try {
+    await sql`UPDATE projects SET assignee_id = '' WHERE assignee_id = ${id}`;
+    await sql`UPDATE tasks SET assignee_id = '' WHERE assignee_id = ${id}`;
+    await sql`UPDATE meetings SET attendee_id = '' WHERE attendee_id = ${id}`;
+  } catch (err) {
+    console.warn('[DB] Non-critical warning cleaning up employee references:', err.message);
+  }
   return { success: true, id };
 }
 

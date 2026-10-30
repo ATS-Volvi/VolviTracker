@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../widgets/Modal';
+import { TasksTab } from '../tasks/TasksTab';
 import { loadFinanceData } from '../../pages/finance/financeData';
 
 const STATUSES = ['Not started', 'In progress', 'Done'];
@@ -15,9 +16,9 @@ const getLocalDateString = (d = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
-export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false }) => {
+export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, hideTasksSection = false }) => {
   const navigate = useNavigate();
-  const { employees, addProjectWithTasks, updateProjectWithTasks, getProjectTasks } = useData();
+  const { employees, tasks: allContextTasks = [], projects: allContextProjects = [], addProjectWithTasks, updateProjectWithTasks, getProjectTasks } = useData();
   const { user, isAdmin, isProjectManager } = useAuth();
   const canAssignAnyone = Boolean(isAdmin || isProjectManager);
   const { addToast } = useToast();
@@ -263,9 +264,15 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false })
     }
   }, [initial, isOpen, employees, isAdmin, isProjectManager, canAssignAnyone, user?.id]);
 
-  // Recalculate progress whenever projectTasks change
-  const totalTasks = projectTasks.length;
-  const completedTasks = projectTasks.filter(t => t.status === 'Done').length;
+  // Live reactive tasks for this specific project
+  const liveProjectTasks = useMemo(() => {
+    if (!initial?.id) return projectTasks;
+    return allContextTasks.filter(t => String(t.projectId) === String(initial.id));
+  }, [allContextTasks, initial?.id, projectTasks]);
+
+  // Recalculate progress whenever tasks change
+  const totalTasks = liveProjectTasks.length;
+  const completedTasks = liveProjectTasks.filter(t => t.status === 'Done').length;
   const hasTasks = totalTasks > 0;
   const autoProgress = hasTasks ? Math.round((completedTasks / totalTasks) * 100) : form.progress;
 
@@ -437,8 +444,8 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false })
       createdBy: initial?.createdBy || user?.id || ''
     };
 
-    // Ensure each task in projectTasks has both assigneeIds and assigneeId
-    const formattedTasks = projectTasks.map(t => ({
+    // Ensure each task in liveProjectTasks has both assigneeIds and assigneeId
+    const formattedTasks = liveProjectTasks.map(t => ({
       ...t,
       assigneeIds: Array.isArray(t.assigneeIds) && t.assigneeIds.length > 0 ? t.assigneeIds : (t.assigneeId ? [t.assigneeId] : []),
       assigneeId: (Array.isArray(t.assigneeIds) && t.assigneeIds[0]) || t.assigneeId || ''
@@ -1170,77 +1177,90 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false })
         </div>
 
         {/* Dedicated Tasks & Deadlines Section */}
-        <div className="border-t border-gray-200 pt-5 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-2xs">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                  </svg>
+        {!hideTasksSection && (
+          <div className="border-t border-gray-200 pt-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-2xs">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                  </div>
+                  <h4 className="text-sm font-bold text-gray-900">Project Tasks & Deadlines</h4>
+                  {hasTasks && (
+                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                      {completedTasks}/{totalTasks} Completed ({autoProgress}%)
+                    </span>
+                  )}
                 </div>
-                <h4 className="text-sm font-bold text-gray-900">Project Tasks & Deadlines</h4>
+                <p className="text-xs text-gray-500 mt-1">
+                  Tasks marked as <span className="font-semibold text-emerald-600">Done</span> automatically calculate this project's progress percentage. You can add, edit, or assign multiple employees on the dedicated tasks list below.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
                 {hasTasks && (
-                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                    {completedTasks}/{totalTasks} Completed ({autoProgress}%)
-                  </span>
+                  <div className="flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-800 text-xs font-semibold shrink-0">
+                    <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>{autoProgress}% Progress</span>
+                  </div>
+                )}
+                {initial?.id && (
+                  <button
+                    type="button"
+                    onClick={handleGoToTasksPage}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-xs font-bold text-blue-700 shadow-2xs transition cursor-pointer"
+                    title="Open dedicated full-screen tasks page"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">open_in_new</span>
+                    <span>Full-Screen View →</span>
+                  </button>
                 )}
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Tasks marked as <span className="font-semibold text-emerald-600">Done</span> automatically calculate this project's progress percentage. You can add, edit, or assign multiple employees on the dedicated tasks page.
-              </p>
             </div>
 
-            {hasTasks && (
-              <div className="flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-800 text-xs font-semibold shrink-0">
-                <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>{autoProgress}% Progress</span>
+            {/* Direct Tasks List for this Project */}
+            {initial?.id ? (
+              <div className="pt-2">
+                <TasksTab
+                  tasks={allContextTasks}
+                  projects={allContextProjects.length > 0 ? allContextProjects : (initial ? [initial] : [])}
+                  defaultProjectId={String(initial.id)}
+                  lockToProject={true}
+                  hideProjectFilter={true}
+                  hideProjectDetailsHeader={true}
+                  disableUrlSync={true}
+                  asCard={false}
+                  heading={null}
+                />
+              </div>
+            ) : (
+              /* Dedicated Tasks Page Action Card for New Projects */
+              <div className="p-5 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/70 via-indigo-50/30 to-purple-50/30 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="space-y-1.5 min-w-0">
+                  <span className="text-sm font-bold text-gray-900">Add Tasks to this Project</span>
+                  <p className="text-xs text-gray-600 max-w-xl leading-relaxed">
+                    Save this project first to start adding and managing tasks, deadlines, team assignments, subtasks, and Excel imports directly here.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGoToTasksPage}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs text-white bg-blue-600 hover:bg-blue-700 active:scale-98 shadow-sm hover:shadow transition shrink-0 cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span>Save & Add Tasks →</span>
+                </button>
               </div>
             )}
           </div>
-
-          {/* Dedicated Tasks Page Action Card */}
-          <div className="p-5 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/70 via-indigo-50/30 to-purple-50/30 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="space-y-1.5 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-bold text-gray-900">
-                  {hasTasks ? `${totalTasks} Task${totalTasks > 1 ? 's' : ''} Linked to this Project` : 'No Tasks Added Yet'}
-                </span>
-                {hasTasks && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
-                    {completedTasks} Done
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-gray-600 max-w-xl leading-relaxed">
-                {hasTasks
-                  ? `View and manage all ${totalTasks} tasks, assign team members, create subtasks, and import/export Excel templates on the dedicated full-screen page.`
-                  : 'Open the dedicated Tasks page to add tasks, configure deadlines, assign team members, create subtasks, and import from Excel.'}
-              </p>
-              {hasTasks && (
-                <div className="w-48 sm:w-64 h-1.5 bg-gray-200 rounded-full overflow-hidden mt-1">
-                  <div
-                    className="h-full bg-emerald-500 transition-all duration-300 rounded-full"
-                    style={{ width: `${autoProgress}%` }}
-                  />
-                </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={handleGoToTasksPage}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs text-white bg-blue-600 hover:bg-blue-700 active:scale-98 shadow-sm hover:shadow transition shrink-0 cursor-pointer"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              <span>{initial ? 'Manage Project Tasks →' : 'Save & Add Tasks →'}</span>
-            </button>
-          </div>
-        </div>
+        )}
 
         
     </div>

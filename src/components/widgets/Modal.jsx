@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 export const Modal = ({
   isOpen,
@@ -19,7 +20,7 @@ export const Modal = ({
 
   if (!isOpen) return null;
 
-  return (
+  const content = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs" onClick={onClose}>
       <div
         className={`card w-full ${maxWidth} max-h-[90vh] flex flex-col shadow-2xl transition-all animate-slide-up overflow-hidden ${containerClassName}`}
@@ -49,4 +50,6 @@ export const Modal = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(content, document.body) : content;
 };

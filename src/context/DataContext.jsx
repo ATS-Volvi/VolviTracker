@@ -75,18 +75,23 @@ export const DataProvider = ({ children }) => {
     let initialDocs = seedDocs || [];
 
     try {
+      const storedDeletedIds = (() => {
+        try {
+          const raw = localStorage.getItem('volvitech_deleted_employee_ids');
+          return raw ? new Set(JSON.parse(raw)) : new Set();
+        } catch {
+          return new Set();
+        }
+      })();
+
       const empRaw = localStorage.getItem('employees');
       if (empRaw) {
         const parsed = JSON.parse(empRaw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const merged = [...parsed];
-          (seedData.employees || []).forEach(se => {
-            if (!merged.some(m => m.id === se.id || (m.email && m.email.toLowerCase() === se.email.toLowerCase()))) {
-              merged.push(se);
-            }
-          });
-          initialEmployees = merged;
+          initialEmployees = parsed.filter(e => e && !storedDeletedIds.has(String(e.id)) && (!e.email || !storedDeletedIds.has(e.email.toLowerCase().trim())));
         }
+      } else {
+        initialEmployees = (seedData.employees || []).filter(e => e && !storedDeletedIds.has(String(e.id)) && (!e.email || !storedDeletedIds.has(e.email.toLowerCase().trim())));
       }
       const projRaw = localStorage.getItem('projects');
       if (projRaw) {
@@ -121,7 +126,14 @@ export const DataProvider = ({ children }) => {
   const [isCloudSynced, setIsCloudSynced] = useState(false);
   const dataRef = useRef(data);
   dataRef.current = data;
-  const deletedEmployeeIds = useRef(new Set());
+  const deletedEmployeeIds = useRef((() => {
+    try {
+      const raw = localStorage.getItem('volvitech_deleted_employee_ids');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  })());
   const deletedTaskIds = useRef(new Set());
 
   // Persist changes to localStorage cache
@@ -161,9 +173,11 @@ export const DataProvider = ({ children }) => {
         const localEmployees = dataRef.current?.employees || [];
         for (const le of localEmployees) {
           if (!le || !le.email) continue;
-          if (deletedEmployeeIds.current.has(le.id)) continue;
+          const leId = String(le.id);
+          const leEmail = le.email.toLowerCase().trim();
+          if (deletedEmployeeIds.current.has(leId) || deletedEmployeeIds.current.has(leEmail)) continue;
           const exists = remoteEmployees.some(re =>
-            re.id === le.id || (re.email && le.email && re.email.toLowerCase().trim() === le.email.toLowerCase().trim())
+            String(re.id) === leId || (re.email && re.email.toLowerCase().trim() === leEmail)
           );
           if (!exists) {
             remoteEmployees.push(le);
@@ -173,7 +187,10 @@ export const DataProvider = ({ children }) => {
 
         // Filter out any locally deleted employees that remote Neon might still be returning
         if (deletedEmployeeIds.current.size > 0) {
-          remoteEmployees = remoteEmployees.filter(re => !deletedEmployeeIds.current.has(re.id));
+          remoteEmployees = remoteEmployees.filter(re => 
+            !deletedEmployeeIds.current.has(String(re.id)) &&
+            (!re.email || !deletedEmployeeIds.current.has(re.email.toLowerCase().trim()))
+          );
         }
 
         // Automatic Local-to-Cloud Sync & preservation for Tasks:
@@ -223,7 +240,7 @@ export const DataProvider = ({ children }) => {
 
         const cascadedRemoteTasks = cascadeParentAssignees(remoteTasks);
         const nextData = {
-          employees: remoteEmployees.length > 0 ? remoteEmployees : (seedData.employees || []),
+          employees: remoteEmployees,
           projects: remoteProjects,
           tasks: cascadedRemoteTasks,
           meetings: remoteMeetings.length > 0 ? remoteMeetings : (seedData.meetings || []),
@@ -805,12 +822,61 @@ export const DataProvider = ({ children }) => {
 
   const removeEmployee = async (id) => {
     if (!id) return;
-    deletedEmployeeIds.current.add(id);
-    const nextEmployees = data.employees.filter(e => e.id !== id);
-    setData(prev => ({ ...prev, employees: nextEmployees }));
+    const strId = String(id);
+    const emp = (data.employees || []).find(e => String(e.id) === strId);
+
+    deletedEmployeeIds.current.add(strId);
+    if (emp?.email) {
+      deletedEmployeeIds.current.add(emp.email.toLowerCase().trim());
+    }
+    try {
+      localStorage.setItem('volvitech_deleted_employee_ids', JSON.stringify(Array.from(deletedEmployeeIds.current)));
+    } catch {}
+
+    const nextEmployees = (data.employees || []).filter(e => 
+      String(e.id) !== strId && (!emp?.email || (e.email || '').toLowerCase().trim() !== emp.email.toLowerCase().trim())
+    );
+
+    // Unassign deleted employee from local projects, tasks, and meetings
+    const nextTasks = (data.tasks || []).map(t => {
+      let changed = false;
+      let newAssigneeId = t.assigneeId;
+      let newAssigneeIds = t.assigneeIds;
+      if (String(t.assigneeId) === strId) {
+        newAssigneeId = '';
+        changed = true;
+      }
+      if (Array.isArray(t.assigneeIds) && t.assigneeIds.some(aid => String(aid) === strId)) {
+        newAssigneeIds = t.assigneeIds.filter(aid => String(aid) !== strId);
+        changed = true;
+      }
+      return changed ? { ...t, assigneeId: newAssigneeId, assigneeIds: newAssigneeIds } : t;
+    });
+
+    const nextProjects = (data.projects || []).map(p => {
+      let changed = false;
+      let newAssigneeId = p.assigneeId;
+      let newAssigneeIds = p.assigneeIds;
+      if (String(p.assigneeId) === strId) {
+        newAssigneeId = '';
+        changed = true;
+      }
+      if (Array.isArray(p.assigneeIds) && p.assigneeIds.some(aid => String(aid) === strId)) {
+        newAssigneeIds = p.assigneeIds.filter(aid => String(aid) !== strId);
+        changed = true;
+      }
+      return changed ? { ...p, assigneeId: newAssigneeId, assigneeIds: newAssigneeIds } : p;
+    });
+
+    setData(prev => ({ ...prev, employees: nextEmployees, tasks: nextTasks, projects: nextProjects }));
     saveLocal('employees', nextEmployees);
+    saveLocal('tasks', nextTasks);
+    saveLocal('projects', nextProjects);
+
     if (dataRef.current) {
       dataRef.current.employees = nextEmployees;
+      dataRef.current.tasks = nextTasks;
+      dataRef.current.projects = nextProjects;
     }
 
     // Sync deletion to Neon Cloud
@@ -890,7 +956,7 @@ export const DataProvider = ({ children }) => {
   const getEmployee = (id) => (Array.isArray(data.employees) ? data.employees : seedData.employees).find(e => String(e.id) === String(id)) || null;
   const getProjectTasks = (projectId) => (Array.isArray(data.tasks) ? data.tasks : seedData.tasks).filter(t => t.projectId === projectId);
 
-  const safeEmployees = Array.isArray(data.employees) && data.employees.length > 0 ? data.employees : (seedData.employees || []);
+  const safeEmployees = Array.isArray(data.employees) ? data.employees : [];
   const safeProjects = Array.isArray(data.projects) ? data.projects : (seedData.projects || []);
   const safeTasks = Array.isArray(data.tasks) ? data.tasks : (seedData.tasks || []);
   const safeMeetings = Array.isArray(data.meetings) ? data.meetings : (seedData.meetings || []);

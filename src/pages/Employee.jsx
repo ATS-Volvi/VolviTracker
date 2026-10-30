@@ -211,7 +211,7 @@ export const Employee = () => {
     setIsDeleting(true);
     try {
       if (removeEmployee) {
-        removeEmployee(id);
+        await removeEmployee(id);
       }
       addToast(`Account for ${emp.fullName} has been permanently deleted.`, 'info', 3000);
       setIsDeleteConfirmOpen(false);

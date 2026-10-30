@@ -408,6 +408,15 @@ export async function apiHandler(req, res, next) {
     }
 
     req.user = decoded;
+    if (!req.user.isAdmin && req.user.email) {
+      try {
+        const emp = await getEmployeeByEmailWithPassword(req.user.email);
+        if (emp && (emp.is_admin || (emp.role || '').toLowerCase() === 'admin')) {
+          req.user.isAdmin = true;
+          req.user.role = emp.role || 'Admin';
+        }
+      } catch {}
+    }
 
     // -------------------------------------------------------------------------
     // 4. Protected Workspace Data Bootstrap (Never returns password hashes)
@@ -584,6 +593,9 @@ export async function apiHandler(req, res, next) {
       if (method === 'DELETE') {
         if (!req.user.isAdmin) {
           return sendJson(res, 403, { error: 'Forbidden: Admin access required to delete employees' });
+        }
+        if (String(req.user.id) === String(id) || (req.user.email && req.user.email.toLowerCase() === id.toLowerCase())) {
+          return sendJson(res, 400, { error: 'Cannot delete your own active administrator account' });
         }
         await deleteEmployeeRecord(id);
         return sendJson(res, 200, { success: true, id });

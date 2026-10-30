@@ -2,18 +2,38 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { Avatar } from '../widgets/Avatar';
 import CreateUserModal from './CreateUserModal';
 
 export const EmployeesGrid = () => {
-  const { employees } = useData();
+  const { employees, removeEmployee } = useData();
   const empList = Array.isArray(employees) ? employees : [];
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const { addToast } = useToast();
   const navigate = useNavigate();
 
   const [activeFilter, setActiveFilter] = useState('ALL'); // 'ALL' | 'INTERNAL' | 'CLIENT' | 'SUPPLIER'
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [employeeToDelete, setEmployeeToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleConfirmDeleteInGrid = async () => {
+    if (!employeeToDelete || !isAdmin) return;
+    setIsDeleting(true);
+    try {
+      if (removeEmployee) {
+        await removeEmployee(employeeToDelete.id);
+      }
+      addToast(`Account for ${employeeToDelete.fullName} has been permanently deleted.`, 'info', 3000);
+      setEmployeeToDelete(null);
+    } catch {
+      addToast('Failed to delete employee account.', 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Counts
   const counts = useMemo(() => {
@@ -211,24 +231,40 @@ export const EmployeesGrid = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {filteredList.map(e => {
               const isUserAdmin = e.isAdmin === true || (e.role || '').toLowerCase() === 'admin';
+              const isSelf = user && (String(user.id) === String(e.id) || (user.email && e.email && user.email.toLowerCase() === e.email.toLowerCase()));
               const userType = e.userType || 'internal';
               const extType = e.externalType || 'client';
               const org = e.organization || (userType === 'internal' ? 'Volvitech' : '');
 
               return (
-                <button
+                <div
                   key={e.id}
                   onClick={() => navigate(`/employee/${e.id}`)}
-                  className="flex flex-col justify-between rounded-xl border border-gray-100 p-3.5 text-left hover:bg-slate-50 hover:border-purple-200 transition shadow-2xs group relative bg-white"
+                  className="flex flex-col justify-between rounded-xl border border-gray-100 p-3.5 text-left hover:bg-slate-50 hover:border-purple-200 transition shadow-2xs group relative bg-white cursor-pointer"
                 >
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-2.5">
                       <Avatar src={e.avatar} alt={e.fullName} className="h-11 w-11 shrink-0 rounded-full" />
-                      {isUserAdmin && (
-                        <span className="inline-flex items-center gap-0.5 text-[9px] font-bold bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded-full border border-purple-200/80 shrink-0">
-                          Admin
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {isUserAdmin && (
+                          <span className="inline-flex items-center gap-0.5 text-[9px] font-bold bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded-full border border-purple-200/80 shrink-0">
+                            Admin
+                          </span>
+                        )}
+                        {isAdmin && !isSelf && (
+                          <button
+                            type="button"
+                            onClick={(evt) => {
+                              evt.stopPropagation();
+                              setEmployeeToDelete(e);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 hover:bg-rose-50 text-gray-400 hover:text-rose-600 p-1 rounded-lg transition"
+                            title={`Delete ${e.fullName}`}
+                          >
+                            <span className="material-symbols-outlined text-[17px] leading-none">delete</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div className="min-w-0">
@@ -264,7 +300,7 @@ export const EmployeesGrid = () => {
                       chevron_right
                     </span>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -279,6 +315,58 @@ export const EmployeesGrid = () => {
           // List updates reactively via DataContext
         }}
       />
+
+      {/* Delete Confirmation Modal */}
+      {employeeToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-rose-100 max-w-md w-full p-6 animate-slide-up text-left">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-600 border border-rose-100 shrink-0">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Delete Employee Account</h3>
+                <p className="text-xs text-rose-600 font-semibold">Admin authorization required</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-rose-50/50 border border-rose-100 rounded-xl mb-4 text-xs text-gray-700 leading-relaxed">
+              Are you sure you want to permanently delete the account for <strong className="text-gray-900 font-bold">{employeeToDelete.fullName}</strong> (<span className="text-gray-600 font-mono text-[11px]">{employeeToDelete.email}</span>)?
+              <p className="mt-2 text-[11px] text-rose-700 font-medium">
+                ⚠️ This user will be immediately revoked from the workspace and will no longer be able to log in.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setEmployeeToDelete(null)}
+                disabled={isDeleting}
+                className="btn-ghost text-xs py-2 px-4 text-gray-600 hover:text-gray-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteInGrid}
+                disabled={isDeleting}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs py-2 px-4 rounded-xl transition flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Yes, Delete Account</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

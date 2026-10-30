@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { useToast } from '../context/ToastContext';
 import ProjectsTable from '../components/projects/ProjectsTable';
-import TasksTab from '../components/tasks/TasksTab';
 import MeetingCalendar from '../components/meetings/MeetingCalendar';
 import MeetingList from '../components/meetings/MeetingList';
 import EmployeesGrid from '../components/employees/EmployeesGrid';
@@ -559,12 +558,8 @@ export const Dashboard = () => {
             <ProjectsTable projects={filteredProjects} title={isProjectManager ? 'Managed Projects' : 'Projects'} />
           </section>
 
-          {/* Secondary Dashboard Modules (Tasks, Meetings, Employees) */}
+          {/* Secondary Dashboard Modules (Meetings, Employees) */}
           <div className="pt-6 border-t border-gray-200/70 space-y-6 w-full">
-            <div className="w-full">
-              <TasksTab tasks={baseTasks} projects={baseProjects} heading={isProjectManager ? 'Project Tasks Tracker' : 'Tasks Tracker'} />
-            </div>
-
             <div id="meetings-calendar-section" className="scroll-mt-24 w-full">
               <MeetingCalendar meetings={isAdmin ? allMeetings : myMeetings} />
             </div>
@@ -728,9 +723,8 @@ export const Dashboard = () => {
             <ProjectsTable projects={myProjects} title="My Assigned Projects" />
           </section>
 
-          {/* Personal Tasks & Meetings */}
+          {/* Personal Meetings */}
           <div className="pt-6 border-t border-gray-200/70 space-y-6 w-full">
-            <TasksTab tasks={myTasks} projects={myProjects} heading="My Assigned Tasks" />
             <MeetingList meetings={myMeetings} defaultAttendeeId={user?.id} />
           </div>
 
