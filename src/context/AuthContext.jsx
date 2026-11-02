@@ -285,8 +285,18 @@ export const AuthProvider = ({ children }) => {
   const isAdmin = Boolean(user && (user.isAdmin === true || (user.role || '').toLowerCase() === 'admin'));
   const isAccountant = Boolean(user && (user.role || '').toLowerCase().trim() === 'accountant');
   const canManageFinance = Boolean(isAdmin || isAccountant);
-  const isProjectManager = Boolean(user && !isAdmin && (user.role || '').toLowerCase().trim() === 'project manager');
-  const canManageProjects = Boolean(isAdmin || isProjectManager);
+  const userRoleLower = (user?.role || '').toLowerCase().trim();
+  const isProjectManager = Boolean(user && !isAdmin && userRoleLower === 'project manager');
+  const isProjectLead = Boolean(
+    user && (
+      isAdmin ||
+      userRoleLower.includes('lead') ||
+      userRoleLower.includes('project manager') ||
+      userRoleLower.includes('manager')
+    )
+  );
+  const canManageProjects = Boolean(isAdmin || isProjectManager || isProjectLead);
+  const canEditCompletionDate = Boolean(isAdmin || isProjectLead);
 
   return (
     <AuthContext.Provider
@@ -296,7 +306,9 @@ export const AuthProvider = ({ children }) => {
         isAccountant,
         canManageFinance,
         isProjectManager,
+        isProjectLead,
         canManageProjects,
+        canEditCompletionDate,
         session,
         loading,
         login,

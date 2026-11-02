@@ -294,8 +294,8 @@ const SubtaskTreeRow = ({
 export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: projectsProp }) => {
   const isModalOpen = isOpen !== undefined ? isOpen : open;
   const { employees, projects: dataProjects = [], tasks = [], addTask, updateTask, removeTask } = useData();
-  const { user, isAdmin, isProjectManager } = useAuth();
-  const canAssignAnyone = Boolean(isAdmin || isProjectManager);
+  const { user, isAdmin, isProjectManager, isProjectLead, canEditCompletionDate: authCanEditCompletion } = useAuth();
+  const canAssignAnyone = Boolean(isAdmin || isProjectManager || isProjectLead);
   const { addToast } = useToast();
 
   const [form, setForm] = useState({
@@ -306,10 +306,26 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
     status: 'Not started',
     createdDate: getLocalDateString(),
     dueDate: '',
+    completedDate: '',
     priority: 'Medium',
     description: '',
     parentId: ''
   });
+
+  const taskProject = useMemo(() => {
+    const pId = form.projectId || initial?.projectId;
+    return dataProjects.find(p => String(p.id) === String(pId));
+  }, [form.projectId, initial?.projectId, dataProjects]);
+
+  const canEditCompletionDate = Boolean(
+    isAdmin ||
+    isProjectManager ||
+    isProjectLead ||
+    authCanEditCompletion ||
+    (taskProject && String(taskProject.createdBy || '') === String(user?.id)) ||
+    (user?.role || '').toLowerCase().includes('lead') ||
+    (user?.role || '').toLowerCase().includes('manager')
+  );
 
   const isEditing = Boolean(initial && initial.id);
 
@@ -416,6 +432,9 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
       const rawCreated = initial.createdDate || initial.createdAt || initial.created_date || initial.created_at;
       const initialCreatedDate = rawCreated ? String(rawCreated).slice(0, 10) : getLocalDateString();
 
+      const rawCompleted = initial.completedDate || '';
+      const initialCompletedDate = rawCompleted ? String(rawCompleted).slice(0, 10) : '';
+
       setForm({
         name: initial.name || '',
         projectId: initial.projectId || '',
@@ -424,6 +443,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
         status: initial.status || 'Not started',
         createdDate: initialCreatedDate,
         dueDate: initial.dueDate ? initial.dueDate.slice(0, 10) : '',
+        completedDate: initialCompletedDate,
         priority: initial.priority || 'Medium',
         description: initial.description || '',
         parentId: initial.parentId || ''
@@ -446,6 +466,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
         status: initial?.status || 'Not started',
         createdDate: getLocalDateString(),
         dueDate: initial?.dueDate ? initial.dueDate.slice(0, 10) : '',
+        completedDate: '',
         priority: initial?.priority || 'Medium',
         description: initial?.description || '',
         parentId: initial?.parentId || ''
@@ -506,7 +527,20 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
     }));
   }, [tasks, form.projectId, initial?.id]);
 
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const set = (k) => (e) => {
+    const val = e.target.value;
+    setForm(prev => {
+      const next = { ...prev, [k]: val };
+      if (k === 'status') {
+        if (val === 'Done' && !prev.completedDate) {
+          next.completedDate = getLocalDateString();
+        } else if (val !== 'Done') {
+          next.completedDate = '';
+        }
+      }
+      return next;
+    });
+  };
 
   const toggleAssignee = (empId) => {
     setForm(prev => {
@@ -626,8 +660,12 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
     e.preventDefault();
     const finalAssigneeIds = form.assigneeIds;
     const effectiveCreatedDate = form.createdDate || getLocalDateString();
+    const effectiveCompletedDate = form.status === 'Done'
+      ? (form.completedDate || initial?.completedDate || getLocalDateString())
+      : '';
     const payload = {
       ...form,
+      completedDate: effectiveCompletedDate,
       createdDate: effectiveCreatedDate,
       createdAt: new Date(effectiveCreatedDate).toISOString(),
       parentId: form.parentId || null,
@@ -857,6 +895,44 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
               />
             </div>
           </div>
+
+          {form.status === 'Done' && (
+            <div className="p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-xl space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[16px] text-emerald-600">task_alt</span>
+                  <span>Completion Date</span>
+                </label>
+                {!canEditCompletionDate ? (
+                  <span className="text-[10.5px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[12px]">lock</span>
+                    <span>Project Leads & Admins only</span>
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-emerald-700 bg-white border border-emerald-300 px-2 py-0.5 rounded-md">
+                    Lead/Admin Editable
+                  </span>
+                )}
+              </div>
+              <input
+                type="date"
+                disabled={!canEditCompletionDate}
+                className={`input-field text-sm ${
+                  canEditCompletionDate
+                    ? 'bg-white border-emerald-300 text-emerald-900 focus:ring-emerald-500'
+                    : 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+                }`}
+                value={form.completedDate || ''}
+                onChange={set('completedDate')}
+                title={canEditCompletionDate ? 'Edit completion date' : 'Only Project Leads and Admins can modify the completion date'}
+              />
+              <p className="text-[11px] text-emerald-700/80">
+                {canEditCompletionDate
+                  ? 'As a Project Lead or Admin, you can manually set or adjust the completion date.'
+                  : 'Automatically recorded when set to Done. Only Project Leads and Admins can modify this date.'}
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="mb-1 block text-xs font-semibold text-gray-700">Description</label>

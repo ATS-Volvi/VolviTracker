@@ -1,46 +1,67 @@
 import React, { useState, useMemo } from 'react';
 import { Avatar } from '../widgets/Avatar';
 
-// Ordinal date formatter helper (e.g. '5th Sep', '1st Sep', '22nd Oct')
-const formatOrdinalDate = (dateStr) => {
-  if (!dateStr) return '—';
-  try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    const day = d.getDate();
-    const month = d.toLocaleDateString('en-US', { month: 'short' });
-    const j = day % 10;
-    const k = day % 100;
-    let suffix = 'th';
-    if (j === 1 && k !== 11) suffix = 'st';
-    else if (j === 2 && k !== 12) suffix = 'nd';
-    else if (j === 3 && k !== 13) suffix = 'rd';
-    return `${day}${suffix} ${month}`;
-  } catch {
-    return dateStr;
+/**
+ * Flexible Date Parser
+ * Parses ISO dates ('2026-10-06'), DD-MMM-YYYY ('06-Oct-2026'), and standard date strings.
+ */
+const parseFlexibleDate = (val) => {
+  if (!val) return null;
+  if (val instanceof Date && !isNaN(val.getTime())) return val;
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+
+    // Direct check for YYYY-MM-DD
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (isoMatch) {
+      return new Date(parseInt(isoMatch[1], 10), parseInt(isoMatch[2], 10) - 1, parseInt(isoMatch[3], 10));
+    }
+
+    // Check for DD-MMM-YYYY (e.g. '06-Oct-2026', '01-Sep-2026')
+    const dmyMatch = trimmed.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/);
+    if (dmyMatch) {
+      const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+      const mIdx = monthNames.indexOf(dmyMatch[2].toLowerCase());
+      if (mIdx !== -1) {
+        return new Date(parseInt(dmyMatch[3], 10), mIdx, parseInt(dmyMatch[1], 10));
+      }
+    }
+
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) return parsed;
   }
+  return null;
 };
 
-const getMonthName = (dateStr) => {
-  if (!dateStr) return 'Current Sprint';
-  try {
-    const d = new Date(dateStr);
-    return isNaN(d.getTime()) ? 'Current Sprint' : d.toLocaleDateString('en-US', { month: 'long' });
-  } catch {
-    return 'Current Sprint';
-  }
+// Formats date into readable ordinal representation (e.g. '6th Oct 2026' or '6th Oct')
+const formatOrdinalDate = (val, includeYear = true) => {
+  const d = parseFlexibleDate(val);
+  if (!d) return '—';
+  const day = d.getDate();
+  const month = d.toLocaleDateString('en-US', { month: 'short' });
+  const year = d.getFullYear();
+  const j = day % 10;
+  const k = day % 100;
+  let suffix = 'th';
+  if (j === 1 && k !== 11) suffix = 'st';
+  else if (j === 2 && k !== 12) suffix = 'nd';
+  else if (j === 3 && k !== 13) suffix = 'rd';
+
+  return includeYear ? `${day}${suffix} ${month} ${year}` : `${day}${suffix} ${month}`;
+};
+
+// Formats short date for Gantt bar (e.g. 'Oct 6')
+const formatShortDate = (val) => {
+  const d = parseFlexibleDate(val);
+  if (!d) return '';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
 /**
  * GanttRoadmapModal
  * High-fidelity Project Timeline & Gantt Roadmap View
- * Exactly matching the user's specification:
- * - Header with sprint badge, objective & final target, view mode switchers (Days/Weeks/Milestones), print/PDF
- * - Card 1: Project Milestones (with progress distribution bars & sign-off)
- * - Card 2: Interactive Gantt Timeline (Days 1–30 grid with task span bars)
- * - Card 3: Project Tasks Breakdown table (with start, end, priority & status)
- * - Card 4: Notes & Sprint Guidelines
- * - Footer with live sync status, close button, and add task action
+ * With fully synchronized months, dates, and task durations.
  */
 export const GanttRoadmapModal = ({
   isOpen,
@@ -60,162 +81,347 @@ export const GanttRoadmapModal = ({
     }
     return (
       project?.description ||
-      'Focus on targeting high-engagement audiences for the product launch sequence. Schedule a stakeholder sync meeting to review creative ROAS and audience retargeting halfway through the campaign.'
+      'Focus on delivering high-impact milestones on schedule. Synchronize weekly progress with team leads and review deliverables before final sign-off.'
     );
   });
   const [isEditingNotes, setIsEditingNotes] = useState(false);
 
   // Derive sprint title and target date
   const sprintTitle = useMemo(() => {
-    if (!project) return 'Q3 Growth Sprint';
+    if (!project) return 'Active Project Sprint';
     return project.name || 'Active Project Sprint';
   }, [project]);
 
   const targetDateFormatted = useMemo(() => {
-    if (!project?.endDate) return 'September 30, 2025';
-    try {
-      const d = new Date(project.endDate);
-      return isNaN(d.getTime())
-        ? project.endDate
-        : d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    } catch {
-      return project.endDate || 'September 30, 2025';
+    const rawTarget = project?.endDate || (tasks.length > 0 ? tasks[tasks.length - 1].dueDate : null);
+    if (!rawTarget) return 'On Schedule';
+    return formatOrdinalDate(rawTarget, true);
+  }, [project, tasks]);
+
+  // 1. Discover all months represented across the project tasks and project start/end dates
+  const availableMonths = useMemo(() => {
+    const monthCounts = new Map();
+
+    const recordDate = (d) => {
+      const parsed = parseFlexibleDate(d);
+      if (parsed) {
+        const key = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+        monthCounts.set(key, (monthCounts.get(key) || 0) + 1);
+      }
+    };
+
+    (tasks || []).forEach(t => {
+      if (t.dueDate) recordDate(t.dueDate);
+      if (t.startDate) recordDate(t.startDate);
+      if (t.createdDate) recordDate(t.createdDate);
+      if (t.createdAt) recordDate(t.createdAt);
+      if (t.completedDate) recordDate(t.completedDate);
+    });
+
+    if (project?.startDate) recordDate(project.startDate);
+    if (project?.endDate) recordDate(project.endDate);
+
+    if (monthCounts.size === 0) {
+      const now = new Date();
+      const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      monthCounts.set(key, 1);
     }
-  }, [project]);
 
-  const sprintMonth = useMemo(() => {
-    return getMonthName(project?.startDate || project?.endDate || new Date());
-  }, [project]);
+    const sortedKeys = Array.from(monthCounts.keys()).sort();
+    return sortedKeys.map(key => {
+      const [y, m] = key.split('-').map(Number);
+      const d = new Date(y, m - 1, 1);
+      return {
+        key,
+        year: y,
+        monthIndex: m - 1,
+        label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+        shortLabel: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+        monthName: d.toLocaleDateString('en-US', { month: 'long' }),
+        count: monthCounts.get(key)
+      };
+    });
+  }, [tasks, project]);
 
-  // Map and sort tasks for the timeline
-  const timelineTasks = useMemo(() => {
+  // 2. Default active month to the month with the highest task concentration or target month
+  const [selectedMonthKey, setSelectedMonthKey] = useState(null);
+
+  const activeMonthInfo = useMemo(() => {
+    if (availableMonths.length === 0) {
+      const now = new Date();
+      return {
+        key: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+        year: now.getFullYear(),
+        monthIndex: now.getMonth(),
+        label: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+        monthName: now.toLocaleDateString('en-US', { month: 'long' })
+      };
+    }
+
+    if (selectedMonthKey) {
+      const found = availableMonths.find(m => m.key === selectedMonthKey);
+      if (found) return found;
+    }
+
+    // Default to the project end date month or the month with the most tasks
+    if (project?.endDate) {
+      const targetD = parseFlexibleDate(project.endDate);
+      if (targetD) {
+        const targetKey = `${targetD.getFullYear()}-${String(targetD.getMonth() + 1).padStart(2, '0')}`;
+        const found = availableMonths.find(m => m.key === targetKey);
+        if (found) return found;
+      }
+    }
+
+    return availableMonths[availableMonths.length - 1];
+  }, [availableMonths, selectedMonthKey, project]);
+
+  const activeYear = activeMonthInfo.year;
+  const activeMonthIndex = activeMonthInfo.monthIndex;
+  const daysInActiveMonth = useMemo(() => {
+    return new Date(activeYear, activeMonthIndex + 1, 0).getDate();
+  }, [activeYear, activeMonthIndex]);
+
+  // Month navigation helpers
+  const handlePrevMonth = () => {
+    const curIdx = availableMonths.findIndex(m => m.key === activeMonthInfo.key);
+    if (curIdx > 0) {
+      setSelectedMonthKey(availableMonths[curIdx - 1].key);
+    } else {
+      // Step 1 month back mathematically
+      const prevD = new Date(activeYear, activeMonthIndex - 1, 1);
+      setSelectedMonthKey(`${prevD.getFullYear()}-${String(prevD.getMonth() + 1).padStart(2, '0')}`);
+    }
+  };
+
+  const handleNextMonth = () => {
+    const curIdx = availableMonths.findIndex(m => m.key === activeMonthInfo.key);
+    if (curIdx >= 0 && curIdx < availableMonths.length - 1) {
+      setSelectedMonthKey(availableMonths[curIdx + 1].key);
+    } else {
+      // Step 1 month forward mathematically
+      const nextD = new Date(activeYear, activeMonthIndex + 1, 1);
+      setSelectedMonthKey(`${nextD.getFullYear()}-${String(nextD.getMonth() + 1).padStart(2, '0')}`);
+    }
+  };
+
+  // 3. Process tasks with accurate start & end dates matched to the active timeline
+  const processedTasks = useMemo(() => {
     const list = Array.isArray(tasks) && tasks.length > 0 ? tasks : [
       {
         id: 't-demo-1',
-        name: 'Research & Competitor Analysis',
+        name: 'Sprint Kickoff & Requirements',
         status: 'Done',
         priority: 'High',
-        startDate: '2025-09-01',
-        dueDate: '2025-09-05',
-        startDay: 1,
-        endDay: 5,
-        progress: 100,
-        isKeyMilestone: true
+        startDate: `${activeYear}-${String(activeMonthIndex + 1).padStart(2, '0')}-01`,
+        dueDate: `${activeYear}-${String(activeMonthIndex + 1).padStart(2, '0')}-05`,
+        completedDate: `${activeYear}-${String(activeMonthIndex + 1).padStart(2, '0')}-04`,
+        progress: 100
       },
       {
         id: 't-demo-2',
-        name: 'Develop content strategy',
+        name: 'Design & Feature Specifications',
         status: 'In progress',
         priority: 'High',
-        startDate: '2025-09-06',
-        dueDate: '2025-09-10',
-        startDay: 6,
-        endDay: 10,
-        progress: 70,
-        isKeyMilestone: false
+        startDate: `${activeYear}-${String(activeMonthIndex + 1).padStart(2, '0')}-06`,
+        dueDate: `${activeYear}-${String(activeMonthIndex + 1).padStart(2, '0')}-12`,
+        progress: 70
       },
       {
         id: 't-demo-3',
-        name: 'Schedule posts & campaigns',
+        name: 'Core Implementation & API Integration',
         status: 'In progress',
         priority: 'Medium',
-        startDate: '2025-09-11',
-        dueDate: '2025-09-15',
-        startDay: 11,
-        endDay: 15,
-        progress: 40,
-        isKeyMilestone: true
+        startDate: `${activeYear}-${String(activeMonthIndex + 1).padStart(2, '0')}-11`,
+        dueDate: `${activeYear}-${String(activeMonthIndex + 1).padStart(2, '0')}-18`,
+        progress: 40
       },
       {
         id: 't-demo-4',
-        name: 'Design visuals for post and ads',
+        name: 'QA Testing & User Feedback',
         status: 'Not started',
         priority: 'Medium',
-        startDate: '2025-09-16',
-        dueDate: '2025-09-22',
-        startDay: 16,
-        endDay: 22,
-        progress: 0,
-        isKeyMilestone: false
+        startDate: `${activeYear}-${String(activeMonthIndex + 1).padStart(2, '0')}-19`,
+        dueDate: `${activeYear}-${String(activeMonthIndex + 1).padStart(2, '0')}-25`,
+        progress: 0
       },
       {
         id: 't-demo-5',
-        name: 'Set up Facebook and Instagram ads',
+        name: 'Final Release & Delivery',
         status: 'Not started',
         priority: 'High',
-        startDate: '2025-09-23',
-        dueDate: '2025-09-28',
-        startDay: 23,
-        endDay: 28,
-        progress: 0,
-        isKeyMilestone: true
+        startDate: `${activeYear}-${String(activeMonthIndex + 1).padStart(2, '0')}-26`,
+        dueDate: `${activeYear}-${String(activeMonthIndex + 1).padStart(2, '0')}-${String(daysInActiveMonth).padStart(2, '0')}`,
+        progress: 0
       }
     ];
 
-    // Compute day offsets (1 to 30) for each task
+    const monthStart = new Date(activeYear, activeMonthIndex, 1, 0, 0, 0, 0);
+    const monthEnd = new Date(activeYear, activeMonthIndex, daysInActiveMonth, 23, 59, 59, 999);
+
     return list.map((t, idx) => {
-      let startDay = t.startDay;
-      let endDay = t.endDay;
+      let parsedDue = parseFlexibleDate(t.dueDate);
+      let parsedStart = parseFlexibleDate(t.createdDate || t.createdAt || t.startDate);
 
-      // Extract day number from dates if available
-      if (!startDay && t.startDate) {
-        const d = new Date(t.startDate);
-        if (!isNaN(d.getTime())) {
-          startDay = Math.min(30, Math.max(1, d.getDate()));
-        }
-      }
-      if (!endDay && t.dueDate) {
-        const d = new Date(t.dueDate);
-        if (!isNaN(d.getTime())) {
-          endDay = Math.min(30, Math.max(1, d.getDate()));
-        }
+      // If startDate is missing, compute start relative to dueDate in the same timeframe
+      if (!parsedStart && parsedDue) {
+        parsedStart = new Date(parsedDue.getTime() - 4 * 24 * 60 * 60 * 1000);
+      } else if (parsedStart && !parsedDue) {
+        parsedDue = new Date(parsedStart.getTime() + 4 * 24 * 60 * 60 * 1000);
+      } else if (!parsedStart && !parsedDue) {
+        // Fallback staggered across active month
+        const offset = (idx % 6) * 5 + 1;
+        parsedStart = new Date(activeYear, activeMonthIndex, Math.min(daysInActiveMonth, offset));
+        parsedDue = new Date(activeYear, activeMonthIndex, Math.min(daysInActiveMonth, offset + 4));
       }
 
-      // If dates not set or need distribution across 30 days
-      if (!startDay && !endDay) {
-        const slot = (idx % 6);
-        startDay = slot * 5 + 1;
-        endDay = Math.min(30, startDay + 4);
-      } else if (!startDay && endDay) {
-        startDay = Math.max(1, endDay - 4);
-      } else if (startDay && !endDay) {
-        endDay = Math.min(30, startDay + 4);
-      }
-
-      if (startDay > endDay) {
-        const temp = startDay;
-        startDay = endDay;
-        endDay = temp;
+      // Ensure baseStart is chronological
+      let baseStart = parsedStart;
+      let baseDue = parsedDue;
+      if (baseStart > baseDue) {
+        const tmp = baseStart;
+        baseStart = baseDue;
+        baseDue = tmp;
       }
 
       const isDone = String(t.status || '').toLowerCase().trim() === 'done';
+      let parsedCompleted = null;
+      if (isDone) {
+        parsedCompleted = parseFlexibleDate(t.completedDate || t.createdDate || t.startDate || baseStart);
+      }
+
+      // Total calendar span for the task
+      const overallStart = baseStart;
+      let overallEnd = baseDue;
+      if (isDone && parsedCompleted && parsedCompleted > baseDue) {
+        overallEnd = parsedCompleted;
+      }
+
+      const overlapsActiveMonth = !(overallEnd < monthStart || overallStart > monthEnd);
+      const isPriorMonth = overallEnd < monthStart;
+      const isFutureMonth = overallStart > monthEnd;
+
+      // Construct timeline segments based on completion and due dates:
+      // 1. Not completed: [baseStart, baseDue] -> grey
+      // 2. Completed before or on due: [baseStart, compEnd] -> blue, [compEnd + 1, baseDue] -> grey
+      // 3. Completed after due: [baseStart, baseDue] -> blue, [baseDue + 1, parsedCompleted] -> red
+      const rawSegments = [];
+      if (!isDone) {
+        rawSegments.push({
+          type: 'uncompleted-grey',
+          sDate: baseStart,
+          eDate: baseDue,
+          title: `Planned Window: ${formatShortDate(baseStart)} – ${formatShortDate(baseDue)} (Incomplete)`
+        });
+      } else {
+        if (!parsedCompleted || parsedCompleted <= baseDue) {
+          const compEnd = parsedCompleted || baseDue;
+          rawSegments.push({
+            type: 'completed-blue',
+            sDate: baseStart,
+            eDate: compEnd,
+            title: `Completed: ${formatShortDate(baseStart)} – ${formatShortDate(compEnd)}`
+          });
+          if (compEnd < baseDue) {
+            const nextDay = new Date(compEnd.getFullYear(), compEnd.getMonth(), compEnd.getDate() + 1);
+            if (nextDay <= baseDue) {
+              rawSegments.push({
+                type: 'remaining-grey',
+                sDate: nextDay,
+                eDate: baseDue,
+                title: `Remaining Due Window: ${formatShortDate(nextDay)} – ${formatShortDate(baseDue)}`
+              });
+            }
+          }
+        } else {
+          // Completed after due date
+          rawSegments.push({
+            type: 'completed-blue',
+            sDate: baseStart,
+            eDate: baseDue,
+            title: `Target Window: ${formatShortDate(baseStart)} – ${formatShortDate(baseDue)}`
+          });
+          const nextDay = new Date(baseDue.getFullYear(), baseDue.getMonth(), baseDue.getDate() + 1);
+          if (nextDay <= parsedCompleted) {
+            rawSegments.push({
+              type: 'late-red',
+              sDate: nextDay,
+              eDate: parsedCompleted,
+              title: `Delayed Completion: ${formatShortDate(nextDay)} – ${formatShortDate(parsedCompleted)}`
+            });
+          }
+        }
+      }
+
+      // Project rawSegments into the active month's 1..daysInActiveMonth grid
+      const activeSegments = [];
+      rawSegments.forEach((seg) => {
+        const segStartNorm = new Date(seg.sDate.getFullYear(), seg.sDate.getMonth(), seg.sDate.getDate(), 0, 0, 0);
+        const segEndNorm = new Date(seg.eDate.getFullYear(), seg.eDate.getMonth(), seg.eDate.getDate(), 23, 59, 59);
+
+        if (segEndNorm < monthStart || segStartNorm > monthEnd) {
+          return; // Outside active month
+        }
+
+        let sDay = 1;
+        let eDay = daysInActiveMonth;
+
+        if (segStartNorm.getFullYear() === activeYear && segStartNorm.getMonth() === activeMonthIndex) {
+          sDay = segStartNorm.getDate();
+        }
+        if (segEndNorm.getFullYear() === activeYear && segEndNorm.getMonth() === activeMonthIndex) {
+          eDay = segEndNorm.getDate();
+        }
+
+        sDay = Math.max(1, Math.min(daysInActiveMonth, sDay));
+        eDay = Math.max(sDay, Math.min(daysInActiveMonth, eDay));
+
+        const left = ((sDay - 1) / daysInActiveMonth) * 100;
+        const width = ((eDay - sDay + 1) / daysInActiveMonth) * 100;
+
+        activeSegments.push({
+          ...seg,
+          sDay,
+          eDay,
+          spanDays: eDay - sDay + 1,
+          left,
+          width
+        });
+      });
+
       const isInProgress = String(t.status || '').toLowerCase().trim() === 'in progress';
       const progress = isDone ? 100 : (t.progress !== undefined ? t.progress : (isInProgress ? 65 : 0));
 
       return {
         ...t,
-        startDay,
-        endDay,
-        spanDays: endDay - startDay + 1,
+        parsedStart: baseStart,
+        parsedDue: baseDue,
+        parsedCompleted,
+        overallStart,
+        overallEnd,
+        overlapsActiveMonth,
+        isPriorMonth,
+        isFutureMonth,
+        activeSegments,
         progress,
         isDone,
         isInProgress,
         isKeyMilestone: t.priority === 'High' || idx === 0 || idx === 2
       };
     });
-  }, [tasks]);
+  }, [tasks, activeYear, activeMonthIndex, daysInActiveMonth]);
 
-  // Project milestones (High-level milestone items)
+  // Project milestones
   const milestoneItems = useMemo(() => {
-    return timelineTasks.slice(0, 4).map((t, idx) => ({
+    return processedTasks.slice(0, 5).map((t, idx) => ({
       id: t.id || `m-${idx}`,
       number: idx + 1,
       title: t.name,
       progress: t.progress,
-      dueDate: formatOrdinalDate(t.dueDate || t.startDate),
+      dueDate: formatOrdinalDate(t.parsedDue, false),
       isSignedOff: t.isDone || t.progress >= 95
     }));
-  }, [timelineTasks]);
+  }, [processedTasks]);
 
   const onScheduleMilestonesCount = useMemo(() => {
     const onSchedule = milestoneItems.filter(m => m.progress >= 50 || m.isSignedOff).length;
@@ -265,7 +471,7 @@ export const GanttRoadmapModal = ({
                 <span>
                   Objective:{' '}
                   <strong className="text-slate-700 font-medium">
-                    {project?.description || (project?.clientName ? `Deliver ${project.name} for ${project.clientName}` : 'Boost brand engagement & paid conversion')}
+                    {project?.description || (project?.clientName ? `Deliver ${project.name} for ${project.clientName}` : 'Project Roadmap Execution')}
                   </strong>
                 </span>
                 <span className="text-slate-300">•</span>
@@ -290,7 +496,7 @@ export const GanttRoadmapModal = ({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Days (1–30)
+                Days (1–{daysInActiveMonth})
               </button>
               <button
                 type="button"
@@ -333,7 +539,7 @@ export const GanttRoadmapModal = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
               title="Close Gantt Roadmap"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -426,70 +632,105 @@ export const GanttRoadmapModal = ({
           </div>
 
           {/* ----------------------------------------------------------------------- */}
-          {/* CARD 2: PROJECT TIMELINE (DAYS 1 – 30)                                  */}
+          {/* CARD 2: PROJECT TIMELINE (ACCURATE SPRINT MONTH & DAYS)                 */}
           {/* ----------------------------------------------------------------------- */}
           <div className="bg-white rounded-xl border border-slate-200/90 p-4 sm:p-5 shadow-2xs space-y-3.5">
             <div className="flex items-center justify-between gap-3 flex-wrap border-b border-slate-100 pb-2.5">
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-center gap-2 flex-wrap">
+                <svg className="w-4 h-4 text-blue-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                 </svg>
                 <h2 className="text-xs font-bold text-slate-800 tracking-wider uppercase">
-                  Project Timeline (Days 1 – 30)
+                  Project Timeline (Days 1 – {daysInActiveMonth})
                 </h2>
-                <span className="text-xs font-medium text-slate-400 ml-1">
-                  Sprint Month: <strong className="text-slate-700 font-semibold">{sprintMonth}</strong>
-                </span>
+
+                {/* Month Navigator */}
+                <div className="flex items-center gap-1.5 ml-2 bg-slate-50 border border-slate-200/90 rounded-lg px-2 py-1 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={handlePrevMonth}
+                    className="p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition cursor-pointer"
+                    title="Previous Month"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+
+                  <span className="text-xs font-bold text-slate-800 tracking-tight px-1 select-none">
+                    {activeMonthInfo.label}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={handleNextMonth}
+                    className="p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition cursor-pointer"
+                    title="Next Month"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               {/* Legend */}
-              <div className="flex items-center gap-3.5 text-xs text-slate-600 font-semibold">
+              <div className="flex items-center gap-3 text-xs text-slate-600 font-semibold flex-wrap">
                 <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-xs bg-blue-800 shrink-0" />
-                  <span>Done</span>
+                  <span className="w-3 h-3 rounded-xs bg-blue-600 shrink-0" />
+                  <span>Completed (Blue)</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-xs bg-sky-400 shrink-0" />
-                  <span>Active</span>
+                  <span className="w-3 h-3 rounded-xs bg-rose-500 shrink-0" />
+                  <span>Late / Extended (Red)</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rotate-45 bg-indigo-700 shrink-0" />
-                  <span>Key Milestone</span>
+                  <span className="w-3 h-3 rounded-xs bg-slate-300 border border-slate-400 shrink-0" />
+                  <span>Planned / Incomplete (Grey)</span>
                 </div>
               </div>
             </div>
 
             {/* Gantt Grid Matrix */}
             <div className="overflow-x-auto border border-slate-200/80 rounded-xl bg-slate-50/40">
-              <div className="min-w-[900px]">
-                {/* Header Row: Task on left + 30 day columns */}
-                <div className="grid grid-cols-[220px_repeat(30,1fr)] border-b border-slate-200 bg-slate-100/80 text-[10px] font-bold text-slate-600 select-none">
+              <div style={{ minWidth: `${Math.max(860, 220 + daysInActiveMonth * 26)}px` }}>
+                {/* Header Row: Task on left + day columns matching exact daysInActiveMonth */}
+                <div
+                  className="grid border-b border-slate-200 bg-slate-100/80 text-[10px] font-bold text-slate-600 select-none"
+                  style={{ gridTemplateColumns: `220px repeat(${daysInActiveMonth}, minmax(0, 1fr))` }}
+                >
                   <div className="py-2.5 px-3 border-r border-slate-200 uppercase tracking-wider font-bold">
                     Task
                   </div>
-                  {Array.from({ length: 30 }, (_, i) => i + 1).map((day) => (
-                    <div
-                      key={day}
-                      className={`py-2 text-center border-r border-slate-200/60 last:border-r-0 ${
-                        day === 15 ? 'bg-blue-100/60 text-blue-900 font-extrabold' : ''
-                      }`}
-                    >
-                      {day}
-                    </div>
-                  ))}
+                  {Array.from({ length: daysInActiveMonth }, (_, i) => i + 1).map((day) => {
+                    const colDate = new Date(activeYear, activeMonthIndex, day);
+                    const isWeekend = colDate.getDay() === 0 || colDate.getDay() === 6;
+                    return (
+                      <div
+                        key={day}
+                        className={`py-2 text-center border-r border-slate-200/60 last:border-r-0 ${
+                          isWeekend ? 'bg-slate-200/40 text-slate-400 font-medium' : ''
+                        }`}
+                        title={`${formatShortDate(colDate)}`}
+                      >
+                        {day}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Task Gantt Rows */}
                 <div className="divide-y divide-slate-100 bg-white">
-                  {timelineTasks.map((task) => {
-                    const start = Math.min(30, Math.max(1, task.startDay));
-                    const end = Math.min(30, Math.max(start, task.endDay));
-                    const span = end - start + 1;
+                  {processedTasks.map((task) => {
+                    const start = task.startDay;
+                    const end = task.endDay;
+                    const span = task.spanDays;
 
                     return (
                       <div
                         key={task.id}
-                        className="grid grid-cols-[220px_repeat(30,1fr)] items-center min-h-[44px] hover:bg-slate-50/80 transition group"
+                        className="grid items-center min-h-[44px] hover:bg-slate-50/80 transition group"
+                        style={{ gridTemplateColumns: `220px repeat(${daysInActiveMonth}, minmax(0, 1fr))` }}
                       >
                         {/* Left Task Title */}
                         <div
@@ -499,11 +740,17 @@ export const GanttRoadmapModal = ({
                           {task.name}
                         </div>
 
-                        {/* Gantt Bar spanning 30 columns */}
-                        <div className="col-span-30 relative h-full flex items-center px-1">
+                        {/* Gantt Bar spanning day columns */}
+                        <div
+                          className="relative h-full flex items-center px-1"
+                          style={{ gridColumn: `span ${daysInActiveMonth} / span ${daysInActiveMonth}` }}
+                        >
                           {/* Background day column lines */}
-                          <div className="absolute inset-0 grid grid-cols-30 pointer-events-none">
-                            {Array.from({ length: 30 }).map((_, i) => (
+                          <div
+                            className="absolute inset-0 grid pointer-events-none"
+                            style={{ gridTemplateColumns: `repeat(${daysInActiveMonth}, minmax(0, 1fr))` }}
+                          >
+                            {Array.from({ length: daysInActiveMonth }).map((_, i) => (
                               <div
                                 key={i}
                                 className="border-r border-slate-100 last:border-r-0 h-full"
@@ -511,27 +758,76 @@ export const GanttRoadmapModal = ({
                             ))}
                           </div>
 
-                          {/* The Horizontal Gantt Bar */}
-                          <div
-                            style={{
-                              marginLeft: `${((start - 1) / 30) * 100}%`,
-                              width: `${(span / 30) * 100}%`
-                            }}
-                            className={`relative z-10 h-7 rounded-md px-2.5 flex items-center justify-between text-white text-[10px] font-bold shadow-xs transition-transform group-hover:scale-[1.01] ${
-                              task.isDone
-                                ? 'bg-gradient-to-r from-blue-900 to-blue-700'
-                                : 'bg-gradient-to-r from-sky-400 to-blue-500'
-                            }`}
-                            title={`${task.name} (Days ${start}-${end}, ${task.progress}% - ${task.status})`}
-                          >
-                            <span className="truncate flex items-center gap-1 font-bold">
-                              <span>✓</span>
-                              {task.isDone ? '100%' : `${task.progress}%`}
-                            </span>
-                            <span className="truncate ml-1.5 opacity-95 font-semibold text-[9.5px]">
-                              Days {start}–{end}
-                            </span>
-                          </div>
+                          {/* Multi-segment Timeline Bar */}
+                          {task.activeSegments && task.activeSegments.length > 0 ? (
+                            task.activeSegments.map((seg, sIdx) => {
+                              const isFirst = sIdx === 0;
+                              const isLast = sIdx === task.activeSegments.length - 1;
+                              const single = task.activeSegments.length === 1;
+
+                              const roundClass = single
+                                ? 'rounded-md'
+                                : isFirst
+                                ? 'rounded-l-md'
+                                : isLast
+                                ? 'rounded-r-md'
+                                : 'rounded-none';
+
+                              let colorClass = '';
+                              let text = '';
+                              if (seg.type === 'completed-blue') {
+                                colorClass = 'bg-gradient-to-r from-blue-700 to-blue-600 text-white shadow-xs';
+                                text = `✓ ${formatShortDate(task.parsedCompleted || task.parsedDue)}`;
+                              } else if (seg.type === 'late-red') {
+                                colorClass = 'bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-xs';
+                                text = `Late (Done ${formatShortDate(task.parsedCompleted)})`;
+                              } else if (seg.type === 'remaining-grey') {
+                                colorClass = 'bg-slate-300 text-slate-700 border border-slate-400/40 shadow-2xs';
+                                text = `Due ${formatShortDate(task.parsedDue)}`;
+                              } else {
+                                // uncompleted-grey
+                                colorClass = 'bg-slate-400/80 text-white shadow-2xs';
+                                text = `${formatShortDate(seg.sDate)}–${formatShortDate(seg.eDate)}`;
+                              }
+
+                              return (
+                                <div
+                                  key={sIdx}
+                                  style={{
+                                    left: `${seg.left}%`,
+                                    width: `${seg.width}%`
+                                  }}
+                                  className={`absolute top-1/2 -translate-y-1/2 h-7 px-2 flex items-center justify-between text-[10px] font-bold transition-all z-10 ${roundClass} ${colorClass}`}
+                                  title={seg.title}
+                                >
+                                  <span className="truncate flex items-center gap-1 font-bold">
+                                    {seg.type === 'completed-blue' && <span>✓</span>}
+                                    {seg.type === 'late-red' && <span>⚠</span>}
+                                    <span className="truncate">{text}</span>
+                                  </span>
+                                  {seg.spanDays >= 4 && (
+                                    <span className="text-[9px] opacity-80 shrink-0 font-medium ml-1">
+                                      {seg.spanDays}d
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })
+                          ) : task.isPriorMonth ? (
+                            <div className="relative z-10 flex items-center h-full px-2">
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                <span>Completed prior month ({formatShortDate(task.parsedCompleted || task.parsedDue)})</span>
+                              </span>
+                            </div>
+                          ) : task.isFutureMonth ? (
+                            <div className="relative z-10 flex items-center h-full px-2">
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                                <span>Scheduled next month ({formatShortDate(task.parsedStart)})</span>
+                              </span>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     );
@@ -542,7 +838,7 @@ export const GanttRoadmapModal = ({
           </div>
 
           {/* ----------------------------------------------------------------------- */}
-          {/* CARD 3: PROJECT TASKS BREAKDOWN                                         */}
+          {/* CARD 3: PROJECT TASKS BREAKDOWN (EXACT MATCHING DATES)                  */}
           {/* ----------------------------------------------------------------------- */}
           <div className="bg-white rounded-xl border border-slate-200/90 p-4 sm:p-5 shadow-2xs space-y-3.5">
             <div className="flex items-center justify-between gap-3 flex-wrap border-b border-slate-100 pb-2.5">
@@ -555,7 +851,7 @@ export const GanttRoadmapModal = ({
                 </h2>
               </div>
               <span className="text-xs font-semibold text-slate-500">
-                {timelineTasks.length} Primary Execution Items
+                {processedTasks.length} Primary Execution Items
               </span>
             </div>
 
@@ -566,14 +862,15 @@ export const GanttRoadmapModal = ({
                   <tr className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
                     <th className="py-2 px-2 w-8 text-center">#</th>
                     <th className="py-2 px-3">Task</th>
-                    <th className="py-2 px-3 text-center w-28">Start</th>
-                    <th className="py-2 px-3 text-center w-28">End</th>
+                    <th className="py-2 px-3 text-center w-28">Created</th>
+                    <th className="py-2 px-3 text-center w-28">Due Date</th>
+                    <th className="py-2 px-3 text-center w-32">Completed</th>
                     <th className="py-2 px-3 text-center w-24">Priority</th>
-                    <th className="py-2 px-3 text-center w-20">Status</th>
+                    <th className="py-2 px-3 text-center w-24">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {timelineTasks.map((t, idx) => (
+                  {processedTasks.map((t, idx) => (
                     <tr key={t.id} className="hover:bg-slate-50/70 transition">
                       <td className="py-3 px-2 text-center text-slate-400 font-bold">
                         {idx + 1}
@@ -582,10 +879,19 @@ export const GanttRoadmapModal = ({
                         {t.name}
                       </td>
                       <td className="py-3 px-3 text-center text-slate-600 font-semibold">
-                        {formatOrdinalDate(t.startDate || project?.startDate)}
+                        {formatOrdinalDate(t.parsedStart, true)}
                       </td>
                       <td className="py-3 px-3 text-center text-slate-600 font-semibold">
-                        {formatOrdinalDate(t.dueDate || project?.endDate)}
+                        {formatOrdinalDate(t.parsedDue, true)}
+                      </td>
+                      <td className="py-3 px-3 text-center font-semibold">
+                        {t.isDone ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold text-xs bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            ✓ {formatOrdinalDate(t.parsedCompleted || t.parsedStart, true)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 font-normal">—</span>
+                        )}
                       </td>
                       <td className="py-3 px-3 text-center">
                         <span
@@ -602,11 +908,11 @@ export const GanttRoadmapModal = ({
                       </td>
                       <td className="py-3 px-3 text-center">
                         {t.isDone ? (
-                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold border border-emerald-200">
-                            ✓
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            <span>✓</span> Done
                           </span>
                         ) : (
-                          <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                          <span className="text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                             {t.status || 'Active'}
                           </span>
                         )}
@@ -690,4 +996,3 @@ export const GanttRoadmapModal = ({
   );
 };
 export default GanttRoadmapModal;
-

@@ -309,6 +309,7 @@ export const toTaskDto = (row) => row ? ({
   dueDate: row.due_date || '',
   createdDate: row.created_date || (row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : ''),
   createdAt: row.created_at ? new Date(row.created_at).toISOString() : '',
+  completedDate: row.completed_date || '',
   priority: row.priority || 'Medium',
   description: row.description || '',
   assigneeIds: parseJsonArray(row.assignee_ids),
@@ -421,6 +422,7 @@ export async function initDb() {
       );
     `;
     await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parent_id VARCHAR(100);`;
+    await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_date TEXT DEFAULT '';`;
     await sql`CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id);`;
 
     // 4. Meetings Table
@@ -895,7 +897,8 @@ export async function createProjectRecord(project, tasks = []) {
       end_date = EXCLUDED.end_date,
       progress = EXCLUDED.progress,
       assignee_ids = EXCLUDED.assignee_ids,
-      assignee_id = EXCLUDED.assignee_id;
+      assignee_id = EXCLUDED.assignee_id,
+      completed_date = EXCLUDED.completed_date;
   `;
 
   // Insert or update bundled tasks
@@ -907,10 +910,10 @@ export async function createProjectRecord(project, tasks = []) {
 
     await sql`
       INSERT INTO tasks (
-        id, name, project_id, parent_id, status, due_date, priority, description, assignee_ids, assignee_id
+        id, name, project_id, parent_id, status, due_date, priority, description, assignee_ids, assignee_id, completed_date
       ) VALUES (
         ${tId}, ${t.name}, ${id}, ${tParentId}, ${t.status || 'Not started'}, ${t.dueDate || ''},
-        ${t.priority || 'Medium'}, ${t.description || ''}, ${tAssigneeIdsJson}::jsonb, ${tAssigneeId}
+        ${t.priority || 'Medium'}, ${t.description || ''}, ${tAssigneeIdsJson}::jsonb, ${tAssigneeId}, ${t.completedDate || (t.status === 'Done' ? (t.dueDate || '') : '')}
       )
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
@@ -921,7 +924,8 @@ export async function createProjectRecord(project, tasks = []) {
         priority = EXCLUDED.priority,
         description = EXCLUDED.description,
         assignee_ids = EXCLUDED.assignee_ids,
-        assignee_id = EXCLUDED.assignee_id;
+        assignee_id = EXCLUDED.assignee_id,
+        completed_date = EXCLUDED.completed_date;
     `;
   }
 
@@ -1001,10 +1005,10 @@ export async function createTaskRecord(task) {
 
   await sql`
     INSERT INTO tasks (
-      id, name, project_id, parent_id, status, due_date, priority, description, assignee_ids, assignee_id
+      id, name, project_id, parent_id, status, due_date, priority, description, assignee_ids, assignee_id, completed_date
     ) VALUES (
       ${id}, ${taskName}, ${projectId}, ${parentId}, ${status}, ${task.dueDate || ''},
-      ${task.priority || 'Medium'}, ${task.description || ''}, ${assigneeIdsJson}::jsonb, ${assigneeId}
+      ${task.priority || 'Medium'}, ${task.description || ''}, ${assigneeIdsJson}::jsonb, ${assigneeId}, ${task.completedDate || (status === 'Done' ? (task.dueDate || new Date().toISOString().slice(0, 10)) : '')}
     )
     ON CONFLICT (id) DO UPDATE SET
       name = EXCLUDED.name,
@@ -1015,7 +1019,8 @@ export async function createTaskRecord(task) {
       priority = EXCLUDED.priority,
       description = EXCLUDED.description,
       assignee_ids = EXCLUDED.assignee_ids,
-      assignee_id = EXCLUDED.assignee_id;
+      assignee_id = EXCLUDED.assignee_id,
+      completed_date = EXCLUDED.completed_date;
   `;
 
   // Auto-recalculate project progress if associated with a project
@@ -1038,6 +1043,11 @@ export async function updateTaskRecord(id, updates) {
   const parentId = updates.parentId !== undefined ? (updates.parentId ? String(updates.parentId) : null) : current.parent_id;
   const status = updates.status !== undefined ? updates.status : current.status;
   const dueDate = updates.dueDate !== undefined ? updates.dueDate : current.due_date;
+  const completedDate = updates.completedDate !== undefined
+    ? updates.completedDate
+    : (status === 'Done'
+        ? (current.completed_date || (current.status !== 'Done' ? new Date().toISOString().slice(0, 10) : ''))
+        : '');
   const priority = updates.priority !== undefined ? updates.priority : current.priority;
   const description = updates.description !== undefined ? updates.description : current.description;
   const assigneeIds = updates.assigneeIds !== undefined ? updates.assigneeIds : (current.assignee_ids || []);
@@ -1051,6 +1061,7 @@ export async function updateTaskRecord(id, updates) {
       parent_id = ${parentId},
       status = ${status},
       due_date = ${dueDate},
+      completed_date = ${completedDate},
       priority = ${priority},
       description = ${description},
       assignee_ids = ${assigneeIdsJson}::jsonb,

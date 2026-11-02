@@ -311,7 +311,13 @@ export const DataProvider = ({ children }) => {
 
     // Auto-cascade parent assignees to all subtasks & sub-subtasks
     const rawLoadedTasks = Array.isArray(loaded.tasks) && loaded.tasks.length > 0 ? loaded.tasks : seedData.tasks;
-    const initialTasks = cascadeParentAssignees(rawLoadedTasks);
+    const initialTasks = cascadeParentAssignees(rawLoadedTasks).map(t => {
+      if (t.status === 'Done' && !t.completedDate) {
+        // Permanently freeze legacy completed tasks so their completedDate never dynamically mirrors dueDate
+        return { ...t, completedDate: t.completedDate || t.dueDate || t.createdDate || '2026-09-22' };
+      }
+      return t;
+    });
 
     const currentDeletedEmployeeIds = (() => {
       try {
@@ -607,6 +613,19 @@ export const DataProvider = ({ children }) => {
   const addTask = (task) => {
     let item = { ...task, id: task.id || generateId() };
 
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const todayStr = `${y}-${m}-${d}`;
+
+    if (!item.createdDate && !item.createdAt) {
+      item.createdDate = todayStr;
+    }
+    if (item.status === 'Done' && !item.completedDate) {
+      item.completedDate = todayStr;
+    }
+
     // If this is a subtask or sub-subtask and assignees are not specified, inherit from parent
     if (item.parentId && (!item.assigneeIds || item.assigneeIds.length === 0)) {
       const parent = data.tasks.find(t => String(t.id) === String(item.parentId));
@@ -663,15 +682,43 @@ export const DataProvider = ({ children }) => {
       cascadedAssigneeId = updates.assigneeId || cascadedAssigneeIds[0] || '';
       cascadedDescendantIds = Array.from(descendants);
 
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      const todayStr = `${y}-${m}-${d}`;
+
       const nextTasks = prev.tasks.map(t => {
         if (String(t.id) === String(id)) {
-          return { ...t, ...updates };
+          let updatedCompletedDate = t.completedDate || '';
+          if (updates.completedDate !== undefined) {
+            // Explicit completed date change (e.g. from Admin or Project Lead)
+            updatedCompletedDate = updates.completedDate;
+          } else if (updates.status === 'Done' && t.status !== 'Done') {
+            // Task newly marked as Done
+            updatedCompletedDate = todayStr;
+          } else if (updates.status && updates.status !== 'Done') {
+            // Task uncompleted / moved away from Done
+            updatedCompletedDate = '';
+          }
+          // IMPORTANT: If task was ALREADY Done, and status didn't change (e.g. due date updated),
+          // updatedCompletedDate stays strictly preserved as t.completedDate!
+          return { ...t, ...updates, completedDate: updatedCompletedDate };
         }
         if (descendants.has(String(t.id))) {
+          let descendantCompleted = t.completedDate || '';
+          if (updates.completedDate !== undefined) {
+            descendantCompleted = updates.completedDate;
+          } else if (updates.status === 'Done' && t.status !== 'Done') {
+            descendantCompleted = todayStr;
+          } else if (updates.status && updates.status !== 'Done') {
+            descendantCompleted = '';
+          }
           return {
             ...t,
             assigneeIds: cascadedAssigneeIds,
-            assigneeId: cascadedAssigneeId
+            assigneeId: cascadedAssigneeId,
+            ...(updates.status ? { status: updates.status, completedDate: descendantCompleted } : {})
           };
         }
         return t;

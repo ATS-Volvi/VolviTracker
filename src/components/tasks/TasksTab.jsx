@@ -43,8 +43,17 @@ export const TasksTab = ({
   disableUrlSync = false,
   asCard = true
 }) => {
-  const { user, isAdmin, isProjectManager } = useAuth();
-  const canAssignAnyone = Boolean(isAdmin || isProjectManager);
+  const { user, isAdmin, isProjectManager, isProjectLead, canEditCompletionDate: authCanEditCompletion } = useAuth();
+  const canAssignAnyone = Boolean(isAdmin || isProjectManager || isProjectLead);
+
+  const canUserEditCompletionDate = (task) => {
+    if (isAdmin || isProjectManager || isProjectLead || authCanEditCompletion) return true;
+    const taskProj = allProjects.find(p => String(p.id) === String(task?.projectId));
+    if (taskProj && String(taskProj.createdBy || '') === String(user?.id)) return true;
+    const uRole = (user?.role || '').toLowerCase().trim();
+    if (uRole.includes('lead') || uRole.includes('manager')) return true;
+    return false;
+  };
   const { tasks: allTasks = [], projects: allProjects = [], employees = [], getEmployee, addTask, updateTask, removeTask } = useData();
   const { addToast } = useToast();
   const tasks = tasksProp || allTasks;
@@ -543,8 +552,13 @@ export const TasksTab = ({
   };
 
   const handleStatusChange = (taskId, newStatus, taskName) => {
-    updateTask(taskId, { status: newStatus });
-    if (newStatus === 'Done') {
+    const isDone = newStatus === 'Done';
+    const todayStr = getLocalDateString();
+    updateTask(taskId, {
+      status: newStatus,
+      completedDate: isDone ? todayStr : ''
+    });
+    if (isDone) {
       // Also cascade completion to all descendant subtasks recursively
       const descendants = [];
       const queue = [String(taskId)];
@@ -559,7 +573,7 @@ export const TasksTab = ({
           }
         });
       }
-      descendants.forEach(dId => updateTask(dId, { status: 'Done' }));
+      descendants.forEach(dId => updateTask(dId, { status: 'Done', completedDate: todayStr }));
       addToast(`Completed "${taskName}"!`, 'success');
     } else {
       addToast(`Updated status to "${newStatus}"`, 'info');
@@ -1310,7 +1324,8 @@ export const TasksTab = ({
                     <button
                       type="button"
                       onClick={() => {
-                        selectedTaskIds.forEach(id => updateTask(id, { status: 'Done' }));
+                        const todayStr = getLocalDateString();
+                        selectedTaskIds.forEach(id => updateTask(id, { status: 'Done', completedDate: todayStr }));
                         addToast(`Marked ${selectedTaskIds.size} task(s) as Done`, 'success');
                       }}
                       className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-bold text-xs shadow-2xs transition cursor-pointer"
@@ -1320,7 +1335,7 @@ export const TasksTab = ({
                     <button
                       type="button"
                       onClick={() => {
-                        selectedTaskIds.forEach(id => updateTask(id, { status: 'In progress' }));
+                        selectedTaskIds.forEach(id => updateTask(id, { status: 'In progress', completedDate: '' }));
                         addToast(`Marked ${selectedTaskIds.size} task(s) as In progress`, 'success');
                       }}
                       className="px-2.5 py-1 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 rounded-lg font-bold text-xs shadow-2xs transition cursor-pointer"
@@ -1370,7 +1385,8 @@ export const TasksTab = ({
                       <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-32">Status</th>
                       <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-28">Created</th>
                       <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-32">Due Date</th>
-                      <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-28">Priority</th>
+                      <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-32">Completed</th>
+                      <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-24">Priority</th>
                       <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-right pr-4 w-28">Actions</th>
                     </tr>
                   </thead>
@@ -1501,6 +1517,36 @@ export const TasksTab = ({
                                 </div>
                               )}
                             </div>
+                          </td>
+
+                          {/* 8. Completed */}
+                          <td className="py-3.5 px-3 w-36 align-middle">
+                            {t.status === 'Done' ? (
+                              canUserEditCompletionDate(t) ? (
+                                <div className="flex items-center gap-1.5" title="Project Lead / Admin: Click to change completion date">
+                                  <span className="material-symbols-outlined text-[15px] text-emerald-600 shrink-0">check_circle</span>
+                                  <input
+                                    type="date"
+                                    value={t.completedDate ? String(t.completedDate).slice(0, 10) : ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      if (val) {
+                                        updateTask(t.id, { completedDate: val });
+                                        addToast(`Updated completion date for "${t.name}"`, 'success', 2000);
+                                      }
+                                    }}
+                                    className="text-xs font-semibold text-emerald-800 bg-emerald-50/60 hover:bg-emerald-100/80 px-1.5 py-0.5 rounded border border-emerald-200 hover:border-emerald-300 transition cursor-pointer max-w-[125px]"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700" title="Completed Date (Managed by Project Leads & Admins)">
+                                  <span className="material-symbols-outlined text-[15px] text-emerald-600 shrink-0">check_circle</span>
+                                  <span className="truncate">{fmtFullDate(t.completedDate || t.createdDate)}</span>
+                                </div>
+                              )
+                            ) : (
+                              <span className="text-xs text-gray-400 font-normal">—</span>
+                            )}
                           </td>
 
                           {/* 8. Priority */}
