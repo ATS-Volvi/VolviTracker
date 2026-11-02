@@ -7,6 +7,7 @@ import { Avatar } from '../widgets/Avatar';
 import { StatusSelect } from '../widgets/StatusSelect';
 import { PriorityPill } from '../widgets/PriorityPill';
 import { TaskForm } from '../forms/TaskForm';
+import { GanttRoadmapModal } from './GanttRoadmapModal';
 import { sortTasks } from '../../utils/taskSort';
 import { downloadTaskTemplateExcel, parseTaskExcelFile } from '../../utils/excelTaskImport';
 
@@ -58,7 +59,8 @@ export const TasksTab = ({
     return (defaultProjectId && defaultProjectId !== 'all') ? String(defaultProjectId) : (urlProjectId || 'all');
   });
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'active', 'done'
-  const [viewMode, setViewMode] = useState('table'); // 'table', 'cards', 'checklist', 'status'
+  const [viewMode, setViewMode] = useState('table'); // 'table', 'cards', 'checklist', 'status', 'gantt'
+  const [isGanttModalOpen, setIsGanttModalOpen] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
@@ -734,6 +736,19 @@ export const TasksTab = ({
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap shrink-0">
+            {/* Gantt Chart Roadmap View Button */}
+            <button
+              type="button"
+              onClick={() => setIsGanttModalOpen(true)}
+              title="Open Project Timeline & Gantt Roadmap"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50/90 hover:bg-indigo-100 active:bg-indigo-200 border border-indigo-200 rounded-lg shadow-2xs transition hover:border-indigo-300 focus:outline-none cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M3 4h18M3 10h12M3 16h16M3 20h8" />
+              </svg>
+              <span>Gantt Chart</span>
+            </button>
+
             {showExcelActions && (
               <>
                 {/* Template Download Button */}
@@ -1016,6 +1031,22 @@ export const TasksTab = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
             </svg>
             <span className="hidden sm:inline">By Status</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('gantt');
+              setIsGanttModalOpen(true);
+            }}
+            title="Gantt Chart Roadmap View"
+            className={`px-3 py-1.5 rounded-lg transition-all duration-150 flex items-center gap-1.5 font-bold text-xs cursor-pointer ${
+              viewMode === 'gantt' ? 'bg-white text-indigo-900 shadow-xs ring-1 ring-indigo-200' : 'text-slate-600 hover:text-indigo-900 hover:bg-slate-200/50'
+            }`}
+          >
+            <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M3 4h18M3 10h12M3 16h16M3 20h8" />
+            </svg>
+            <span className="hidden sm:inline">Gantt</span>
           </button>
         </div>
       </div>
@@ -1669,11 +1700,48 @@ export const TasksTab = ({
               })}
             </div>
           )}
+          {/* GANTT VIEW PLACEHOLDER (When modal is closed while in gantt mode) */}
+          {viewMode === 'gantt' && !isGanttModalOpen && (
+            <div className="p-8 text-center bg-white rounded-xl border border-indigo-100 shadow-2xs space-y-3 animate-fade-in">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center mx-auto shadow-2xs">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M3 4h18M3 10h12M3 16h16M3 20h8" />
+                </svg>
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">Project Timeline & Gantt Roadmap</h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                Explore the interactive 30-day Gantt timeline, sprint milestones, and execution breakdowns for {activeProjectObj?.name || 'this project'}.
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsGanttModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs shadow-sm transition cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M3 4h18M3 10h12M3 16h16M3 20h8" />
+                </svg>
+                <span>Launch Gantt View</span>
+              </button>
+            </div>
+          )}
         </>
       )}
 
       {/* Task Modal Form */}
       <TaskForm isOpen={open} open={open} onClose={() => setOpen(false)} initial={editing} projects={allProjects} />
+
+      {/* Gantt Roadmap Modal */}
+      <GanttRoadmapModal
+        isOpen={isGanttModalOpen}
+        onClose={() => {
+          setIsGanttModalOpen(false);
+          if (viewMode === 'gantt') setViewMode('table');
+        }}
+        project={activeProjectObj}
+        tasks={displayedTasks}
+        employees={employees}
+        onAddTask={handleNewTask}
+      />
     </Container>
   );
 };

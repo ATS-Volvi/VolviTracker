@@ -3,6 +3,7 @@ import { useSearchParams, useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { TasksTab } from '../components/tasks/TasksTab';
+import { GanttRoadmapModal } from '../components/tasks/GanttRoadmapModal';
 import { ProjectForm } from '../components/forms/ProjectForm';
 import { ProjectKpiDisplay } from '../components/projects/ProjectKpiDisplay';
 
@@ -13,6 +14,7 @@ export const TasksPage = () => {
   const { user, isAdmin, isProjectManager } = useAuth();
   const { projects: rawProjects = [], tasks: rawTasks = [], employees = [] } = useData();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isGanttModalOpen, setIsGanttModalOpen] = useState(false);
 
   const allProjects = Array.isArray(rawProjects) ? rawProjects : [];
   const allTasks = Array.isArray(rawTasks) ? rawTasks : [];
@@ -95,6 +97,15 @@ export const TasksPage = () => {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsGanttModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/90 hover:bg-indigo-100 text-xs font-bold text-indigo-700 shadow-2xs hover:shadow-xs transition active:scale-98 cursor-pointer"
+            title="Open Project Timeline & Gantt Roadmap"
+          >
+            <span className="material-symbols-outlined text-[16px] text-indigo-600">calendar_view_week</span>
+            <span>Gantt Roadmap</span>
+          </button>
           {activeProject && (
             <button
               type="button"
@@ -147,6 +158,15 @@ export const TasksPage = () => {
           hideTasksSection={true}
         />
       )}
+
+      {/* Gantt Roadmap Modal */}
+      <GanttRoadmapModal
+        isOpen={isGanttModalOpen}
+        onClose={() => setIsGanttModalOpen(false)}
+        project={activeProject}
+        tasks={pageTasks}
+        employees={employees}
+      />
     </div>
   );
 };
