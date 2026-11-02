@@ -238,15 +238,15 @@ export const GanttRoadmapModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/60 backdrop-blur-xs animate-fade-in print:p-0 print:bg-white print:static">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 md:p-6 bg-slate-900/60 backdrop-blur-xs animate-fade-in print:p-0 print:bg-white print:static">
       <div className="relative w-full max-w-6xl max-h-[94vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-200/90 overflow-hidden print:max-h-none print:shadow-none print:border-none print:rounded-none">
         
         {/* ========================================================================= */}
         {/* MODAL HEADER                                                              */}
         {/* ========================================================================= */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-6 py-4.5 border-b border-slate-200 bg-white shrink-0 print:border-b-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-6 py-4 sm:py-5 border-b border-slate-200 bg-white shrink-0 print:border-b-2">
           {/* Left: Icon, Title, Sprint Badge, Subtitle */}
-          <div className="flex items-start gap-3.5">
+          <div className="flex items-center gap-3.5">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-sm shrink-0">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M3 4h18M3 10h12M3 16h16M3 20h8" />
@@ -265,8 +265,7 @@ export const GanttRoadmapModal = ({
                 <span>
                   Objective:{' '}
                   <strong className="text-slate-700 font-medium">
-                    {project?.clientName ? `Client: ${project.clientName} • ` : ''}
-                    {project?.name || 'Boost brand engagement & paid conversion'}
+                    {project?.description || (project?.clientName ? `Deliver ${project.name} for ${project.clientName}` : 'Boost brand engagement & paid conversion')}
                   </strong>
                 </span>
                 <span className="text-slate-300">•</span>
@@ -279,7 +278,7 @@ export const GanttRoadmapModal = ({
           </div>
 
           {/* Right: View mode pills, Print button, Close 'X' */}
-          <div className="flex items-center gap-2.5 self-end md:self-center shrink-0 print:hidden">
+          <div className="flex items-center gap-2.5 self-end sm:self-center shrink-0 print:hidden">
             {/* View Mode Switcher */}
             <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 shadow-2xs">
               <button
@@ -691,3 +690,4 @@ export const GanttRoadmapModal = ({
   );
 };
 export default GanttRoadmapModal;
+
