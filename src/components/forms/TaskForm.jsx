@@ -84,7 +84,7 @@ const SubtaskTreeRow = ({
                 ? 'bg-emerald-500 border-emerald-600 text-white shadow-2xs'
                 : 'border-gray-300 hover:border-emerald-500 bg-white'
             }`}
-            title={isDone ? 'Mark In progress' : 'Mark as Done'}
+            title={isDone ? 'Mark In progress' : 'Mark as Completed'}
           >
             {isDone && (
               <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
@@ -864,7 +864,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
             <div>
               <label className="mb-1 block text-xs font-semibold text-gray-700">Status</label>
               <select className="input-field text-sm bg-white" value={form.status} onChange={set('status')}>
-                {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                {STATUSES.map(s => <option key={s} value={s}>{s === 'Done' ? 'Completed' : s}</option>)}
               </select>
             </div>
             <div>
@@ -929,7 +929,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
               <p className="text-[11px] text-emerald-700/80">
                 {canEditCompletionDate
                   ? 'As a Project Lead or Admin, you can manually set or adjust the completion date.'
-                  : 'Automatically recorded when set to Done. Only Project Leads and Admins can modify this date.'}
+                  : 'Automatically recorded when set to Completed. Only Project Leads and Admins can modify this date.'}
               </p>
             </div>
           )}

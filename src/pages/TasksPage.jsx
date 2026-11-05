@@ -23,7 +23,7 @@ export const TasksPage = () => {
   const baseProjects = isAdmin
     ? allProjects
     : (isProjectManager
-      ? allProjects.filter(p => String(p.createdBy || '') === String(user?.id))
+      ? allProjects.filter(p => String(p.projectManagerId || p.createdBy || '') === String(user?.id) || (Array.isArray(p.assigneeIds) && p.assigneeIds.some(aid => String(aid) === String(user?.id))))
       : allProjects.filter(p => (Array.isArray(p.assigneeIds) && p.assigneeIds.some(aid => String(aid) === String(user?.id))) || String(p.assigneeId) === String(user?.id)));
 
   // Scoped tasks

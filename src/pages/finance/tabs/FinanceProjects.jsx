@@ -380,7 +380,7 @@ const FinanceProjects = ({
                             ? 'bg-rose-50 text-rose-700 border border-rose-200'
                             : 'bg-blue-50 text-blue-700 border border-blue-200'
                         }`}>
-                          {p.status}
+                          {p.status === 'Done' ? 'Completed' : p.status}
                         </span>
                       </td>
 

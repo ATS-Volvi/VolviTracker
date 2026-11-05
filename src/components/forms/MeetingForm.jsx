@@ -278,7 +278,7 @@ export const MeetingForm = ({ isOpen, open, onClose, initial = null, defaultDate
         <div>
           <label className="mb-1 block text-xs font-semibold text-gray-600">Status</label>
           <select className="input-field" value={form.status} onChange={set('status')}>
-            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            {STATUSES.map(s => <option key={s} value={s}>{s === 'Done' ? 'Completed' : s}</option>)}
           </select>
         </div>
 

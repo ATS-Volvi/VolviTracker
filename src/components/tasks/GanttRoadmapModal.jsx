@@ -780,7 +780,7 @@ export const GanttRoadmapModal = ({
                                 text = `✓ ${formatShortDate(task.parsedCompleted || task.parsedDue)}`;
                               } else if (seg.type === 'late-red') {
                                 colorClass = 'bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-xs';
-                                text = `Late (Done ${formatShortDate(task.parsedCompleted)})`;
+                                text = `Late (Completed ${formatShortDate(task.parsedCompleted)})`;
                               } else if (seg.type === 'remaining-grey') {
                                 colorClass = 'bg-slate-300 text-slate-700 border border-slate-400/40 shadow-2xs';
                                 text = `Due ${formatShortDate(task.parsedDue)}`;
@@ -909,7 +909,7 @@ export const GanttRoadmapModal = ({
                       <td className="py-3 px-3 text-center">
                         {t.isDone ? (
                           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                            <span>✓</span> Done
+                            <span>✓</span> Completed
                           </span>
                         ) : (
                           <span className="text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">

@@ -283,6 +283,8 @@ export const toProjectDto = (row) => row ? ({
   id: row.id,
   name: row.name,
   createdBy: row.created_by ? String(row.created_by) : '',
+  projectManagerId: row.project_manager_id ? String(row.project_manager_id) : (row.created_by ? String(row.created_by) : ''),
+  projectManagerName: row.project_manager_name || '',
   clientName: row.client_name || '',
   contactDesignation: row.contact_designation || row.client_designation || '',
   clientDesignation: row.contact_designation || row.client_designation || '',
@@ -314,6 +316,87 @@ export const toTaskDto = (row) => row ? ({
   description: row.description || '',
   assigneeIds: parseJsonArray(row.assignee_ids),
   assigneeId: row.assignee_id ? String(row.assignee_id) : ''
+}) : null;
+
+// Project Plan DTO Converters
+export const toSprintDto = (row) => row ? ({
+  id: String(row.id),
+  projectId: String(row.project_id),
+  code: row.code,
+  name: row.name || '',
+  phase: row.phase || '',
+  startDate: row.start_date || '',
+  endDate: row.end_date || '',
+  goal: row.goal || '',
+  sortOrder: toNum(row.sort_order, 0),
+  createdAt: row.created_at ? new Date(row.created_at).toISOString() : '',
+  updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : ''
+}) : null;
+
+export const toGateDto = (row) => row ? ({
+  id: String(row.id),
+  projectId: String(row.project_id),
+  code: row.code,
+  name: row.name,
+  targetDate: row.target_date || '',
+  approvers: row.approvers || '',
+  requiredEvidence: row.required_evidence || '',
+  exitCriteria: row.exit_criteria || '',
+  percentComplete: toNum(row.percent_complete, 0),
+  actualApprovalDate: row.actual_approval_date || '',
+  approvedBy: row.approved_by || '',
+  decisionNotes: row.decision_notes || '',
+  notesRisk: row.notes_risk || '',
+  sortOrder: toNum(row.sort_order, 0),
+  createdAt: row.created_at ? new Date(row.created_at).toISOString() : '',
+  updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : ''
+}) : null;
+
+export const toSprintTaskDto = (row) => row ? ({
+  id: String(row.id),
+  projectId: String(row.project_id),
+  sprintId: String(row.sprint_id),
+  gateId: row.gate_id ? String(row.gate_id) : null,
+  taskCode: row.task_code,
+  workstream: row.workstream || '',
+  title: row.title,
+  plannedStart: row.planned_start || '',
+  plannedFinish: row.planned_finish || '',
+  owner: row.owner || '',
+  dependency: row.dependency || '',
+  weight: toNum(row.weight, 1),
+  percentComplete: toNum(row.percent_complete, 0),
+  actualCompletionDate: row.actual_completion_date || '',
+  planningBasis: row.planning_basis || '',
+  sortOrder: toNum(row.sort_order, 0),
+  createdBy: row.created_by || '',
+  createdAt: row.created_at ? new Date(row.created_at).toISOString() : '',
+  updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : ''
+}) : null;
+
+export const toChecklistItemDto = (row) => row ? ({
+  id: String(row.id),
+  gateId: String(row.gate_id),
+  projectId: String(row.project_id),
+  label: row.label,
+  isDone: Boolean(row.is_done),
+  doneBy: row.done_by || '',
+  doneAt: row.done_at ? new Date(row.done_at).toISOString() : null,
+  sortOrder: toNum(row.sort_order, 0)
+}) : null;
+
+export const toPlanAuditLogDto = (row) => row ? ({
+  id: String(row.id),
+  projectId: String(row.project_id),
+  entityType: row.entity_type,
+  entityId: row.entity_id ? String(row.entity_id) : null,
+  action: row.action,
+  field: row.field || '',
+  oldValue: row.old_value || '',
+  newValue: row.new_value || '',
+  actorId: row.actor_id || '',
+  actorEmail: row.actor_email || '',
+  createdAt: row.created_at ? new Date(row.created_at).toISOString() : ''
 }) : null;
 
 export const toMeetingDto = (row) => row ? ({
@@ -404,6 +487,8 @@ export async function initDb() {
     await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS contact_email TEXT DEFAULT '';`;
     await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS assignee_ids JSONB DEFAULT '[]'::jsonb;`;
     await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS assignee_id VARCHAR(100);`;
+    await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_manager_id VARCHAR(100) DEFAULT '';`;
+    await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_manager_name TEXT DEFAULT '';`;
 
     // 3. Tasks Table
     await sql`
@@ -748,6 +833,118 @@ export async function initDb() {
       );
     `;
 
+    // 19. Project Sprints Table
+    await sql`
+      CREATE TABLE IF NOT EXISTS project_sprints (
+        id VARCHAR(100) PRIMARY KEY,
+        project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        code TEXT NOT NULL,
+        name TEXT DEFAULT '',
+        phase TEXT DEFAULT '',
+        start_date TEXT,
+        end_date TEXT,
+        goal TEXT DEFAULT '',
+        sort_order INT DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (project_id, code)
+      );
+    `;
+
+    // 20. Project Gates Table
+    await sql`
+      CREATE TABLE IF NOT EXISTS project_gates (
+        id VARCHAR(100) PRIMARY KEY,
+        project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        code TEXT NOT NULL,
+        name TEXT NOT NULL,
+        target_date TEXT,
+        approvers TEXT DEFAULT '',
+        required_evidence TEXT DEFAULT '',
+        exit_criteria TEXT DEFAULT '',
+        percent_complete NUMERIC DEFAULT 0 CHECK (percent_complete BETWEEN 0 AND 100),
+        actual_approval_date TEXT DEFAULT '',
+        approved_by TEXT DEFAULT '',
+        decision_notes TEXT DEFAULT '',
+        notes_risk TEXT DEFAULT '',
+        sort_order INT DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (project_id, code)
+      );
+    `;
+
+    // 21. Project Sprint Tasks Table
+    await sql`
+      CREATE TABLE IF NOT EXISTS project_sprint_tasks (
+        id VARCHAR(100) PRIMARY KEY,
+        project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        sprint_id VARCHAR(100) NOT NULL REFERENCES project_sprints(id) ON DELETE CASCADE,
+        gate_id VARCHAR(100) REFERENCES project_gates(id) ON DELETE SET NULL,
+        task_code TEXT NOT NULL,
+        workstream TEXT DEFAULT '',
+        title TEXT NOT NULL,
+        planned_start TEXT,
+        planned_finish TEXT,
+        owner TEXT DEFAULT '',
+        dependency TEXT DEFAULT '',
+        weight NUMERIC DEFAULT 1 CHECK (weight >= 0),
+        percent_complete NUMERIC DEFAULT 0 CHECK (percent_complete BETWEEN 0 AND 100),
+        actual_completion_date TEXT DEFAULT '',
+        planning_basis TEXT DEFAULT '',
+        sort_order INT DEFAULT 0,
+        created_by VARCHAR(100) DEFAULT '',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (project_id, task_code)
+      );
+    `;
+
+    // 22. Project Gate Checklist Items Table
+    await sql`
+      CREATE TABLE IF NOT EXISTS project_gate_checklist_items (
+        id VARCHAR(100) PRIMARY KEY,
+        gate_id VARCHAR(100) NOT NULL REFERENCES project_gates(id) ON DELETE CASCADE,
+        project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        label TEXT NOT NULL,
+        is_done BOOLEAN DEFAULT FALSE,
+        done_by TEXT DEFAULT '',
+        done_at TIMESTAMPTZ,
+        sort_order INT DEFAULT 0
+      );
+    `;
+
+    // 23. Project Plan Audit Logs Table
+    await sql`
+      CREATE TABLE IF NOT EXISTS project_plan_audit_logs (
+        id VARCHAR(100) PRIMARY KEY,
+        project_id VARCHAR(100) NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id VARCHAR(100),
+        action TEXT NOT NULL,
+        field TEXT DEFAULT '',
+        old_value TEXT DEFAULT '',
+        new_value TEXT DEFAULT '',
+        actor_id VARCHAR(100),
+        actor_email TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `;
+
+    // Project Plan Indexes
+    try {
+      await sql`CREATE INDEX IF NOT EXISTS idx_project_sprints_project_id ON project_sprints(project_id);`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_project_sprint_tasks_project_id ON project_sprint_tasks(project_id);`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_project_sprint_tasks_sprint_id ON project_sprint_tasks(sprint_id);`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_project_sprint_tasks_gate_id ON project_sprint_tasks(gate_id);`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_project_gates_project_id ON project_gates(project_id);`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_project_gate_checklist_items_gate_id ON project_gate_checklist_items(gate_id);`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_project_gate_checklist_items_project_id ON project_gate_checklist_items(project_id);`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_project_plan_audit_logs_project_created ON project_plan_audit_logs(project_id, created_at DESC);`;
+    } catch (idxErr) {
+      console.warn('[DB] Plan index creation notice:', idxErr?.message || idxErr);
+    }
+
     // Schema Migrations for Foreign Keys & Metadata
     try {
       await sql`ALTER TABLE cash_transactions ADD COLUMN IF NOT EXISTS linked_payment_id VARCHAR(100) DEFAULT '';`;
@@ -873,18 +1070,22 @@ export async function createProjectRecord(project, tasks = []) {
   const refererName = project.refererName || '';
   const contactNumber = project.contactNumber || project.contactPhone || '';
   const contactEmail = project.contactEmail || '';
-  const createdBy = project.createdBy || project.creatorId || '';
+  const projectManagerId = project.projectManagerId || project.createdBy || '';
+  const projectManagerName = project.projectManagerName || '';
+  const createdBy = project.createdBy || projectManagerId || project.creatorId || '';
 
   await sql`
     INSERT INTO projects (
-      id, name, created_by, client_name, contact_designation, client_designation, poc_name, referer_name, contact_number, contact_email, status, start_date, end_date, start_value, end_value, progress, assignee_ids, assignee_id
+      id, name, created_by, project_manager_id, project_manager_name, client_name, contact_designation, client_designation, poc_name, referer_name, contact_number, contact_email, status, start_date, end_date, start_value, end_value, progress, assignee_ids, assignee_id
     ) VALUES (
-      ${id}, ${project.name}, ${createdBy}, ${clientName}, ${contactDesignation}, ${contactDesignation}, ${pocName}, ${refererName}, ${contactNumber}, ${contactEmail}, ${status}, ${project.startDate || ''}, ${project.endDate || ''},
+      ${id}, ${project.name}, ${createdBy}, ${projectManagerId}, ${projectManagerName}, ${clientName}, ${contactDesignation}, ${contactDesignation}, ${pocName}, ${refererName}, ${contactNumber}, ${contactEmail}, ${status}, ${project.startDate || ''}, ${project.endDate || ''},
       0, 100, ${progress}, ${assigneeIdsJson}::jsonb, ${assigneeId}
     )
     ON CONFLICT (id) DO UPDATE SET
       name = EXCLUDED.name,
       created_by = COALESCE(NULLIF(EXCLUDED.created_by, ''), projects.created_by),
+      project_manager_id = EXCLUDED.project_manager_id,
+      project_manager_name = EXCLUDED.project_manager_name,
       client_name = EXCLUDED.client_name,
       contact_designation = EXCLUDED.contact_designation,
       client_designation = EXCLUDED.client_designation,
@@ -897,8 +1098,7 @@ export async function createProjectRecord(project, tasks = []) {
       end_date = EXCLUDED.end_date,
       progress = EXCLUDED.progress,
       assignee_ids = EXCLUDED.assignee_ids,
-      assignee_id = EXCLUDED.assignee_id,
-      completed_date = EXCLUDED.completed_date;
+      assignee_id = EXCLUDED.assignee_id;
   `;
 
   // Insert or update bundled tasks
@@ -940,7 +1140,9 @@ export async function updateProjectRecord(id, updates) {
 
   const current = existing[0];
   const name = updates.name !== undefined ? updates.name : current.name;
-  const createdBy = updates.createdBy !== undefined ? updates.createdBy : (current.created_by || '');
+  const projectManagerId = updates.projectManagerId !== undefined ? updates.projectManagerId : (current.project_manager_id || current.created_by || '');
+  const projectManagerName = updates.projectManagerName !== undefined ? updates.projectManagerName : (current.project_manager_name || '');
+  const createdBy = updates.createdBy !== undefined ? updates.createdBy : (projectManagerId || current.created_by || '');
   let progress = updates.progress !== undefined ? Number(updates.progress) : Number(current.progress);
   let status = updates.status !== undefined ? updates.status : current.status;
 
@@ -965,6 +1167,8 @@ export async function updateProjectRecord(id, updates) {
     UPDATE projects SET
       name = ${name},
       created_by = ${createdBy},
+      project_manager_id = ${projectManagerId},
+      project_manager_name = ${projectManagerName},
       client_name = ${clientName},
       contact_designation = ${contactDesignation},
       client_designation = ${contactDesignation},
@@ -987,6 +1191,11 @@ export async function updateProjectRecord(id, updates) {
 
 export async function deleteProjectRecord(id) {
   await initDb();
+  await sql`DELETE FROM project_plan_audit_logs WHERE project_id = ${id}`;
+  await sql`DELETE FROM project_gate_checklist_items WHERE project_id = ${id}`;
+  await sql`DELETE FROM project_sprint_tasks WHERE project_id = ${id}`;
+  await sql`DELETE FROM project_gates WHERE project_id = ${id}`;
+  await sql`DELETE FROM project_sprints WHERE project_id = ${id}`;
   await sql`DELETE FROM tasks WHERE project_id = ${id}`;
   await sql`DELETE FROM projects WHERE id = ${id}`;
   return { success: true };
@@ -1035,7 +1244,9 @@ export async function createTaskRecord(task) {
 export async function updateTaskRecord(id, updates) {
   await initDb();
   const existing = await sql`SELECT * FROM tasks WHERE id = ${id}`;
-  if (!existing || existing.length === 0) return null;
+  if (!existing || existing.length === 0) {
+    return await createTaskRecord({ id, ...updates });
+  }
 
   const current = existing[0];
   const name = updates.name !== undefined ? updates.name : current.name;
@@ -3807,4 +4018,816 @@ export async function isPeriodLocked(dateStr) {
   return rows.length > 0;
 }
 
+// ==========================================
+// PROJECT PLAN OPERATIONS (Sprint Plan & Stage Gates)
+// ==========================================
 
+export async function recordPlanAuditLog({
+  projectId,
+  entityType,
+  entityId = '',
+  action,
+  field = '',
+  oldValue = '',
+  newValue = '',
+  actorId = '',
+  actorEmail = ''
+}) {
+  try {
+    await initDb();
+    const id = 'pal_' + Date.now() + Math.random().toString(36).substring(2, 7);
+    await sql`
+      INSERT INTO project_plan_audit_logs (
+        id, project_id, entity_type, entity_id, action, field, old_value, new_value, actor_id, actor_email, created_at
+      ) VALUES (
+        ${id}, ${projectId}, ${entityType}, ${entityId || null}, ${action},
+        ${String(field || '')}, ${String(oldValue || '')}, ${String(newValue || '')},
+        ${actorId || ''}, ${actorEmail || ''}, NOW()
+      );
+    `;
+    return id;
+  } catch (err) {
+    console.error('[Plan Audit Log] Error:', err);
+    return null;
+  }
+}
+
+export async function getProjectPlanData(projectId) {
+  await initDb();
+  const [sprints, gates, tasks, checklistItems] = await Promise.all([
+    sql`SELECT * FROM project_sprints WHERE project_id = ${projectId} ORDER BY sort_order ASC, code ASC`,
+    sql`SELECT * FROM project_gates WHERE project_id = ${projectId} ORDER BY sort_order ASC, code ASC`,
+    sql`SELECT * FROM project_sprint_tasks WHERE project_id = ${projectId} ORDER BY sort_order ASC, task_code ASC`,
+    sql`SELECT * FROM project_gate_checklist_items WHERE project_id = ${projectId} ORDER BY sort_order ASC, id ASC`
+  ]);
+
+  return {
+    sprints: sprints.map(toSprintDto),
+    gates: gates.map(toGateDto),
+    tasks: tasks.map(toSprintTaskDto),
+    checklistItems: checklistItems.map(toChecklistItemDto)
+  };
+}
+
+// Sprints
+export async function createSprintRecord(projectId, data, actor = {}) {
+  await initDb();
+  const id = data.id || ('spr_' + Date.now() + Math.random().toString(36).substring(2, 7));
+  const code = (data.code || '').trim();
+  const name = (data.name || '').trim();
+  const phase = (data.phase || '').trim();
+  const startDate = data.startDate || '';
+  const endDate = data.endDate || '';
+  const goal = data.goal || '';
+  const sortOrder = Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : 0;
+
+  await sql`
+    INSERT INTO project_sprints (
+      id, project_id, code, name, phase, start_date, end_date, goal, sort_order, created_at, updated_at
+    ) VALUES (
+      ${id}, ${projectId}, ${code}, ${name}, ${phase}, ${startDate}, ${endDate}, ${goal}, ${sortOrder}, NOW(), NOW()
+    )
+    ON CONFLICT (project_id, code) DO UPDATE SET
+      name = EXCLUDED.name,
+      phase = EXCLUDED.phase,
+      start_date = EXCLUDED.start_date,
+      end_date = EXCLUDED.end_date,
+      goal = EXCLUDED.goal,
+      sort_order = EXCLUDED.sort_order,
+      updated_at = NOW();
+  `;
+
+  await recordPlanAuditLog({
+    projectId,
+    entityType: 'sprint',
+    entityId: id,
+    action: 'create',
+    newValue: JSON.stringify({ code, name, phase }),
+    actorId: actor.id,
+    actorEmail: actor.email
+  });
+
+  const row = await sql`SELECT * FROM project_sprints WHERE id = ${id} OR (project_id = ${projectId} AND code = ${code})`;
+  return toSprintDto(row[0]);
+}
+
+export async function updateSprintRecord(projectId, sprintId, updates, actor = {}) {
+  await initDb();
+  const existing = await sql`SELECT * FROM project_sprints WHERE id = ${sprintId} AND project_id = ${projectId}`;
+  if (!existing || existing.length === 0) return null;
+  const current = existing[0];
+
+  const code = updates.code !== undefined ? updates.code : current.code;
+  const name = updates.name !== undefined ? updates.name : current.name;
+  const phase = updates.phase !== undefined ? updates.phase : current.phase;
+  const startDate = updates.startDate !== undefined ? updates.startDate : current.start_date;
+  const endDate = updates.endDate !== undefined ? updates.endDate : current.end_date;
+  const goal = updates.goal !== undefined ? updates.goal : current.goal;
+  const sortOrder = updates.sortOrder !== undefined ? Number(updates.sortOrder) : current.sort_order;
+
+  await sql`
+    UPDATE project_sprints SET
+      code = ${code},
+      name = ${name},
+      phase = ${phase},
+      start_date = ${startDate},
+      end_date = ${endDate},
+      goal = ${goal},
+      sort_order = ${sortOrder},
+      updated_at = NOW()
+    WHERE id = ${sprintId} AND project_id = ${projectId};
+  `;
+
+  await recordPlanAuditLog({
+    projectId,
+    entityType: 'sprint',
+    entityId: sprintId,
+    action: 'update',
+    oldValue: JSON.stringify({ code: current.code, name: current.name }),
+    newValue: JSON.stringify({ code, name }),
+    actorId: actor.id,
+    actorEmail: actor.email
+  });
+
+  const row = await sql`SELECT * FROM project_sprints WHERE id = ${sprintId}`;
+  return toSprintDto(row[0]);
+}
+
+export async function deleteSprintRecord(projectId, sprintId, actor = {}) {
+  await initDb();
+  const existing = await sql`SELECT * FROM project_sprints WHERE id = ${sprintId} AND project_id = ${projectId}`;
+  if (!existing || existing.length === 0) return null;
+
+  await sql`DELETE FROM project_sprints WHERE id = ${sprintId} AND project_id = ${projectId}`;
+
+  await recordPlanAuditLog({
+    projectId,
+    entityType: 'sprint',
+    entityId: sprintId,
+    action: 'delete',
+    oldValue: JSON.stringify({ code: existing[0].code, name: existing[0].name }),
+    actorId: actor.id,
+    actorEmail: actor.email
+  });
+
+  return { success: true };
+}
+
+// Sprint Tasks
+export async function createSprintTaskRecord(projectId, data, actor = {}) {
+  await initDb();
+  const id = data.id || ('stk_' + Date.now() + Math.random().toString(36).substring(2, 7));
+  const sprintId = String(data.sprintId);
+  const gateId = data.gateId ? String(data.gateId) : null;
+  const taskCode = (data.taskCode || '').trim();
+  const workstream = (data.workstream || '').trim();
+  const title = (data.title || '').trim();
+  const plannedStart = data.plannedStart || '';
+  const plannedFinish = data.plannedFinish || '';
+  const owner = data.owner || '';
+  const dependency = data.dependency || '';
+  const weight = Math.max(0, Number(data.weight ?? 1));
+  const percentComplete = Math.min(100, Math.max(0, Number(data.percentComplete ?? 0)));
+  const actualCompletionDate = data.actualCompletionDate || '';
+  const planningBasis = data.planningBasis || '';
+  const sortOrder = Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : 0;
+  const createdBy = actor.id || '';
+
+  await sql`
+    INSERT INTO project_sprint_tasks (
+      id, project_id, sprint_id, gate_id, task_code, workstream, title,
+      planned_start, planned_finish, owner, dependency, weight, percent_complete,
+      actual_completion_date, planning_basis, sort_order, created_by, created_at, updated_at
+    ) VALUES (
+      ${id}, ${projectId}, ${sprintId}, ${gateId}, ${taskCode}, ${workstream}, ${title},
+      ${plannedStart}, ${plannedFinish}, ${owner}, ${dependency}, ${weight}, ${percentComplete},
+      ${actualCompletionDate}, ${planningBasis}, ${sortOrder}, ${createdBy}, NOW(), NOW()
+    )
+    ON CONFLICT (project_id, task_code) DO UPDATE SET
+      sprint_id = EXCLUDED.sprint_id,
+      gate_id = EXCLUDED.gate_id,
+      workstream = EXCLUDED.workstream,
+      title = EXCLUDED.title,
+      planned_start = EXCLUDED.planned_start,
+      planned_finish = EXCLUDED.planned_finish,
+      owner = EXCLUDED.owner,
+      dependency = EXCLUDED.dependency,
+      weight = EXCLUDED.weight,
+      percent_complete = EXCLUDED.percent_complete,
+      actual_completion_date = EXCLUDED.actual_completion_date,
+      planning_basis = EXCLUDED.planning_basis,
+      sort_order = EXCLUDED.sort_order,
+      updated_at = NOW();
+  `;
+
+  await recordPlanAuditLog({
+    projectId,
+    entityType: 'sprint_task',
+    entityId: id,
+    action: 'create',
+    newValue: JSON.stringify({ taskCode, title, percentComplete }),
+    actorId: actor.id,
+    actorEmail: actor.email
+  });
+
+  const row = await sql`SELECT * FROM project_sprint_tasks WHERE id = ${id} OR (project_id = ${projectId} AND task_code = ${taskCode})`;
+  return toSprintTaskDto(row[0]);
+}
+
+export async function updateSprintTaskRecord(projectId, taskId, updates, actor = {}) {
+  await initDb();
+  const existing = await sql`SELECT * FROM project_sprint_tasks WHERE id = ${taskId} AND project_id = ${projectId}`;
+  if (!existing || existing.length === 0) return null;
+  const current = existing[0];
+
+  const sprintId = updates.sprintId !== undefined ? String(updates.sprintId) : current.sprint_id;
+  const gateId = updates.gateId !== undefined ? (updates.gateId ? String(updates.gateId) : null) : current.gate_id;
+  const taskCode = updates.taskCode !== undefined ? updates.taskCode : current.task_code;
+  const workstream = updates.workstream !== undefined ? updates.workstream : current.workstream;
+  const title = updates.title !== undefined ? updates.title : current.title;
+  const plannedStart = updates.plannedStart !== undefined ? updates.plannedStart : current.planned_start;
+  const plannedFinish = updates.plannedFinish !== undefined ? updates.plannedFinish : current.planned_finish;
+  const owner = updates.owner !== undefined ? updates.owner : current.owner;
+  const dependency = updates.dependency !== undefined ? updates.dependency : current.dependency;
+  const weight = updates.weight !== undefined ? Math.max(0, Number(updates.weight)) : Number(current.weight);
+  const percentComplete = updates.percentComplete !== undefined ? Math.min(100, Math.max(0, Number(updates.percentComplete))) : Number(current.percent_complete);
+  const actualCompletionDate = updates.actualCompletionDate !== undefined ? updates.actualCompletionDate : current.actual_completion_date;
+  const planningBasis = updates.planningBasis !== undefined ? updates.planningBasis : current.planning_basis;
+  const sortOrder = updates.sortOrder !== undefined ? Number(updates.sortOrder) : current.sort_order;
+
+  await sql`
+    UPDATE project_sprint_tasks SET
+      sprint_id = ${sprintId},
+      gate_id = ${gateId},
+      task_code = ${taskCode},
+      workstream = ${workstream},
+      title = ${title},
+      planned_start = ${plannedStart},
+      planned_finish = ${plannedFinish},
+      owner = ${owner},
+      dependency = ${dependency},
+      weight = ${weight},
+      percent_complete = ${percentComplete},
+      actual_completion_date = ${actualCompletionDate},
+      planning_basis = ${planningBasis},
+      sort_order = ${sortOrder},
+      updated_at = NOW()
+    WHERE id = ${taskId} AND project_id = ${projectId};
+  `;
+
+  await recordPlanAuditLog({
+    projectId,
+    entityType: 'sprint_task',
+    entityId: taskId,
+    action: 'update',
+    oldValue: JSON.stringify({ percentComplete: current.percent_complete, actualCompletionDate: current.actual_completion_date }),
+    newValue: JSON.stringify({ percentComplete, actualCompletionDate }),
+    actorId: actor.id,
+    actorEmail: actor.email
+  });
+
+  const row = await sql`SELECT * FROM project_sprint_tasks WHERE id = ${taskId}`;
+  return toSprintTaskDto(row[0]);
+}
+
+export async function deleteSprintTaskRecord(projectId, taskId, actor = {}) {
+  await initDb();
+  const existing = await sql`SELECT * FROM project_sprint_tasks WHERE id = ${taskId} AND project_id = ${projectId}`;
+  if (!existing || existing.length === 0) return null;
+
+  await sql`DELETE FROM project_sprint_tasks WHERE id = ${taskId} AND project_id = ${projectId}`;
+
+  await recordPlanAuditLog({
+    projectId,
+    entityType: 'sprint_task',
+    entityId: taskId,
+    action: 'delete',
+    oldValue: JSON.stringify({ taskCode: existing[0].task_code, title: existing[0].title }),
+    actorId: actor.id,
+    actorEmail: actor.email
+  });
+
+  return { success: true };
+}
+
+// Gates
+export async function createGateRecord(projectId, data, actor = {}) {
+  await initDb();
+  const id = data.id || ('gate_' + Date.now() + Math.random().toString(36).substring(2, 7));
+  const code = (data.code || '').trim();
+  const name = (data.name || '').trim();
+  const targetDate = data.targetDate || '';
+  const approvers = data.approvers || '';
+  const requiredEvidence = data.requiredEvidence || '';
+  const exitCriteria = data.exitCriteria || '';
+  const percentComplete = Math.min(100, Math.max(0, Number(data.percentComplete ?? 0)));
+  const actualApprovalDate = data.actualApprovalDate || '';
+  const approvedBy = data.approvedBy || '';
+  const decisionNotes = data.decisionNotes || '';
+  const notesRisk = data.notesRisk || '';
+  const sortOrder = Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : 0;
+
+  await sql`
+    INSERT INTO project_gates (
+      id, project_id, code, name, target_date, approvers, required_evidence, exit_criteria,
+      percent_complete, actual_approval_date, approved_by, decision_notes, notes_risk, sort_order, created_at, updated_at
+    ) VALUES (
+      ${id}, ${projectId}, ${code}, ${name}, ${targetDate}, ${approvers}, ${requiredEvidence}, ${exitCriteria},
+      ${percentComplete}, ${actualApprovalDate}, ${approvedBy}, ${decisionNotes}, ${notesRisk}, ${sortOrder}, NOW(), NOW()
+    )
+    ON CONFLICT (project_id, code) DO UPDATE SET
+      name = EXCLUDED.name,
+      target_date = EXCLUDED.target_date,
+      approvers = EXCLUDED.approvers,
+      required_evidence = EXCLUDED.required_evidence,
+      exit_criteria = EXCLUDED.exit_criteria,
+      percent_complete = EXCLUDED.percent_complete,
+      actual_approval_date = EXCLUDED.actual_approval_date,
+      approved_by = EXCLUDED.approved_by,
+      decision_notes = EXCLUDED.decision_notes,
+      notes_risk = EXCLUDED.notes_risk,
+      sort_order = EXCLUDED.sort_order,
+      updated_at = NOW();
+  `;
+
+  // Insert evidence items into checklist if provided
+  if (data.checklistItems && Array.isArray(data.checklistItems)) {
+    for (let i = 0; i < data.checklistItems.length; i++) {
+      const item = data.checklistItems[i];
+      const gciId = 'gci_' + Date.now() + Math.random().toString(36).substring(2, 7);
+      await sql`
+        INSERT INTO project_gate_checklist_items (id, gate_id, project_id, label, is_done, sort_order)
+        VALUES (${gciId}, ${id}, ${projectId}, ${String(item.label || item)}, ${Boolean(item.isDone)}, ${i});
+      `;
+    }
+  } else if (requiredEvidence) {
+    const pieces = requiredEvidence.split(';').map(s => s.trim()).filter(Boolean);
+    for (let i = 0; i < pieces.length; i++) {
+      const gciId = 'gci_' + Date.now() + Math.random().toString(36).substring(2, 7);
+      await sql`
+        INSERT INTO project_gate_checklist_items (id, gate_id, project_id, label, is_done, sort_order)
+        VALUES (${gciId}, ${id}, ${projectId}, ${pieces[i]}, false, ${i});
+      `;
+    }
+  }
+
+  await recordPlanAuditLog({
+    projectId,
+    entityType: 'gate',
+    entityId: id,
+    action: 'create',
+    newValue: JSON.stringify({ code, name, targetDate }),
+    actorId: actor.id,
+    actorEmail: actor.email
+  });
+
+  const row = await sql`SELECT * FROM project_gates WHERE id = ${id} OR (project_id = ${projectId} AND code = ${code})`;
+  return toGateDto(row[0]);
+}
+
+export async function updateGateRecord(projectId, gateId, updates, actor = {}) {
+  await initDb();
+  const existing = await sql`SELECT * FROM project_gates WHERE id = ${gateId} AND project_id = ${projectId}`;
+  if (!existing || existing.length === 0) return null;
+  const current = existing[0];
+
+  const code = updates.code !== undefined ? updates.code : current.code;
+  const name = updates.name !== undefined ? updates.name : current.name;
+  const targetDate = updates.targetDate !== undefined ? updates.targetDate : current.target_date;
+  const approvers = updates.approvers !== undefined ? updates.approvers : current.approvers;
+  const requiredEvidence = updates.requiredEvidence !== undefined ? updates.requiredEvidence : current.required_evidence;
+  const exitCriteria = updates.exitCriteria !== undefined ? updates.exitCriteria : current.exit_criteria;
+  const percentComplete = updates.percentComplete !== undefined ? Math.min(100, Math.max(0, Number(updates.percentComplete))) : Number(current.percent_complete);
+  const actualApprovalDate = updates.actualApprovalDate !== undefined ? updates.actualApprovalDate : current.actual_approval_date;
+  const approvedBy = updates.approvedBy !== undefined ? updates.approvedBy : current.approved_by;
+  const decisionNotes = updates.decisionNotes !== undefined ? updates.decisionNotes : current.decision_notes;
+  const notesRisk = updates.notesRisk !== undefined ? updates.notesRisk : current.notes_risk;
+  const sortOrder = updates.sortOrder !== undefined ? Number(updates.sortOrder) : current.sort_order;
+
+  await sql`
+    UPDATE project_gates SET
+      code = ${code},
+      name = ${name},
+      target_date = ${targetDate},
+      approvers = ${approvers},
+      required_evidence = ${requiredEvidence},
+      exit_criteria = ${exitCriteria},
+      percent_complete = ${percentComplete},
+      actual_approval_date = ${actualApprovalDate},
+      approved_by = ${approvedBy},
+      decision_notes = ${decisionNotes},
+      notes_risk = ${notesRisk},
+      sort_order = ${sortOrder},
+      updated_at = NOW()
+    WHERE id = ${gateId} AND project_id = ${projectId};
+  `;
+
+  await recordPlanAuditLog({
+    projectId,
+    entityType: 'gate',
+    entityId: gateId,
+    action: 'update',
+    oldValue: JSON.stringify({ code: current.code, name: current.name }),
+    newValue: JSON.stringify({ code, name }),
+    actorId: actor.id,
+    actorEmail: actor.email
+  });
+
+  const row = await sql`SELECT * FROM project_gates WHERE id = ${gateId}`;
+  return toGateDto(row[0]);
+}
+
+export async function deleteGateRecord(projectId, gateId, actor = {}) {
+  await initDb();
+  const existing = await sql`SELECT * FROM project_gates WHERE id = ${gateId} AND project_id = ${projectId}`;
+  if (!existing || existing.length === 0) return null;
+
+  await sql`DELETE FROM project_gate_checklist_items WHERE gate_id = ${gateId} AND project_id = ${projectId}`;
+  await sql`UPDATE project_sprint_tasks SET gate_id = NULL WHERE gate_id = ${gateId} AND project_id = ${projectId}`;
+  await sql`DELETE FROM project_gates WHERE id = ${gateId} AND project_id = ${projectId}`;
+
+  await recordPlanAuditLog({
+    projectId,
+    entityType: 'gate',
+    entityId: gateId,
+    action: 'delete',
+    oldValue: JSON.stringify({ code: existing[0].code, name: existing[0].name }),
+    actorId: actor.id,
+    actorEmail: actor.email
+  });
+
+  return { success: true };
+}
+
+export async function approveGateRecord(projectId, gateId, { approvalDate, approvedBy, notes = '' }, actor = {}) {
+  await initDb();
+  const existing = await sql`SELECT * FROM project_gates WHERE id = ${gateId} AND project_id = ${projectId}`;
+  if (!existing || existing.length === 0) return null;
+
+  const appDate = approvalDate || new Date().toISOString().slice(0, 10);
+  const appBy = approvedBy || actor.fullName || actor.email || 'Admin';
+
+  await sql`
+    UPDATE project_gates SET
+      actual_approval_date = ${appDate},
+      approved_by = ${appBy},
+      decision_notes = ${notes || ''},
+      updated_at = NOW()
+    WHERE id = ${gateId} AND project_id = ${projectId};
+  `;
+
+  await recordPlanAuditLog({
+    projectId,
+    entityType: 'gate',
+    entityId: gateId,
+    action: 'approve',
+    oldValue: existing[0].actual_approval_date || '',
+    newValue: JSON.stringify({ approvalDate: appDate, approvedBy: appBy, notes }),
+    actorId: actor.id,
+    actorEmail: actor.email
+  });
+
+  const row = await sql`SELECT * FROM project_gates WHERE id = ${gateId}`;
+  return toGateDto(row[0]);
+}
+
+export async function revokeGateRecord(projectId, gateId, { reason }, actor = {}) {
+  await initDb();
+  const existing = await sql`SELECT * FROM project_gates WHERE id = ${gateId} AND project_id = ${projectId}`;
+  if (!existing || existing.length === 0) return null;
+
+  const current = existing[0];
+  const oldApprovalDate = current.actual_approval_date;
+  const updatedNotes = current.decision_notes
+    ? `${current.decision_notes} | Revoked (${new Date().toISOString().slice(0, 10)}): ${reason}`
+    : `Revoked (${new Date().toISOString().slice(0, 10)}): ${reason}`;
+
+  await sql`
+    UPDATE project_gates SET
+      actual_approval_date = '',
+      approved_by = '',
+      decision_notes = ${updatedNotes},
+      updated_at = NOW()
+    WHERE id = ${gateId} AND project_id = ${projectId};
+  `;
+
+  await recordPlanAuditLog({
+    projectId,
+    entityType: 'gate',
+    entityId: gateId,
+    action: 'revoke',
+    oldValue: oldApprovalDate,
+    newValue: reason,
+    actorId: actor.id,
+    actorEmail: actor.email
+  });
+
+  const row = await sql`SELECT * FROM project_gates WHERE id = ${gateId}`;
+  return toGateDto(row[0]);
+}
+
+export async function toggleGateChecklistItemRecord(projectId, gateId, itemId, isDone, actor = {}) {
+  await initDb();
+  const existing = await sql`
+    SELECT * FROM project_gate_checklist_items
+    WHERE id = ${itemId} AND gate_id = ${gateId} AND project_id = ${projectId}
+  `;
+  if (!existing || existing.length === 0) return null;
+
+  const doneVal = Boolean(isDone);
+  const doneBy = doneVal ? (actor.email || actor.fullName || 'User') : '';
+  const doneAt = doneVal ? new Date() : null;
+
+  await sql`
+    UPDATE project_gate_checklist_items SET
+      is_done = ${doneVal},
+      done_by = ${doneBy},
+      done_at = ${doneAt}
+    WHERE id = ${itemId} AND gate_id = ${gateId} AND project_id = ${projectId};
+  `;
+
+  // Recompute the gate's percent_complete = done/total*100
+  const counts = await sql`
+    SELECT
+      COUNT(*)::int as total,
+      COUNT(CASE WHEN is_done = true THEN 1 END)::int as done
+    FROM project_gate_checklist_items
+    WHERE gate_id = ${gateId} AND project_id = ${projectId};
+  `;
+  const total = counts[0]?.total || 0;
+  const done = counts[0]?.done || 0;
+  const gatePct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  await sql`
+    UPDATE project_gates SET
+      percent_complete = ${gatePct},
+      updated_at = NOW()
+    WHERE id = ${gateId} AND project_id = ${projectId};
+  `;
+
+  await recordPlanAuditLog({
+    projectId,
+    entityType: 'checklist',
+    entityId: itemId,
+    action: 'update',
+    field: 'is_done',
+    oldValue: String(existing[0].is_done),
+    newValue: String(doneVal),
+    actorId: actor.id,
+    actorEmail: actor.email
+  });
+
+  const updatedItem = await sql`SELECT * FROM project_gate_checklist_items WHERE id = ${itemId}`;
+  const updatedGate = await sql`SELECT * FROM project_gates WHERE id = ${gateId}`;
+
+  return {
+    item: toChecklistItemDto(updatedItem[0]),
+    gate: toGateDto(updatedGate[0])
+  };
+}
+
+// Plan Import (Idempotent upsert in one transaction)
+export async function importProjectPlanTx(projectId, { mode = 'merge', sprints = [], tasks = [], gates = [] }, actor = {}) {
+  await initDb();
+
+  const queries = [];
+  const errors = [];
+  let createdCount = 0;
+  let updatedCount = 0;
+  let skippedCount = 0;
+
+  // Fetch current state for mapping and merge logic
+  const existingPlan = await getProjectPlanData(projectId);
+  const existingSprintMap = new Map(existingPlan.sprints.map(s => [s.code.toLowerCase(), s.id]));
+  const existingGateMap = new Map(existingPlan.gates.map(g => [g.code.toLowerCase(), g.id]));
+  const existingTaskMap = new Map(existingPlan.tasks.map(t => [t.taskCode.toLowerCase(), t.id]));
+
+  if (mode === 'replace') {
+    queries.push(sql`DELETE FROM project_gate_checklist_items WHERE project_id = ${projectId};`);
+    queries.push(sql`DELETE FROM project_sprint_tasks WHERE project_id = ${projectId};`);
+    queries.push(sql`DELETE FROM project_gates WHERE project_id = ${projectId};`);
+    queries.push(sql`DELETE FROM project_sprints WHERE project_id = ${projectId};`);
+    existingSprintMap.clear();
+    existingGateMap.clear();
+    existingTaskMap.clear();
+  }
+
+  // 1. Sprints
+  const sprintIdByCode = new Map();
+  for (let i = 0; i < sprints.length; i++) {
+    const s = sprints[i];
+    const code = (s.code || '').trim();
+    if (!code) {
+      errors.push({ sheet: 'Sprint Plan', row: i + 1, message: 'Sprint code is required' });
+      skippedCount++;
+      continue;
+    }
+
+    const key = code.toLowerCase();
+    const existingId = existingSprintMap.get(key);
+    const id = existingId || ('spr_' + Date.now() + Math.random().toString(36).substring(2, 7));
+    sprintIdByCode.set(key, id);
+
+    if (existingId) {
+      updatedCount++;
+    } else {
+      createdCount++;
+    }
+
+    queries.push(sql`
+      INSERT INTO project_sprints (
+        id, project_id, code, name, phase, start_date, end_date, goal, sort_order, created_at, updated_at
+      ) VALUES (
+        ${id}, ${projectId}, ${code}, ${s.name || ''}, ${s.phase || ''},
+        ${s.startDate || ''}, ${s.endDate || ''}, ${s.goal || ''},
+        ${s.sortOrder !== undefined ? Number(s.sortOrder) : i}, NOW(), NOW()
+      )
+      ON CONFLICT (project_id, code) DO UPDATE SET
+        name = EXCLUDED.name,
+        phase = EXCLUDED.phase,
+        start_date = EXCLUDED.start_date,
+        end_date = EXCLUDED.end_date,
+        goal = EXCLUDED.goal,
+        sort_order = EXCLUDED.sort_order,
+        updated_at = NOW();
+    `);
+  }
+
+  // 2. Gates & Evidence Checklist Items
+  const gateIdByCode = new Map();
+  for (let i = 0; i < gates.length; i++) {
+    const g = gates[i];
+    const code = (g.code || '').trim();
+    const name = (g.name || '').trim();
+    if (!code || !name) {
+      errors.push({ sheet: 'Stage Gates', row: i + 1, message: 'Gate code and name are required' });
+      skippedCount++;
+      continue;
+    }
+
+    const key = code.toLowerCase();
+    const existingId = existingGateMap.get(key);
+    const id = existingId || ('gate_' + Date.now() + Math.random().toString(36).substring(2, 7));
+    gateIdByCode.set(key, id);
+
+    if (existingId) {
+      updatedCount++;
+    } else {
+      createdCount++;
+    }
+
+    const pct = Math.min(100, Math.max(0, Number(g.percentComplete ?? 0)));
+    const targetDate = g.targetDate || '';
+    const approvers = g.approvers || '';
+    const requiredEvidence = g.requiredEvidence || '';
+    const exitCriteria = g.exitCriteria || '';
+    const actualApprovalDate = g.actualApprovalDate || '';
+    const approvedBy = g.approvedBy || '';
+    const decisionNotes = g.decisionNotes || '';
+    const notesRisk = g.notesRisk || '';
+
+    queries.push(sql`
+      INSERT INTO project_gates (
+        id, project_id, code, name, target_date, approvers, required_evidence, exit_criteria,
+        percent_complete, actual_approval_date, approved_by, decision_notes, notes_risk, sort_order, created_at, updated_at
+      ) VALUES (
+        ${id}, ${projectId}, ${code}, ${name}, ${targetDate}, ${approvers}, ${requiredEvidence}, ${exitCriteria},
+        ${pct}, ${actualApprovalDate}, ${approvedBy}, ${decisionNotes}, ${notesRisk},
+        ${g.sortOrder !== undefined ? Number(g.sortOrder) : i}, NOW(), NOW()
+      )
+      ON CONFLICT (project_id, code) DO UPDATE SET
+        name = EXCLUDED.name,
+        target_date = EXCLUDED.target_date,
+        approvers = EXCLUDED.approvers,
+        required_evidence = EXCLUDED.required_evidence,
+        exit_criteria = EXCLUDED.exit_criteria,
+        percent_complete = EXCLUDED.percent_complete,
+        actual_approval_date = EXCLUDED.actual_approval_date,
+        approved_by = EXCLUDED.approved_by,
+        decision_notes = EXCLUDED.decision_notes,
+        notes_risk = EXCLUDED.notes_risk,
+        sort_order = EXCLUDED.sort_order,
+        updated_at = NOW();
+    `);
+
+    // Parse checklist items
+    const evidenceList = Array.isArray(g.checklistItems) && g.checklistItems.length > 0
+      ? g.checklistItems
+      : (requiredEvidence ? requiredEvidence.split(';').map(s => s.trim()).filter(Boolean) : []);
+
+    for (let ci = 0; ci < evidenceList.length; ci++) {
+      const itemLabel = typeof evidenceList[ci] === 'string' ? evidenceList[ci] : (evidenceList[ci].label || '');
+      if (!itemLabel) continue;
+      const gciId = 'gci_' + Date.now() + Math.random().toString(36).substring(2, 7);
+      queries.push(sql`
+        INSERT INTO project_gate_checklist_items (id, gate_id, project_id, label, is_done, sort_order)
+        VALUES (${gciId}, ${id}, ${projectId}, ${itemLabel}, false, ${ci});
+      `);
+    }
+  }
+
+  // 3. Sprint Tasks
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i];
+    const taskCode = (t.taskCode || t.task_code || '').trim();
+    const title = (t.title || t.name || '').trim();
+    if (!taskCode || !title) {
+      errors.push({ sheet: 'Sprint Tasks', row: i + 1, message: 'Task ID and Title are required' });
+      skippedCount++;
+      continue;
+    }
+
+    const sprintKey = (t.sprintCode || t.sprint || '').trim().toLowerCase();
+    const sprintId = sprintIdByCode.get(sprintKey) || t.sprintId;
+    if (!sprintId) {
+      errors.push({ sheet: 'Sprint Tasks', row: i + 1, message: `Unknown sprint "${t.sprintCode}" for task ${taskCode}` });
+      skippedCount++;
+      continue;
+    }
+
+    let gateId = null;
+    let dependencyText = (t.dependency || '').trim();
+    const relatedGateRaw = (t.relatedGate || t.related_gate || '').trim();
+
+    if (relatedGateRaw) {
+      const gateMatch = relatedGateRaw.match(/^SG-\d+/i);
+      if (gateMatch) {
+        const foundGateId = gateIdByCode.get(gateMatch[0].toLowerCase());
+        if (foundGateId) {
+          gateId = foundGateId;
+        }
+      } else {
+        // Non-gate value like "Dependency" -> append to dependency text
+        dependencyText = dependencyText ? `${dependencyText}; ${relatedGateRaw}` : relatedGateRaw;
+      }
+    }
+
+    const key = taskCode.toLowerCase();
+    const existingId = existingTaskMap.get(key);
+    const id = existingId || ('stk_' + Date.now() + Math.random().toString(36).substring(2, 7));
+
+    if (existingId) {
+      updatedCount++;
+    } else {
+      createdCount++;
+    }
+
+    const weight = Math.max(0, Number(t.weight ?? 1));
+    const percentComplete = Math.min(100, Math.max(0, Number(t.percentComplete ?? t.percent_complete ?? 0)));
+    const plannedStart = t.plannedStart || t.planned_start || '';
+    const plannedFinish = t.plannedFinish || t.planned_finish || '';
+    const actualCompletionDate = t.actualCompletionDate || t.actual_completion_date || '';
+    const owner = t.owner || '';
+    const workstream = t.workstream || '';
+    const planningBasis = t.planningBasis || t.planning_basis || '';
+
+    queries.push(sql`
+      INSERT INTO project_sprint_tasks (
+        id, project_id, sprint_id, gate_id, task_code, workstream, title,
+        planned_start, planned_finish, owner, dependency, weight, percent_complete,
+        actual_completion_date, planning_basis, sort_order, created_by, created_at, updated_at
+      ) VALUES (
+        ${id}, ${projectId}, ${sprintId}, ${gateId}, ${taskCode}, ${workstream}, ${title},
+        ${plannedStart}, ${plannedFinish}, ${owner}, ${dependencyText}, ${weight}, ${percentComplete},
+        ${actualCompletionDate}, ${planningBasis}, ${t.sortOrder !== undefined ? Number(t.sortOrder) : i},
+        ${actor.id || ''}, NOW(), NOW()
+      )
+      ON CONFLICT (project_id, task_code) DO UPDATE SET
+        sprint_id = EXCLUDED.sprint_id,
+        gate_id = EXCLUDED.gate_id,
+        workstream = EXCLUDED.workstream,
+        title = EXCLUDED.title,
+        planned_start = EXCLUDED.planned_start,
+        planned_finish = EXCLUDED.planned_finish,
+        owner = EXCLUDED.owner,
+        dependency = EXCLUDED.dependency,
+        weight = EXCLUDED.weight,
+        percent_complete = EXCLUDED.percent_complete,
+        actual_completion_date = EXCLUDED.actual_completion_date,
+        planning_basis = EXCLUDED.planning_basis,
+        sort_order = EXCLUDED.sort_order,
+        updated_at = NOW();
+    `);
+  }
+
+  if (queries.length > 0) {
+    await sql.transaction(queries);
+  }
+
+  await recordPlanAuditLog({
+    projectId,
+    entityType: 'import',
+    action: 'import',
+    newValue: JSON.stringify({ mode, created: createdCount, updated: updatedCount, skipped: skippedCount }),
+    actorId: actor.id,
+    actorEmail: actor.email
+  });
+
+  return {
+    success: true,
+    created: createdCount,
+    updated: updatedCount,
+    skipped: skippedCount,
+    errors
+  };
+}

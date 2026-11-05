@@ -53,6 +53,9 @@ async function request(endpoint, options = {}) {
         message = `Endpoint ${endpoint} returned status ${res.status}`;
       }
     }
+    if (res.status === 401 && typeof window !== 'undefined' && !endpoint.startsWith('/auth/')) {
+      window.dispatchEvent(new CustomEvent('auth:expired', { detail: { message } }));
+    }
     const err = new Error(message);
     err.status = res.status;
     err.body = errBody;

@@ -212,3 +212,128 @@ export const lockedPeriodPostSchema = z.object({
   period: z.string().trim().regex(/^\d{4}-\d{2}$/, 'Period must be in YYYY-MM format (e.g. 2026-09)'),
   reason: z.string().optional()
 });
+
+// -----------------------------------------------------------------------------
+// Project Plan Schemas (Sprint Plan & Stage Gates)
+// -----------------------------------------------------------------------------
+export const sprintPostSchema = z.object({
+  code: z.string().trim().min(1, 'Sprint code is required'),
+  name: z.string().optional(),
+  phase: z.string().optional(),
+  startDate: z.string().optional().nullable(),
+  endDate: z.string().optional().nullable(),
+  goal: z.string().optional(),
+  sortOrder: z.number().optional()
+}).passthrough();
+
+export const sprintPutSchema = z.object({
+  code: z.string().trim().min(1, 'Sprint code cannot be empty').optional(),
+  name: z.string().optional(),
+  phase: z.string().optional(),
+  startDate: z.string().optional().nullable(),
+  endDate: z.string().optional().nullable(),
+  goal: z.string().optional(),
+  sortOrder: z.number().optional()
+}).passthrough();
+
+export const sprintTaskPostSchema = z.object({
+  sprintId: z.string().trim().min(1, 'Sprint ID is required'),
+  gateId: z.string().optional().nullable(),
+  taskCode: z.string().trim().min(1, 'Task code is required'),
+  workstream: z.string().optional(),
+  title: z.string().trim().min(1, 'Task title is required'),
+  plannedStart: z.string().optional().nullable(),
+  plannedFinish: z.string().optional().nullable(),
+  owner: z.string().optional(),
+  dependency: z.string().optional(),
+  weight: z.number().min(0, 'Weight must be non-negative').optional(),
+  percentComplete: z.number().min(0).max(100).optional(),
+  actualCompletionDate: z.string().optional().nullable(),
+  planningBasis: z.string().optional(),
+  sortOrder: z.number().optional()
+}).passthrough().refine(data => {
+  if (data.plannedStart && data.plannedFinish) {
+    return String(data.plannedFinish) >= String(data.plannedStart);
+  }
+  return true;
+}, {
+  message: 'Planned finish date cannot be earlier than planned start date',
+  path: ['plannedFinish']
+});
+
+export const sprintTaskPutSchema = z.object({
+  sprintId: z.string().optional(),
+  gateId: z.string().optional().nullable(),
+  taskCode: z.string().optional(),
+  workstream: z.string().optional(),
+  title: z.string().optional(),
+  plannedStart: z.string().optional().nullable(),
+  plannedFinish: z.string().optional().nullable(),
+  owner: z.string().optional(),
+  dependency: z.string().optional(),
+  weight: z.number().min(0, 'Weight must be non-negative').optional(),
+  percentComplete: z.number().min(0).max(100).optional(),
+  actualCompletionDate: z.string().optional().nullable(),
+  planningBasis: z.string().optional(),
+  sortOrder: z.number().optional()
+}).passthrough().refine(data => {
+  if (data.plannedStart && data.plannedFinish) {
+    return String(data.plannedFinish) >= String(data.plannedStart);
+  }
+  return true;
+}, {
+  message: 'Planned finish date cannot be earlier than planned start date',
+  path: ['plannedFinish']
+});
+
+export const gatePostSchema = z.object({
+  code: z.string().trim().min(1, 'Gate code is required'),
+  name: z.string().trim().min(1, 'Gate name is required'),
+  targetDate: z.string().optional().nullable(),
+  approvers: z.string().optional(),
+  requiredEvidence: z.string().optional(),
+  exitCriteria: z.string().optional(),
+  percentComplete: z.number().min(0).max(100).optional(),
+  actualApprovalDate: z.string().optional().nullable(),
+  approvedBy: z.string().optional(),
+  decisionNotes: z.string().optional(),
+  notesRisk: z.string().optional(),
+  sortOrder: z.number().optional(),
+  checklistItems: z.array(z.any()).optional()
+}).passthrough();
+
+export const gatePutSchema = z.object({
+  code: z.string().optional(),
+  name: z.string().optional(),
+  targetDate: z.string().optional().nullable(),
+  approvers: z.string().optional(),
+  requiredEvidence: z.string().optional(),
+  exitCriteria: z.string().optional(),
+  percentComplete: z.number().min(0).max(100).optional(),
+  actualApprovalDate: z.string().optional().nullable(),
+  approvedBy: z.string().optional(),
+  decisionNotes: z.string().optional(),
+  notesRisk: z.string().optional(),
+  sortOrder: z.number().optional()
+}).passthrough();
+
+export const gateApproveSchema = z.object({
+  approvalDate: z.string().trim().min(1, 'Approval date is required'),
+  approvedBy: z.string().trim().min(1, 'Approver name is required'),
+  notes: z.string().optional()
+});
+
+export const gateRevokeSchema = z.object({
+  reason: z.string().trim().min(1, 'Reason for revocation is required')
+});
+
+export const gateChecklistToggleSchema = z.object({
+  isDone: z.boolean()
+});
+
+export const planImportSchema = z.object({
+  mode: z.enum(['merge', 'replace']),
+  sprints: z.array(z.any()).default([]),
+  tasks: z.array(z.any()).default([]),
+  gates: z.array(z.any()).default([])
+});

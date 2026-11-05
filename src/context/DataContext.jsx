@@ -206,18 +206,37 @@ export const DataProvider = ({ children }) => {
         }
 
         // Automatic Local-to-Cloud Sync & preservation for Tasks:
-        // Ensure any locally created tasks are preserved and synced to Neon DB
-        // instead of being wiped out if the remote database fetch happens before or during writes!
+        // Ensure locally completed or updated tasks are preserved and synced to Neon DB
+        // instead of being reverted by stale remote database fetches!
         const localTasks = dataRef.current?.tasks || [];
+        const mergedTasks = remoteTasks.map(rt => {
+          const lt = localTasks.find(l => String(l.id) === String(rt.id));
+          if (!lt) return rt;
+
+          // If task was marked Done locally but remote still has it as Not started / In progress:
+          if (lt.status === 'Done' && rt.status !== 'Done') {
+            apiUpdateTask(lt.id, lt).catch(() => {});
+            return { ...rt, status: 'Done', completedDate: lt.completedDate || rt.completedDate || '' };
+          }
+          // If task has a locally set completedDate but remote is missing it:
+          if (lt.completedDate && !rt.completedDate && (rt.status === 'Done' || lt.status === 'Done')) {
+            apiUpdateTask(lt.id, { completedDate: lt.completedDate }).catch(() => {});
+            return { ...rt, completedDate: lt.completedDate };
+          }
+          return rt;
+        });
+
         for (const lt of localTasks) {
           if (!lt || !lt.id) continue;
           if (deletedTaskIds.current.has(lt.id)) continue;
-          const exists = remoteTasks.some(rt => String(rt.id) === String(lt.id));
+          const exists = mergedTasks.some(mt => String(mt.id) === String(lt.id));
           if (!exists) {
-            remoteTasks.push(lt);
+            mergedTasks.push(lt);
             apiCreateTask(lt).catch(e => console.error('[Cloud Sync] Failed to sync local task to Neon:', e));
           }
         }
+
+        remoteTasks = mergedTasks;
 
         // Filter out any locally deleted tasks that remote Neon might still be returning
         if (deletedTaskIds.current.size > 0) {
@@ -355,7 +374,9 @@ export const DataProvider = ({ children }) => {
     const rawProjects = Array.isArray(loaded.projects) && loaded.projects.length > 0 ? loaded.projects : seedData.projects;
     const loadedProjects = rawProjects.map(p => ({
       ...p,
-      createdBy: p.createdBy !== undefined && p.createdBy !== '' ? p.createdBy : (p.id === 'p4' ? '5' : '1')
+      createdBy: p.createdBy !== undefined && p.createdBy !== '' ? p.createdBy : (p.id === 'p4' ? '5' : '1'),
+      projectManagerId: p.projectManagerId || p.createdBy || (p.id === 'p4' ? '5' : '1'),
+      projectManagerName: p.projectManagerName || ''
     }));
     if (!hasStoredProjects) {
       (seedData.projects || []).forEach(sp => {
@@ -658,9 +679,15 @@ export const DataProvider = ({ children }) => {
   const updateTask = (id, updates) => {
     if (!id) return;
 
+    let updatedTargetTask = null;
     let cascadedDescendantIds = [];
     let cascadedAssigneeIds = [];
     let cascadedAssigneeId = '';
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const todayStr = `${y}-${m}-${d}`;
 
     setData(prev => {
       const oldTask = prev.tasks.find(t => String(t.id) === String(id));
@@ -682,12 +709,6 @@ export const DataProvider = ({ children }) => {
       cascadedAssigneeId = updates.assigneeId || cascadedAssigneeIds[0] || '';
       cascadedDescendantIds = Array.from(descendants);
 
-      const now = new Date();
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, '0');
-      const d = String(now.getDate()).padStart(2, '0');
-      const todayStr = `${y}-${m}-${d}`;
-
       const nextTasks = prev.tasks.map(t => {
         if (String(t.id) === String(id)) {
           let updatedCompletedDate = t.completedDate || '';
@@ -703,7 +724,9 @@ export const DataProvider = ({ children }) => {
           }
           // IMPORTANT: If task was ALREADY Done, and status didn't change (e.g. due date updated),
           // updatedCompletedDate stays strictly preserved as t.completedDate!
-          return { ...t, ...updates, completedDate: updatedCompletedDate };
+          const merged = { ...t, ...updates, completedDate: updatedCompletedDate };
+          updatedTargetTask = merged;
+          return merged;
         }
         if (descendants.has(String(t.id))) {
           let descendantCompleted = t.completedDate || '';
@@ -741,13 +764,15 @@ export const DataProvider = ({ children }) => {
       return { ...prev, tasks: nextTasks, projects: updatedProjects };
     });
 
-    // Sync to Neon Cloud
-    apiUpdateTask(id, updates).catch(e => console.error('[Neon Error] updateTask:', e));
+    // Sync to Neon Cloud (send full updated task payload so all fields are preserved and upsertable in Neon)
+    const taskPayload = updatedTargetTask || { id, ...updates };
+    apiUpdateTask(id, taskPayload).catch(e => console.error('[Neon Error] updateTask:', e));
     if (cascadedDescendantIds.length > 0) {
       cascadedDescendantIds.forEach(descId => {
         apiUpdateTask(descId, {
           assigneeIds: cascadedAssigneeIds,
-          assigneeId: cascadedAssigneeId
+          assigneeId: cascadedAssigneeId,
+          ...(updates.status ? { status: updates.status, completedDate: updates.status === 'Done' ? todayStr : '' } : {})
         }).catch(e => console.error('[Neon Error] cascade updateTask:', e));
       });
     }

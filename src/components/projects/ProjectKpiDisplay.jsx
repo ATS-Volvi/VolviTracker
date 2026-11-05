@@ -14,8 +14,6 @@ export const ProjectKpiDisplay = ({
   employees = [],
   onOpenProjectDetails,
 }) => {
-  if (!project) return null;
-
   // 1. Calculate project task counts and statuses
   const metrics = useMemo(() => {
     const list = Array.isArray(tasks) ? tasks : [];
@@ -111,8 +109,19 @@ export const ProjectKpiDisplay = ({
     };
   }, [tasks]);
 
+  // Project Manager resolution
+  const projectManager = useMemo(() => {
+    if (!project) return null;
+    const pmId = project.projectManagerId || project.createdBy;
+    if (!pmId) return null;
+    return employees.find(e => String(e.id) === String(pmId)) || null;
+  }, [project?.projectManagerId, project?.createdBy, employees, project]);
+
   // 2. Resolve project team members and their task loads
   const { memberStats, avgTasksPerMember, projectMembers } = useMemo(() => {
+    if (!project) {
+      return { memberStats: [], avgTasksPerMember: '0.0', projectMembers: [] };
+    }
     let ids = [];
     if (Array.isArray(project.assigneeIds) && project.assigneeIds.length > 0) {
       ids = project.assigneeIds;
@@ -243,6 +252,8 @@ export const ProjectKpiDisplay = ({
   const statusReviewStroke = (metrics.inReviewPct / 100) * circumference;
   const statusLateStroke = (metrics.overduePct / 100) * circumference;
 
+  if (!project) return null;
+
   return (
     <div className="w-full space-y-4">
       {/* 1. TOP HEADER BANNER */}
@@ -271,7 +282,7 @@ export const ProjectKpiDisplay = ({
               {/* Status Pill */}
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50/90 text-blue-700 border border-blue-200/80">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
-                {project.status || 'On Track'}
+                {project.status === 'Done' ? 'Completed' : (project.status || 'On Track')}
               </span>
 
               {/* Dates Pill */}
@@ -326,6 +337,15 @@ export const ProjectKpiDisplay = ({
                   <span>Supplier: <strong className="text-slate-700 font-semibold">{project.supplierName}</strong></span>
                 </>
               )}
+              {projectManager && (
+                <>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="text-slate-400">PM:</span>
+                    <strong className="text-indigo-700 font-semibold">{projectManager.fullName}</strong>
+                  </span>
+                </>
+              )}
               <span>•</span>
               <button
                 type="button"
@@ -353,7 +373,7 @@ export const ProjectKpiDisplay = ({
               <div
                 style={{ width: `${pipelineDoneWidth}%` }}
                 className="h-full bg-blue-700 transition-all duration-500"
-                title={`Done: ${metrics.completed}`}
+                title={`Completed: ${metrics.completed}`}
               />
               <div
                 style={{ width: `${pipelineActiveWidth}%` }}
@@ -376,7 +396,7 @@ export const ProjectKpiDisplay = ({
             <div className="flex items-center justify-between text-[11px] text-slate-500 flex-wrap gap-x-2 pt-0.5">
               <span className="flex items-center gap-1.5 font-medium">
                 <span className="w-2.5 h-2.5 rounded-xs bg-blue-700" />
-                <span>{metrics.completed} Done</span>
+                <span>{metrics.completed} Completed</span>
               </span>
               <span className="flex items-center gap-1.5 font-medium">
                 <span className="w-2.5 h-2.5 rounded-xs bg-sky-400" />
@@ -736,7 +756,7 @@ export const ProjectKpiDisplay = ({
                 {/* Center text */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
                   <span className="text-sm font-black text-slate-900 leading-none">{metrics.completedPct}%</span>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Done</span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Completed</span>
                 </div>
               </div>
 
@@ -777,7 +797,7 @@ export const ProjectKpiDisplay = ({
           {/* Footer Bar */}
           <div className="bg-slate-50/90 border-t border-slate-100 px-4 py-2 text-[11px] text-slate-600 flex items-center justify-between">
             <span className="text-slate-600 font-medium">Velocity: Real-time sync</span>
-            <span className="font-bold text-blue-700">{metrics.completed}/{metrics.total} done</span>
+            <span className="font-bold text-blue-700">{metrics.completed}/{metrics.total} completed</span>
           </div>
         </div>
 

@@ -29,8 +29,21 @@ export const AuthProvider = ({ children }) => {
 
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Check expiration
-        if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
+        // Check expiration (both expiresAt timestamp and JWT exp payload claim)
+        let isExpired = Boolean(parsed.expiresAt && Date.now() > parsed.expiresAt);
+        if (!isExpired && parsed.token && typeof parsed.token === 'string') {
+          try {
+            const parts = parsed.token.split('.');
+            if (parts.length === 3) {
+              const payload = JSON.parse(atob(parts[1]));
+              if (payload.exp && (payload.exp * 1000) < Date.now()) {
+                isExpired = true;
+              }
+            }
+          } catch {}
+        }
+
+        if (isExpired) {
           localStorage.removeItem(AUTH_STORAGE_KEY);
           sessionStorage.removeItem(AUTH_STORAGE_KEY);
           localStorage.removeItem(LEGACY_USER_KEY);
@@ -203,13 +216,22 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Logout
-  const logout = () => {
+  const logout = useCallback(() => {
     setUser(null);
     setSession(null);
     localStorage.removeItem(AUTH_STORAGE_KEY);
     sessionStorage.removeItem(AUTH_STORAGE_KEY);
     localStorage.removeItem(LEGACY_USER_KEY);
-  };
+  }, []);
+
+  // Automatically handle expired tokens from API calls
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      logout();
+    };
+    window.addEventListener('auth:expired', handleAuthExpired);
+    return () => window.removeEventListener('auth:expired', handleAuthExpired);
+  }, [logout]);
 
   // Keep authenticated user state synchronized with employees directory
   useEffect(() => {

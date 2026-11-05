@@ -133,13 +133,20 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
   const [projectTeamSearch, setProjectTeamSearch] = useState('');
   const projectTeamDropdownRef = useRef(null);
 
+  // Project Manager dropdown state
+  const [showPmDropdown, setShowPmDropdown] = useState(false);
+  const [pmSearch, setPmSearch] = useState('');
+  const pmDropdownRef = useRef(null);
+
   // Close assignee dropdowns when clicking outside
   useEffect(() => {
     const handleDocClick = (e) => {
       if (projectTeamDropdownRef.current && !projectTeamDropdownRef.current.contains(e.target)) {
         setShowProjectTeamDropdown(false);
       }
-
+      if (pmDropdownRef.current && !pmDropdownRef.current.contains(e.target)) {
+        setShowPmDropdown(false);
+      }
     };
     document.addEventListener('mousedown', handleDocClick);
     return () => document.removeEventListener('mousedown', handleDocClick);
@@ -204,8 +211,14 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
       const end = initial.endDate ? initial.endDate.slice(0, 10) : '';
 
       const desig = initial.contactDesignation || initial.clientDesignation || '';
+      const initialPmId = initial.projectManagerId || initial.createdBy || '';
+      const initialPm = employees.find(e => String(e.id) === String(initialPmId));
+      const initialPmName = initial.projectManagerName || initialPm?.fullName || '';
+
       setForm({
         name: initial.name || '',
+        projectManagerId: initialPmId,
+        projectManagerName: initialPmName,
         clientName: initial.clientName || '',
         clientId: initial.clientId || '',
         supplierName: initial.supplierName || '',
@@ -235,12 +248,17 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
         (user?.role || '').toLowerCase().trim() === 'project manager' ||
         (user?.role || '').toLowerCase().includes('project manager')
       );
-      const defaultProjectAssignees = (isUserProjectManager && user?.id)
-        ? [user.id]
+      const defaultPmId = isUserProjectManager && user?.id ? user.id : '';
+      const defaultPm = defaultPmId ? employees.find(e => String(e.id) === String(defaultPmId)) : null;
+      const defaultPmName = defaultPm?.fullName || '';
+      const defaultProjectAssignees = defaultPmId
+        ? [defaultPmId]
         : ((!canAssignAnyone && user?.id) ? [user.id] : []);
 
       setForm({
         name: '',
+        projectManagerId: defaultPmId,
+        projectManagerName: defaultPmName,
         clientName: '',
         clientId: '',
         supplierName: '',
@@ -370,6 +388,38 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
     }));
   };
 
+  const selectedPm = useMemo(() => {
+    if (!form.projectManagerId) return null;
+    return employees.find(e => String(e.id) === String(form.projectManagerId)) || null;
+  }, [employees, form.projectManagerId]);
+
+  const handleSelectPm = (emp) => {
+    if (!emp) {
+      setForm(prev => ({
+        ...prev,
+        projectManagerId: '',
+        projectManagerName: ''
+      }));
+      setShowPmDropdown(false);
+      return;
+    }
+
+    setForm(prev => {
+      // Auto-include the selected PM in the project's team members if not already included
+      const newAssigneeIds = prev.assigneeIds.includes(emp.id)
+        ? prev.assigneeIds
+        : [emp.id, ...prev.assigneeIds];
+
+      return {
+        ...prev,
+        projectManagerId: emp.id,
+        projectManagerName: emp.fullName,
+        assigneeIds: newAssigneeIds
+      };
+    });
+    setShowPmDropdown(false);
+  };
+
   const toggleAssignee = (empId) => {
     setForm(prev => {
       const exists = prev.assigneeIds.includes(empId);
@@ -435,13 +485,15 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
 
     const payload = {
       ...form,
+      projectManagerId: form.projectManagerId || '',
+      projectManagerName: selectedPm?.fullName || form.projectManagerName || '',
+      createdBy: form.projectManagerId || initial?.createdBy || user?.id || '',
       assigneeIds: finalAssigneeIds,
       assigneeId: finalAssigneeIds[0] || '', // legacy compatibility
       startValue: 0,
       endValue: 100,
       progress: effectiveProgress,
-      status: finalStatus,
-      createdBy: initial?.createdBy || user?.id || ''
+      status: finalStatus
     };
 
     // Ensure each task in liveProjectTasks has both assigneeIds and assigneeId
@@ -472,10 +524,10 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
   };
 
   const formFields = (
-    <div className="space-y-6">
+    <div className="space-y-6 flex-1 min-h-0 flex flex-col">
 
         {/* Top: Project Info & Team */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0 items-stretch">
           {/* Left Column: Core Fields */}
           <div className="lg:col-span-6 space-y-4">
             <div>
@@ -661,7 +713,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
                     setForm(prev => ({ ...prev, status: newStatus, progress: nextProg }));
                   }}
                 >
-                  {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  {STATUSES.map(s => <option key={s} value={s}>{s === 'Done' ? 'Completed' : s}</option>)}
                 </select>
               </div>
 
@@ -719,6 +771,212 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
                   required
                 />
               </div>
+            </div>
+
+            {/* Project Manager Dropdown */}
+            <div className="relative" ref={pmDropdownRef}>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-gray-700">
+                  Project Manager {canAssignAnyone ? '(Lead / Owner)' : ''}
+                </label>
+                {selectedPm && (
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                    (selectedPm.isAdmin || (selectedPm.role || '').toLowerCase().trim() === 'admin')
+                      ? 'text-purple-700 bg-purple-50 border-purple-100'
+                      : 'text-indigo-700 bg-indigo-50 border-indigo-100'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      (selectedPm.isAdmin || (selectedPm.role || '').toLowerCase().trim() === 'admin')
+                        ? 'bg-purple-500'
+                        : 'bg-indigo-500'
+                    }`}></span>
+                    <span>{(selectedPm.isAdmin || (selectedPm.role || '').toLowerCase().trim() === 'admin') ? 'Admin' : (selectedPm.role || 'Project Manager')}</span>
+                  </span>
+                )}
+              </div>
+
+              {canAssignAnyone ? (
+                <>
+                  {/* Dropdown trigger button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowPmDropdown(!showPmDropdown)}
+                    className="input-field text-xs min-h-[38px] py-1.5 px-3 bg-white flex items-center justify-between gap-2 w-full text-left cursor-pointer hover:border-indigo-400 transition"
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1 truncate">
+                      {selectedPm ? (
+                        <div className="flex items-center gap-2 min-w-0 truncate">
+                          <img
+                            src={selectedPm.avatar}
+                            alt={selectedPm.fullName}
+                            className="w-5 h-5 rounded-full object-cover ring-2 ring-white shadow-2xs shrink-0"
+                            onError={(ev) => {
+                              ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedPm.fullName)}&background=6366f1&color=fff`;
+                            }}
+                          />
+                          <span className="text-xs font-bold text-gray-900 truncate">
+                            {selectedPm.fullName}
+                          </span>
+                          <span className="text-[10px] text-gray-400 truncate">
+                            ({(selectedPm.isAdmin || (selectedPm.role || '').toLowerCase().trim() === 'admin') ? 'Admin' : (selectedPm.role || 'Project Manager')})
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-gray-400">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          <span>Select Project Manager...</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 text-gray-400">
+                      {selectedPm && (
+                        <span
+                          role="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectPm(null);
+                          }}
+                          className="hover:text-rose-500 hover:bg-rose-50 rounded p-0.5 text-xs font-bold transition px-1"
+                          title="Clear manager"
+                        >
+                          ✕
+                        </span>
+                      )}
+                      <svg className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${showPmDropdown ? 'rotate-180 text-indigo-600' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {showPmDropdown && (
+                    <div className="absolute z-50 left-0 right-0 mt-1.5 rounded-xl bg-white border border-gray-200 shadow-xl p-2.5 space-y-2 animate-slide-up text-left">
+                      {/* Search box inside dropdown */}
+                      <div className="relative">
+                        <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        <input
+                          type="text"
+                          placeholder="Search admins & project managers by name or role..."
+                          value={pmSearch}
+                          onChange={(e) => setPmSearch(e.target.value)}
+                          className="w-full text-xs pl-8 pr-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-hidden focus:bg-white focus:ring-1 focus:ring-indigo-500"
+                          autoFocus
+                        />
+                      </div>
+
+                      {/* Unassign option */}
+                      <div
+                        onClick={() => handleSelectPm(null)}
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition ${
+                          !form.projectManagerId
+                            ? 'bg-indigo-50 text-indigo-900 font-semibold'
+                            : 'hover:bg-gray-50 text-gray-500'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-[15px] text-gray-400">person_off</span>
+                          <span>Unassigned (No Project Manager)</span>
+                        </div>
+                        {!form.projectManagerId && <span className="text-indigo-600 font-bold">✓</span>}
+                      </div>
+
+                      {/* Member list */}
+                      <div className="max-h-56 overflow-y-auto space-y-1 custom-scrollbar pr-0.5 divide-y divide-gray-50">
+                        {(() => {
+                          const query = pmSearch.toLowerCase().trim();
+                          // Only include Admins and Project Managers
+                          const filtered = employees.filter(e => {
+                            const roleLower = (e.role || '').toLowerCase().trim();
+                            const isAdminRole = Boolean(e.isAdmin === true || roleLower === 'admin');
+                            const isPmRole = Boolean(roleLower === 'project manager' || roleLower.includes('project manager'));
+                            const isEligible = isAdminRole || isPmRole || String(form.projectManagerId) === String(e.id);
+                            if (!isEligible) return false;
+
+                            return (
+                              !query ||
+                              (e.fullName && e.fullName.toLowerCase().includes(query)) ||
+                              (e.role && e.role.toLowerCase().includes(query)) ||
+                              (e.email && e.email.toLowerCase().includes(query))
+                            );
+                          });
+
+                          // Sort: Admins first, then Project Managers, then alphabetical by name
+                          const sorted = [...filtered].sort((a, b) => {
+                            const aIsAdmin = a.isAdmin === true || (a.role || '').toLowerCase().trim() === 'admin';
+                            const bIsAdmin = b.isAdmin === true || (b.role || '').toLowerCase().trim() === 'admin';
+                            if (aIsAdmin && !bIsAdmin) return -1;
+                            if (!aIsAdmin && bIsAdmin) return 1;
+                            return (a.fullName || '').localeCompare(b.fullName || '');
+                          });
+
+                          if (sorted.length === 0) {
+                            return (
+                              <div className="p-3 text-center text-xs text-gray-400">
+                                No eligible Admins or Project Managers found
+                              </div>
+                            );
+                          }
+
+                          return sorted.map(emp => {
+                            const isSelected = String(form.projectManagerId) === String(emp.id);
+                            const isAdminUser = emp.isAdmin === true || (emp.role || '').toLowerCase().trim() === 'admin';
+                            const badgeLabel = isAdminUser ? 'Admin' : 'PM';
+                            const badgeStyle = isAdminUser
+                              ? 'bg-purple-100 text-purple-700 border-purple-200'
+                              : 'bg-indigo-100 text-indigo-700 border-indigo-200';
+
+                            return (
+                              <div
+                                key={emp.id}
+                                onClick={() => handleSelectPm(emp)}
+                                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition select-none ${
+                                  isSelected
+                                    ? 'bg-indigo-50 text-indigo-900 font-semibold'
+                                    : 'hover:bg-gray-50 text-gray-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <img
+                                    src={emp.avatar}
+                                    alt={emp.fullName}
+                                    className="w-6 h-6 rounded-full object-cover shrink-0 ring-1 ring-gray-200"
+                                    onError={(ev) => {
+                                      ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.fullName)}&background=6366f1&color=fff`;
+                                    }}
+                                  />
+                                  <div className="truncate">
+                                    <div className="font-semibold text-gray-900 truncate flex items-center gap-1.5">
+                                      <span>{emp.fullName}</span>
+                                      <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold border ${badgeStyle}`}>
+                                        {badgeLabel}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-gray-400 truncate">
+                                      {emp.role || 'Member'} • {emp.email || ''}
+                                    </div>
+                                  </div>
+                                </div>
+                                {isSelected && (
+                                  <span className="text-indigo-600 font-bold ml-2 shrink-0">✓</span>
+                                )}
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="p-2 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 flex items-center gap-2">
+                  <span className="font-semibold">{user?.fullName || 'You'}</span>
+                  <span className="text-[10px] text-gray-400">(Project Manager)</span>
+                </div>
+              )}
             </div>
 
             {/* Project Team Members (Assignees Dropdown) */}
@@ -971,10 +1229,10 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
           </div>
 
           {/* Right Column: Client & Supplier Selection */}
-          <div className="lg:col-span-6 flex flex-col space-y-4">
+          <div className="lg:col-span-6 flex flex-col space-y-4 h-full min-h-0">
             {/* Box 1: Choose Client */}
-            <div className="flex flex-col border border-gray-200 rounded-xl bg-white p-3 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
+            <div className="flex-1 min-h-0 flex flex-col border border-gray-200 rounded-xl bg-white p-3 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[17px] text-blue-600">domain</span>
                   <label className="text-xs font-bold text-gray-800">
@@ -1009,7 +1267,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
               </div>
 
               {/* Search input for Client */}
-              <div className="relative">
+              <div className="relative shrink-0">
                 <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[15px]">search</span>
                 <input
                   type="text"
@@ -1021,7 +1279,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
               </div>
 
               {/* Client List */}
-              <div className="max-h-[145px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+              <div className="flex-1 min-h-[145px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
                 {filteredClients.length === 0 ? (
                   <div className="p-3 text-center text-xs text-gray-400">
                     No matching clients found in Master Data
@@ -1071,8 +1329,8 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
             </div>
 
             {/* Box 2: Add Supplier (Optional - need not be selected all the time) */}
-            <div className="flex flex-col border border-gray-200 rounded-xl bg-white p-3 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
+            <div className="flex-1 min-h-0 flex flex-col border border-gray-200 rounded-xl bg-white p-3 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[17px] text-emerald-600">local_shipping</span>
                   <label className="text-xs font-bold text-gray-800">
@@ -1095,7 +1353,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
               </div>
 
               {/* Search input for Supplier */}
-              <div className="relative">
+              <div className="relative shrink-0">
                 <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[15px]">search</span>
                 <input
                   type="text"
@@ -1107,7 +1365,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
               </div>
 
               {/* Supplier List */}
-              <div className="max-h-[145px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+              <div className="flex-1 min-h-[145px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
                 {/* Direct Delivery / None Option */}
                 <div
                   onClick={() => setForm(prev => ({ ...prev, supplierId: '', supplierName: '' }))}
@@ -1195,7 +1453,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
                   )}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Tasks marked as <span className="font-semibold text-emerald-600">Done</span> automatically calculate this project's progress percentage. You can add, edit, or assign multiple employees on the dedicated tasks list below.
+                  Tasks marked as <span className="font-semibold text-emerald-600">Completed</span> automatically calculate this project's progress percentage. You can add, edit, or assign multiple employees on the dedicated tasks list below.
                 </p>
               </div>
 
@@ -1340,7 +1598,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
                       : 'bg-gray-100 text-gray-600 border-gray-200'
                   }`}
                 >
-                  {form.status || 'Not started'}
+                  {form.status === 'Done' ? 'Completed' : (form.status || 'Not started')}
                 </span>
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                   {hasTasks ? autoProgress : form.progress}% Progress
@@ -1388,7 +1646,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
           <div className="text-xs text-gray-500">
             {hasTasks ? (
               <span>
-                Progress: <strong className="text-emerald-600">{autoProgress}%</strong> ({completedTasks}/{totalTasks} tasks done)
+                Progress: <strong className="text-emerald-600">{autoProgress}%</strong> ({completedTasks}/{totalTasks} tasks completed)
               </span>
             ) : (
               <span>Progress: <strong className="text-gray-700">{form.progress}%</strong></span>
@@ -1439,7 +1697,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
       }
     >
       <form id="project-form-modal" onSubmit={submit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
-        <div className="p-6 space-y-6 overflow-y-auto flex-1 min-h-0">
+        <div className="p-6 space-y-6 overflow-y-auto flex-1 min-h-0 flex flex-col">
           {formFields}
         </div>
 
@@ -1448,7 +1706,7 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
           <div className="text-xs text-gray-500">
             {hasTasks ? (
               <span>
-                Progress: <strong className="text-emerald-600">{autoProgress}%</strong> ({completedTasks}/{totalTasks} tasks done)
+                Progress: <strong className="text-emerald-600">{autoProgress}%</strong> ({completedTasks}/{totalTasks} tasks completed)
               </span>
             ) : (
               <span>No tasks linked (using manual progress)</span>

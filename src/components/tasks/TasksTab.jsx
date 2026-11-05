@@ -386,7 +386,7 @@ export const TasksTab = ({
       }
     }
 
-    const displayLabel = isOverdue ? 'Overdue' : rawStatus;
+    const displayLabel = isOverdue ? 'Overdue' : (isDone ? 'Completed' : rawStatus);
     const dotColor = isOverdue
       ? 'bg-rose-600'
       : isDone
@@ -446,7 +446,7 @@ export const TasksTab = ({
                       : 'bg-gray-400'
                   }`}
                 />
-                <span>{opt}</span>
+                <span>{opt === 'Done' ? 'Completed' : opt}</span>
               </button>
             ))}
           </div>
@@ -987,7 +987,7 @@ export const TasksTab = ({
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
               }`}
             >
-              <span>✓</span> Done ({completedCount})
+              <span>✓</span> Completed ({completedCount})
             </button>
           </div>
         </div>
@@ -1326,11 +1326,11 @@ export const TasksTab = ({
                       onClick={() => {
                         const todayStr = getLocalDateString();
                         selectedTaskIds.forEach(id => updateTask(id, { status: 'Done', completedDate: todayStr }));
-                        addToast(`Marked ${selectedTaskIds.size} task(s) as Done`, 'success');
+                        addToast(`Marked ${selectedTaskIds.size} task(s) as Completed`, 'success');
                       }}
                       className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-bold text-xs shadow-2xs transition cursor-pointer"
                     >
-                      ✓ Mark Done
+                      ✓ Mark Completed
                     </button>
                     <button
                       type="button"
@@ -1346,7 +1346,7 @@ export const TasksTab = ({
                       type="button"
                       onClick={() => {
                         if (window.confirm(`Are you sure you want to delete ${selectedTaskIds.size} selected tasks?`)) {
-                          selectedTaskIds.forEach(id => deleteTask(id));
+                          selectedTaskIds.forEach(id => removeTask(id));
                           setSelectedTaskIds(new Set());
                           addToast(`Deleted selected tasks`, 'success');
                         }
@@ -1383,7 +1383,7 @@ export const TasksTab = ({
                       <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left">Task Description & Tags</th>
                       <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-44">Assignee</th>
                       <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-32">Status</th>
-                      <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-28">Created</th>
+                      <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-32">Mark Completed</th>
                       <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-32">Due Date</th>
                       <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-32">Completed</th>
                       <th className="py-3 px-3 font-semibold text-xs text-gray-600 text-left w-24">Priority</th>
@@ -1500,9 +1500,35 @@ export const TasksTab = ({
                             />
                           </td>
 
-                          {/* 6. Created */}
-                          <td className="py-3.5 px-3 w-28 text-xs text-gray-600 font-medium align-middle">
-                            {fmtFullDate(t.createdDate || t.createdAt)}
+                          {/* 6. Mark Completed Toggle Button */}
+                          <td className="py-3.5 px-3 w-32 align-middle">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={t.status === 'Done'}
+                                onClick={() => handleStatusChange(t.id, t.status === 'Done' ? 'In progress' : 'Done', t.name)}
+                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 ${
+                                  t.status === 'Done' ? 'bg-emerald-500' : 'bg-slate-200 hover:bg-slate-300'
+                                }`}
+                                title={t.status === 'Done' ? `Completed! Click to mark In Progress` : `Click to mark "${t.name}" as Completed`}
+                              >
+                                <span
+                                  className={`pointer-events-none inline-flex items-center justify-center h-4 w-4 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                                    t.status === 'Done' ? 'translate-x-4' : 'translate-x-0'
+                                  }`}
+                                >
+                                  {t.status === 'Done' && (
+                                    <svg className="w-2.5 h-2.5 text-emerald-600 stroke-[3]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                </span>
+                              </button>
+                              <span className={`text-[11px] font-semibold select-none ${t.status === 'Done' ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                {t.status === 'Done' ? 'Completed' : 'Off'}
+                              </span>
+                            </div>
                           </td>
 
                           {/* 7. Due Date */}
@@ -1690,7 +1716,7 @@ export const TasksTab = ({
                 return (
                   <div key={s}>
                     <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 flex items-center gap-2">
-                      <span>{s}</span>
+                      <span>{s === 'Done' ? 'Completed' : s}</span>
                       <span className="bg-gray-100 text-gray-600 px-1.5 py-0.2 rounded-full text-[10px] font-bold">
                         {list.length}
                       </span>
@@ -1739,7 +1765,7 @@ export const TasksTab = ({
                           </div>
                         );
                       })}
-                      {list.length === 0 && <p className="text-xs text-gray-400 italic px-2">No tasks with status "{s}".</p>}
+                      {list.length === 0 && <p className="text-xs text-gray-400 italic px-2">No tasks with status "{s === 'Done' ? 'Completed' : s}".</p>}
                     </div>
                   </div>
                 );

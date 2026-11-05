@@ -36,7 +36,7 @@ export const Dashboard = () => {
   const baseProjects = isAdmin
     ? allProjects
     : (isProjectManager
-      ? allProjects.filter(p => String(p.createdBy || '') === String(user?.id))
+      ? allProjects.filter(p => String(p.projectManagerId || p.createdBy || '') === String(user?.id) || (Array.isArray(p.assigneeIds) && p.assigneeIds.some(aid => String(aid) === String(user?.id))))
       : allProjects.filter(p => (Array.isArray(p.assigneeIds) && p.assigneeIds.some(aid => String(aid) === String(user?.id))) || String(p.assigneeId) === String(user?.id)));
 
   // Subsequent tasks which come under those accessible projects
@@ -283,7 +283,7 @@ export const Dashboard = () => {
                 onClick={() => { setQuickFilter('done'); addToast('Filtered: Completed projects', 'info'); }}
                 className={`px-3 py-1.5 rounded-md transition ${quickFilter === 'done' ? 'bg-white text-emerald-600 shadow-xs' : 'hover:text-gray-900'}`}
               >
-                Done ({completedProjectsCount})
+                Completed ({completedProjectsCount})
               </button>
               <button
                 onClick={() => { setQuickFilter('mine'); addToast('Filtered: Assigned to me', 'info'); }}
@@ -367,7 +367,7 @@ export const Dashboard = () => {
                   <div className="flex items-center justify-between text-xs">
                     <span className="flex items-center gap-2 truncate text-gray-600">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
-                      <span className="text-xs truncate font-medium">Done</span>
+                      <span className="text-xs truncate font-medium">Completed</span>
                     </span>
                     <span className="font-bold text-gray-900 text-sm">{completedProjectsCount}</span>
                   </div>
@@ -393,7 +393,7 @@ export const Dashboard = () => {
             <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-h-[190px]">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Tasks</span>
-                <span className="text-xs font-bold bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full">{taskCompletionRate}% done</span>
+                <span className="text-xs font-bold bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full">{taskCompletionRate}% completed</span>
               </div>
 
               <div className="mt-3 flex items-center justify-between gap-3">
@@ -410,7 +410,7 @@ export const Dashboard = () => {
                   <div className="flex items-center justify-between text-xs">
                     <span className="flex items-center gap-2 truncate text-gray-600">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
-                      <span className="text-xs truncate font-medium">Done</span>
+                      <span className="text-xs truncate font-medium">Completed</span>
                     </span>
                     <span className="font-bold text-gray-900 text-sm">{completedTasksCount}</span>
                   </div>

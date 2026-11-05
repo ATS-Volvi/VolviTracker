@@ -3,19 +3,41 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
 
+// Resilient dynamic import helper to recover from dev server restarts or stale bundle hashes
+const lazyWithRetry = (componentImport) =>
+  lazy(async () => {
+    try {
+      return await componentImport();
+    } catch (error) {
+      const isDynamicImportError =
+        error?.message?.includes('Failed to fetch dynamically imported module') ||
+        error?.message?.includes('Importing a module script failed');
+
+      if (isDynamicImportError) {
+        const hasReloaded = window.sessionStorage.getItem('lazy_retry_reloaded');
+        if (!hasReloaded) {
+          window.sessionStorage.setItem('lazy_retry_reloaded', 'true');
+          window.location.reload();
+          return new Promise(() => {});
+        }
+      }
+      throw error;
+    }
+  });
+
 // Lazy-loaded route pages for optimized initial bundle size and code splitting
-const Login = lazy(() => import('./pages/Login'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Employee = lazy(() => import('./pages/Employee'));
-const Finance = lazy(() => import('./pages/finance/Finance'));
-const ClientSideFinance = lazy(() => import('./pages/finance/ClientSideFinance'));
-const SupplierSideFinance = lazy(() => import('./pages/finance/SupplierSideFinance'));
-const CashBookFinance = lazy(() => import('./pages/finance/CashBookFinance'));
-const TaxFinance = lazy(() => import('./pages/finance/TaxFinance'));
-const CashFlowFinance = lazy(() => import('./pages/finance/CashFlowFinance'));
-const MasterData = lazy(() => import('./pages/masterData/MasterData'));
-const TasksPage = lazy(() => import('./pages/TasksPage'));
-const ProjectEditPage = lazy(() => import('./pages/ProjectEditPage'));
+const Login = lazyWithRetry(() => import('./pages/Login'));
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'));
+const Employee = lazyWithRetry(() => import('./pages/Employee'));
+const Finance = lazyWithRetry(() => import('./pages/finance/Finance'));
+const ClientSideFinance = lazyWithRetry(() => import('./pages/finance/ClientSideFinance'));
+const SupplierSideFinance = lazyWithRetry(() => import('./pages/finance/SupplierSideFinance'));
+const CashBookFinance = lazyWithRetry(() => import('./pages/finance/CashBookFinance'));
+const TaxFinance = lazyWithRetry(() => import('./pages/finance/TaxFinance'));
+const CashFlowFinance = lazyWithRetry(() => import('./pages/finance/CashFlowFinance'));
+const MasterData = lazyWithRetry(() => import('./pages/masterData/MasterData'));
+const TasksPage = lazyWithRetry(() => import('./pages/TasksPage'));
+const ProjectEditPage = lazyWithRetry(() => import('./pages/ProjectEditPage'));
 
 const PageLoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -88,6 +110,10 @@ const RequireProjectAccess = ({ children }) => {
 
 const App = () => {
   const { user, isAdmin, isProjectManager, canManageProjects, loading } = useAuth();
+
+  useEffect(() => {
+    window.sessionStorage.removeItem('lazy_retry_reloaded');
+  }, []);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
       return localStorage.getItem('volvitech_sidebar_collapsed') === 'true';

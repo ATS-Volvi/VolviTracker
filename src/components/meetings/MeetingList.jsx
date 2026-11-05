@@ -79,7 +79,7 @@ export const MeetingList = ({ meetings, defaultAttendeeId = '' }) => {
                     </td>
                     <td className="py-2 pr-4 text-gray-600">{fmt(m.dateTime)}</td>
                     <td className="py-2 pr-4">
-                      <span className={`badge ${STATUS_STYLES[m.status] || 'bg-gray-100 text-gray-600'}`}>{m.status}</span>
+                      <span className={`badge ${STATUS_STYLES[m.status] || 'bg-gray-100 text-gray-600'}`}>{m.status === 'Done' ? 'Completed' : m.status}</span>
                     </td>
                     <td className="py-2 pr-4">
                       {m.url ? <a className="text-indigo-600 hover:underline font-medium" href={m.url} target="_blank" rel="noreferrer">Join</a> : '—'}

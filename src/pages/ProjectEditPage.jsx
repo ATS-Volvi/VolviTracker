@@ -1,16 +1,53 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { ProjectForm } from '../components/forms/ProjectForm';
 import { TasksTab } from '../components/tasks/TasksTab';
 import { ProjectKpiDisplay } from '../components/projects/ProjectKpiDisplay';
-import Avatar from '../components/widgets/Avatar';
+
+// Lazy-load the new plan tabs
+const SprintPlanTab = lazy(() => import('../components/projects/plan/SprintPlanTab'));
+const StageGatesTab = lazy(() => import('../components/projects/plan/StageGatesTab'));
 
 export const ProjectEditPage = () => {
   const { id, projectId } = useParams();
   const navigate = useNavigate();
   const { projects = [], tasks = [], employees = [] } = useData();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // Tab state with URL hash persistence (#sprint-plan, #stage-gates)
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      if (hash === '#sprint-plan') return 'sprint-plan';
+      if (hash === '#stage-gates') return 'stage-gates';
+    }
+    return 'tasks';
+  });
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    if (tab === 'sprint-plan') {
+      window.location.hash = '#sprint-plan';
+    } else if (tab === 'stage-gates') {
+      window.location.hash = '#stage-gates';
+    } else {
+      if (window.location.hash) {
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      if (hash === '#sprint-plan') setActiveTab('sprint-plan');
+      else if (hash === '#stage-gates') setActiveTab('stage-gates');
+      else setActiveTab('tasks');
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   const targetId = id || projectId;
   const isNew = !targetId || targetId === 'new';
@@ -79,7 +116,7 @@ export const ProjectEditPage = () => {
           </span>
           <span className="text-slate-300">/</span>
           <span className="text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-            Tasks Tracker
+            {activeTab === 'sprint-plan' ? 'Sprint Plan' : activeTab === 'stage-gates' ? 'Stage Gates' : 'Tasks Tracker'}
           </span>
         </div>
 
@@ -111,20 +148,77 @@ export const ProjectEditPage = () => {
         onOpenProjectDetails={() => setIsEditModalOpen(true)}
       />
 
-      {/* Main Tasks List directly on page */}
-      <div id="tasks-tracker-anchor" className="w-full pt-1">
-        <TasksTab
-          tasks={tasks}
-          projects={projects}
-          heading={`${project.name} — Tasks Tracker`}
-          defaultProjectId={String(project.id)}
-          lockToProject={true}
-          hideProjectFilter={true}
-          hideProjectDetailsHeader={true}
-          disableUrlSync={true}
-          asCard={true}
-        />
+      {/* Navigation Tab Bar */}
+      <div className="flex items-center gap-2 border-b border-slate-200/90 pb-2 flex-wrap">
+        <button
+          type="button"
+          onClick={() => handleTabChange('tasks')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            activeTab === 'tasks'
+              ? 'bg-blue-600 text-white shadow-2xs'
+              : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[16px]">task_alt</span>
+          <span>Tasks Tracker</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${activeTab === 'tasks' ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+            {projectTasks.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange('sprint-plan')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            activeTab === 'sprint-plan'
+              ? 'bg-blue-600 text-white shadow-2xs'
+              : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[16px]">view_timeline</span>
+          <span>Sprint Plan</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange('stage-gates')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            activeTab === 'stage-gates'
+              ? 'bg-blue-600 text-white shadow-2xs'
+              : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[16px]">rule</span>
+          <span>Stage Gates</span>
+        </button>
       </div>
+
+      {/* Tab Panels */}
+      {activeTab === 'tasks' && (
+        <div id="tasks-tracker-anchor" className="w-full pt-1">
+          <TasksTab
+            tasks={tasks}
+            projects={projects}
+            heading={`${project.name} — Tasks Tracker`}
+            defaultProjectId={String(project.id)}
+            lockToProject={true}
+            hideProjectFilter={true}
+            hideProjectDetailsHeader={true}
+            disableUrlSync={true}
+            asCard={true}
+          />
+        </div>
+      )}
+
+      <Suspense fallback={
+        <div className="w-full py-16 text-center space-y-2 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+          <div className="inline-block w-7 h-7 border-3 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
+          <p className="text-xs font-semibold text-slate-500">Loading plan tab...</p>
+        </div>
+      }>
+        {activeTab === 'sprint-plan' && <SprintPlanTab project={project} />}
+        {activeTab === 'stage-gates' && <StageGatesTab project={project} />}
+      </Suspense>
 
       {/* Project Details Modal Popup */}
       {isEditModalOpen && (

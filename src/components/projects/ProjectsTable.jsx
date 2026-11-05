@@ -30,7 +30,7 @@ const STATUS_CONFIG = {
   'Done': {
     bg: 'bg-emerald-100 text-emerald-700 border-emerald-200',
     dot: 'bg-emerald-500',
-    label: 'Done',
+    label: 'Completed',
     accent: 'border-emerald-400'
   },
   'Not started': {
@@ -179,7 +179,8 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
       startValue: 0,
       endValue: 100,
       progress: 0,
-      createdBy: user?.id || ''
+      createdBy: user?.id || '',
+      projectManagerId: isUserPM ? (user?.id || '') : ''
     });
     addToast(`Project "${inlineNewName.trim()}" created!`, 'success');
     setInlineNewName('');
@@ -392,12 +393,12 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                   {ALL_STATUSES.map(s => (
                     <button
                       key={s}
-                      onClick={() => { setStatusFilter(s); setShowFilterMenu(false); addToast(`Filtered by "${s}"`, 'info'); }}
+                      onClick={() => { setStatusFilter(s); setShowFilterMenu(false); addToast(`Filtered by "${STATUS_CONFIG[s]?.label || (s === 'Done' ? 'Completed' : s)}"`, 'info'); }}
                       className={`w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center justify-between ${statusFilter === s ? 'font-bold text-sky-600' : 'text-gray-700'}`}
                     >
                       <span className="flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full ${STATUS_CONFIG[s].dot}`}></span>
-                        <span>{s}</span>
+                        <span>{STATUS_CONFIG[s]?.label || (s === 'Done' ? 'Completed' : s)}</span>
                       </span>
                       {statusFilter === s && '✓'}
                     </button>
@@ -817,7 +818,7 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                                 className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                               >
                                 <span className={`w-2 h-2 rounded-full ${cfg.dot}`}></span>
-                                <span className="font-medium">{s}</span>
+                                <span className="font-medium">{cfg?.label || (s === 'Done' ? 'Completed' : s)}</span>
                               </button>
                             );
                           })}
@@ -981,7 +982,7 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                 <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-white rounded-t-xl">
                   <div className="flex items-center gap-2">
                     <span className={`w-2.5 h-2.5 rounded-full ${cfg.dot}`}></span>
-                    <h3 className="font-bold text-gray-800 text-sm">{status}</h3>
+                    <h3 className="font-bold text-gray-800 text-sm">{cfg?.label || status}</h3>
                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-semibold">
                       {list.length}
                     </span>
@@ -1000,7 +1001,8 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                         startValue: 0,
                         endValue: 100,
                         progress: status === 'Done' ? 1 : 0,
-                        createdBy: user?.id || ''
+                        createdBy: user?.id || '',
+                        projectManagerId: isUserPM ? (user?.id || '') : ''
                       });
                       addToast(`Added project to ${status}`, 'success');
                     }}
@@ -1260,7 +1262,7 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                 <div className="flex items-start justify-between gap-2">
                   <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusCfg.bg}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`}></span>
-                    {p.status}
+                    {statusCfg.label || (p.status === 'Done' ? 'Completed' : p.status)}
                   </span>
                   <div className="flex items-center gap-1">
                     <button
@@ -1339,7 +1341,7 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                     </span>
                   </div>
                   <span className="tabular-nums font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                    {pct}% done
+                    {pct}% completed
                   </span>
                 </div>
 
@@ -1456,13 +1458,13 @@ export const ProjectsTable = ({ projects = [], title = 'Projects' }) => {
                   projects.filter(p => getProgressPercentage(p) === 100).forEach(p => {
                     updateProject(p.id, { status: 'Done' });
                   });
-                  addToast('Marked all 100% projects as Done!', 'success');
+                  addToast('Marked all 100% projects as Completed!', 'success');
                   setAutomationModalOpen(false);
                 }}
               >
                 <div>
                   <div className="text-xs font-bold text-gray-800">Auto-complete 100% projects</div>
-                  <div className="text-[11px] text-gray-500">Marks any fully finished project as Done</div>
+                  <div className="text-[11px] text-gray-500">Marks any fully finished project as Completed</div>
                 </div>
                 <button className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Run</button>
               </div>

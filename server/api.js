@@ -78,7 +78,22 @@ import {
   getLockedPeriods,
   lockPeriod,
   unlockPeriod,
-  isPeriodLocked
+  isPeriodLocked,
+  sql,
+  getProjectPlanData,
+  createSprintRecord,
+  updateSprintRecord,
+  deleteSprintRecord,
+  createSprintTaskRecord,
+  updateSprintTaskRecord,
+  deleteSprintTaskRecord,
+  createGateRecord,
+  updateGateRecord,
+  deleteGateRecord,
+  approveGateRecord,
+  revokeGateRecord,
+  toggleGateChecklistItemRecord,
+  importProjectPlanTx
 } from './db.js';
 import {
   validate,
@@ -119,7 +134,17 @@ import {
   masterDirectoryPutSchema,
   documentVaultPostSchema,
   documentVaultPutSchema,
-  lockedPeriodPostSchema
+  lockedPeriodPostSchema,
+  sprintPostSchema,
+  sprintPutSchema,
+  sprintTaskPostSchema,
+  sprintTaskPutSchema,
+  gatePostSchema,
+  gatePutSchema,
+  gateApproveSchema,
+  gateRevokeSchema,
+  gateChecklistToggleSchema,
+  planImportSchema
 } from './validation.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'tracker_jwt_secret_key_change_in_production_min_32_chars';
@@ -130,6 +155,48 @@ export function canManageFinance(user) {
   if (user.isAdmin) return true;
   const role = (user.role || '').toLowerCase().trim();
   return role === 'accountant' || role === 'admin';
+}
+
+// Helper to check permissions for Project Plan operations
+export async function authorizePlanAccess(projectId, reqUser, action = 'write') {
+  if (!reqUser) {
+    return { allowed: false, status: 401, error: 'Unauthorized: Authentication required' };
+  }
+
+  const empRows = await sql`SELECT id, role, is_admin, email, full_name FROM employees WHERE id = ${reqUser.id} OR email = ${reqUser.email}`;
+  const emp = empRows[0] || null;
+  const isAdmin = Boolean(emp?.is_admin || (emp?.role || '').toLowerCase() === 'admin');
+
+  if (action === 'read') {
+    return { allowed: true, user: emp || reqUser, isAdmin };
+  }
+
+  if (action === 'revoke' || action === 'deleteGate') {
+    if (!isAdmin) {
+      return { allowed: false, status: 403, error: 'Forbidden: Admin access required' };
+    }
+    return { allowed: true, user: emp || reqUser, isAdmin: true };
+  }
+
+  if (isAdmin) {
+    return { allowed: true, user: emp || reqUser, isAdmin: true };
+  }
+
+  // Verify Project Manager ownership
+  const projRows = await sql`SELECT id, project_manager_id, created_by FROM projects WHERE id = ${projectId}`;
+  if (!projRows || projRows.length === 0) {
+    return { allowed: false, status: 404, error: 'Project not found' };
+  }
+
+  const proj = projRows[0];
+  const pmId = String(proj.project_manager_id || proj.created_by || '');
+  const userId = String(emp?.id || reqUser.id || '');
+
+  if (!pmId || userId !== pmId) {
+    return { allowed: false, status: 403, error: 'Forbidden: Only an Admin or this project\'s Project Manager can modify the plan' };
+  }
+
+  return { allowed: true, user: emp || reqUser, isAdmin: false };
 }
 
 // Helper to sign JWT (8 hour expiry)
@@ -455,6 +522,278 @@ export async function apiHandler(req, res, next) {
       if (method === 'DELETE') {
         await deleteProjectRecord(id);
         return sendJson(res, 200, { success: true, id });
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 5.1 Project Plans (Sprint Plan & Stage Gates)
+    // -------------------------------------------------------------------------
+
+    // GET /api/projects/:id/plan
+    const planMatch = pathname.match(/^\/api\/projects\/([^/]+)\/plan$/);
+    if (planMatch) {
+      const id = decodeURIComponent(planMatch[1]);
+      if (method === 'GET') {
+        const auth = await authorizePlanAccess(id, req.user, 'read');
+        if (!auth.allowed) {
+          return sendJson(res, auth.status, { error: auth.error });
+        }
+        const plan = await getProjectPlanData(id);
+        return sendJson(res, 200, plan);
+      }
+    }
+
+    // POST /api/projects/:id/plan/import
+    const importMatch = pathname.match(/^\/api\/projects\/([^/]+)\/plan\/import$/);
+    if (importMatch) {
+      const id = decodeURIComponent(importMatch[1]);
+      if (method === 'POST') {
+        const auth = await authorizePlanAccess(id, req.user, 'write');
+        if (!auth.allowed) {
+          return sendJson(res, auth.status, { error: auth.error });
+        }
+        const rawBody = await parseJsonBody(req);
+        const v = validate(planImportSchema, rawBody);
+        if (!v.success) {
+          return sendJson(res, 400, { error: v.error, details: v.issues });
+        }
+        const result = await importProjectPlanTx(id, v.data, auth.user);
+        return sendJson(res, 200, result);
+      }
+    }
+
+    // Sprints: POST /api/projects/:id/sprints, PUT/DELETE /api/projects/:id/sprints/:sprintId
+    const sprintsMatch = pathname.match(/^\/api\/projects\/([^/]+)\/sprints(?:\/([^/]+))?$/);
+    if (sprintsMatch) {
+      const id = decodeURIComponent(sprintsMatch[1]);
+      const sprintId = sprintsMatch[2] ? decodeURIComponent(sprintsMatch[2]) : null;
+
+      if (!sprintId && method === 'POST') {
+        const auth = await authorizePlanAccess(id, req.user, 'write');
+        if (!auth.allowed) return sendJson(res, auth.status, { error: auth.error });
+
+        const rawBody = await parseJsonBody(req);
+        const v = validate(sprintPostSchema, rawBody);
+        if (!v.success) return sendJson(res, 400, { error: v.error, details: v.issues });
+
+        const sprint = await createSprintRecord(id, v.data, auth.user);
+        return sendJson(res, 201, sprint);
+      }
+
+      if (sprintId && method === 'PUT') {
+        const auth = await authorizePlanAccess(id, req.user, 'write');
+        if (!auth.allowed) return sendJson(res, auth.status, { error: auth.error });
+
+        // IDOR check
+        const rows = await sql`SELECT project_id FROM project_sprints WHERE id = ${sprintId}`;
+        if (!rows || rows.length === 0 || rows[0].project_id !== id) {
+          return sendJson(res, 404, { error: 'Sprint not found for this project' });
+        }
+
+        const rawBody = await parseJsonBody(req);
+        const v = validate(sprintPutSchema, rawBody);
+        if (!v.success) return sendJson(res, 400, { error: v.error, details: v.issues });
+
+        const updated = await updateSprintRecord(id, sprintId, v.data, auth.user);
+        return sendJson(res, 200, updated);
+      }
+
+      if (sprintId && method === 'DELETE') {
+        const auth = await authorizePlanAccess(id, req.user, 'write');
+        if (!auth.allowed) return sendJson(res, auth.status, { error: auth.error });
+
+        // IDOR check
+        const rows = await sql`SELECT project_id FROM project_sprints WHERE id = ${sprintId}`;
+        if (!rows || rows.length === 0 || rows[0].project_id !== id) {
+          return sendJson(res, 404, { error: 'Sprint not found for this project' });
+        }
+
+        await deleteSprintRecord(id, sprintId, auth.user);
+        return sendJson(res, 200, { success: true, id: sprintId });
+      }
+    }
+
+    // Sprint Tasks: POST /api/projects/:id/sprint-tasks, PUT/DELETE /api/projects/:id/sprint-tasks/:taskId
+    const tasksPlanMatch = pathname.match(/^\/api\/projects\/([^/]+)\/sprint-tasks(?:\/([^/]+))?$/);
+    if (tasksPlanMatch) {
+      const id = decodeURIComponent(tasksPlanMatch[1]);
+      const taskId = tasksPlanMatch[2] ? decodeURIComponent(tasksPlanMatch[2]) : null;
+
+      if (!taskId && method === 'POST') {
+        const auth = await authorizePlanAccess(id, req.user, 'write');
+        if (!auth.allowed) return sendJson(res, auth.status, { error: auth.error });
+
+        const rawBody = await parseJsonBody(req);
+        const v = validate(sprintTaskPostSchema, rawBody);
+        if (!v.success) return sendJson(res, 400, { error: v.error, details: v.issues });
+
+        // Check sprint belongs to project
+        const sCheck = await sql`SELECT project_id FROM project_sprints WHERE id = ${v.data.sprintId}`;
+        if (!sCheck || sCheck.length === 0 || sCheck[0].project_id !== id) {
+          return sendJson(res, 400, { error: 'Invalid sprintId: sprint does not belong to this project' });
+        }
+
+        const task = await createSprintTaskRecord(id, v.data, auth.user);
+        return sendJson(res, 201, task);
+      }
+
+      if (taskId && method === 'PUT') {
+        const auth = await authorizePlanAccess(id, req.user, 'write');
+        if (!auth.allowed) return sendJson(res, auth.status, { error: auth.error });
+
+        // IDOR check
+        const rows = await sql`SELECT project_id FROM project_sprint_tasks WHERE id = ${taskId}`;
+        if (!rows || rows.length === 0 || rows[0].project_id !== id) {
+          return sendJson(res, 404, { error: 'Task not found for this project' });
+        }
+
+        const rawBody = await parseJsonBody(req);
+        const v = validate(sprintTaskPutSchema, rawBody);
+        if (!v.success) return sendJson(res, 400, { error: v.error, details: v.issues });
+
+        const updated = await updateSprintTaskRecord(id, taskId, v.data, auth.user);
+        return sendJson(res, 200, updated);
+      }
+
+      if (taskId && method === 'DELETE') {
+        const auth = await authorizePlanAccess(id, req.user, 'write');
+        if (!auth.allowed) return sendJson(res, auth.status, { error: auth.error });
+
+        // IDOR check
+        const rows = await sql`SELECT project_id FROM project_sprint_tasks WHERE id = ${taskId}`;
+        if (!rows || rows.length === 0 || rows[0].project_id !== id) {
+          return sendJson(res, 404, { error: 'Task not found for this project' });
+        }
+
+        await deleteSprintTaskRecord(id, taskId, auth.user);
+        return sendJson(res, 200, { success: true, id: taskId });
+      }
+    }
+
+    // Gate Approval: POST /api/projects/:id/gates/:gateId/approve
+    const gateApproveMatch = pathname.match(/^\/api\/projects\/([^/]+)\/gates\/([^/]+)\/approve$/);
+    if (gateApproveMatch) {
+      const id = decodeURIComponent(gateApproveMatch[1]);
+      const gateId = decodeURIComponent(gateApproveMatch[2]);
+      if (method === 'POST') {
+        const auth = await authorizePlanAccess(id, req.user, 'write');
+        if (!auth.allowed) return sendJson(res, auth.status, { error: auth.error });
+
+        // IDOR check
+        const rows = await sql`SELECT project_id FROM project_gates WHERE id = ${gateId}`;
+        if (!rows || rows.length === 0 || rows[0].project_id !== id) {
+          return sendJson(res, 404, { error: 'Gate not found for this project' });
+        }
+
+        const rawBody = await parseJsonBody(req);
+        const v = validate(gateApproveSchema, rawBody);
+        if (!v.success) return sendJson(res, 400, { error: v.error, details: v.issues });
+
+        const gate = await approveGateRecord(id, gateId, v.data, auth.user);
+        return sendJson(res, 200, gate);
+      }
+    }
+
+    // Gate Revocation: POST /api/projects/:id/gates/:gateId/revoke (Admin only)
+    const gateRevokeMatch = pathname.match(/^\/api\/projects\/([^/]+)\/gates\/([^/]+)\/revoke$/);
+    if (gateRevokeMatch) {
+      const id = decodeURIComponent(gateRevokeMatch[1]);
+      const gateId = decodeURIComponent(gateRevokeMatch[2]);
+      if (method === 'POST') {
+        const auth = await authorizePlanAccess(id, req.user, 'revoke');
+        if (!auth.allowed) return sendJson(res, auth.status, { error: auth.error });
+
+        // IDOR check
+        const rows = await sql`SELECT project_id FROM project_gates WHERE id = ${gateId}`;
+        if (!rows || rows.length === 0 || rows[0].project_id !== id) {
+          return sendJson(res, 404, { error: 'Gate not found for this project' });
+        }
+
+        const rawBody = await parseJsonBody(req);
+        const v = validate(gateRevokeSchema, rawBody);
+        if (!v.success) return sendJson(res, 400, { error: v.error, details: v.issues });
+
+        const gate = await revokeGateRecord(id, gateId, v.data, auth.user);
+        return sendJson(res, 200, gate);
+      }
+    }
+
+    // Gate Checklist Item Toggle: PUT /api/projects/:id/gates/:gateId/checklist/:itemId
+    const checklistMatch = pathname.match(/^\/api\/projects\/([^/]+)\/gates\/([^/]+)\/checklist\/([^/]+)$/);
+    if (checklistMatch) {
+      const id = decodeURIComponent(checklistMatch[1]);
+      const gateId = decodeURIComponent(checklistMatch[2]);
+      const itemId = decodeURIComponent(checklistMatch[3]);
+      if (method === 'PUT') {
+        const auth = await authorizePlanAccess(id, req.user, 'write');
+        if (!auth.allowed) return sendJson(res, auth.status, { error: auth.error });
+
+        // IDOR check
+        const rows = await sql`
+          SELECT project_id, gate_id FROM project_gate_checklist_items WHERE id = ${itemId}
+        `;
+        if (!rows || rows.length === 0 || rows[0].project_id !== id || rows[0].gate_id !== gateId) {
+          return sendJson(res, 404, { error: 'Checklist item not found for this gate and project' });
+        }
+
+        const rawBody = await parseJsonBody(req);
+        const v = validate(gateChecklistToggleSchema, rawBody);
+        if (!v.success) return sendJson(res, 400, { error: v.error, details: v.issues });
+
+        const result = await toggleGateChecklistItemRecord(id, gateId, itemId, v.data.isDone, auth.user);
+        return sendJson(res, 200, result);
+      }
+    }
+
+    // Gates CRUD: POST /api/projects/:id/gates, PUT/DELETE /api/projects/:id/gates/:gateId
+    const gatesMatch = pathname.match(/^\/api\/projects\/([^/]+)\/gates(?:\/([^/]+))?$/);
+    if (gatesMatch) {
+      const id = decodeURIComponent(gatesMatch[1]);
+      const gateId = gatesMatch[2] ? decodeURIComponent(gatesMatch[2]) : null;
+
+      if (!gateId && method === 'POST') {
+        const auth = await authorizePlanAccess(id, req.user, 'write');
+        if (!auth.allowed) return sendJson(res, auth.status, { error: auth.error });
+
+        const rawBody = await parseJsonBody(req);
+        const v = validate(gatePostSchema, rawBody);
+        if (!v.success) return sendJson(res, 400, { error: v.error, details: v.issues });
+
+        const gate = await createGateRecord(id, v.data, auth.user);
+        return sendJson(res, 201, gate);
+      }
+
+      if (gateId && method === 'PUT') {
+        const auth = await authorizePlanAccess(id, req.user, 'write');
+        if (!auth.allowed) return sendJson(res, auth.status, { error: auth.error });
+
+        // IDOR check
+        const rows = await sql`SELECT project_id FROM project_gates WHERE id = ${gateId}`;
+        if (!rows || rows.length === 0 || rows[0].project_id !== id) {
+          return sendJson(res, 404, { error: 'Gate not found for this project' });
+        }
+
+        const rawBody = await parseJsonBody(req);
+        const v = validate(gatePutSchema, rawBody);
+        if (!v.success) return sendJson(res, 400, { error: v.error, details: v.issues });
+
+        const updated = await updateGateRecord(id, gateId, v.data, auth.user);
+        return sendJson(res, 200, updated);
+      }
+
+      if (gateId && method === 'DELETE') {
+        // revoke/delete gate = Admin only
+        const auth = await authorizePlanAccess(id, req.user, 'deleteGate');
+        if (!auth.allowed) return sendJson(res, auth.status, { error: auth.error });
+
+        // IDOR check
+        const rows = await sql`SELECT project_id FROM project_gates WHERE id = ${gateId}`;
+        if (!rows || rows.length === 0 || rows[0].project_id !== id) {
+          return sendJson(res, 404, { error: 'Gate not found for this project' });
+        }
+
+        await deleteGateRecord(id, gateId, auth.user);
+        return sendJson(res, 200, { success: true, id: gateId });
       }
     }
 

@@ -6,6 +6,11 @@ async function resetDatabase() {
   
   try {
     console.log('[DB Reset] Dropping existing tables...');
+    await sql`DROP TABLE IF EXISTS project_plan_audit_logs CASCADE;`;
+    await sql`DROP TABLE IF EXISTS project_gate_checklist_items CASCADE;`;
+    await sql`DROP TABLE IF EXISTS project_sprint_tasks CASCADE;`;
+    await sql`DROP TABLE IF EXISTS project_gates CASCADE;`;
+    await sql`DROP TABLE IF EXISTS project_sprints CASCADE;`;
     await sql`DROP TABLE IF EXISTS document_vault CASCADE;`;
     await sql`DROP TABLE IF EXISTS master_directory CASCADE;`;
     await sql`DROP TABLE IF EXISTS cash_transactions CASCADE;`;

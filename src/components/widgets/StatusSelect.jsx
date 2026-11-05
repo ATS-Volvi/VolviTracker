@@ -17,7 +17,7 @@ export const StatusSelect = ({ value, onChange }) => {
         onClick={() => setOpen(!open)}
         className={`badge ${STATUS_STYLES[value] || 'bg-gray-100 text-gray-600'}`}
       >
-        {value}
+        {value === 'Done' ? 'Completed' : value}
       </button>
       {open && (
         <div className="absolute z-10 mt-1 w-36 rounded-md bg-white shadow-lg border border-gray-200 py-1">
@@ -27,7 +27,7 @@ export const StatusSelect = ({ value, onChange }) => {
               type="button"
               onClick={() => { onChange(s); setOpen(false); }}
               className="w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50"
-            >{s}</button>
+            >{s === 'Done' ? 'Completed' : s}</button>
           ))}
         </div>
       )}

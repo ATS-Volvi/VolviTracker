@@ -31,16 +31,26 @@ export class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
+      const isDynamicImportError =
+        this.state.error?.message?.includes('Failed to fetch dynamically imported module') ||
+        this.state.error?.message?.includes('Importing a module script failed');
+
       return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
           <div className="card max-w-xl w-full p-6 sm:p-8 bg-white border border-rose-200 shadow-xl rounded-2xl space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center text-2xl font-bold shrink-0">
-                ⚠️
+                {isDynamicImportError ? '🔄' : '⚠️'}
               </div>
               <div>
-                <h2 className="text-lg font-bold text-gray-900">Application Error Encountered</h2>
-                <p className="text-xs text-gray-500">The application ran into an unexpected rendering error.</p>
+                <h2 className="text-lg font-bold text-gray-900">
+                  {isDynamicImportError ? 'Dev Server Reconnected or Update Available' : 'Application Error Encountered'}
+                </h2>
+                <p className="text-xs text-gray-500">
+                  {isDynamicImportError
+                    ? 'A page component could not be fetched. If the Vite development server was recently restarted or stopped, make sure "npm run dev" is running and click Reload.'
+                    : 'The application ran into an unexpected rendering error.'}
+                </p>
               </div>
             </div>
 

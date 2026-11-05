@@ -46,7 +46,7 @@ export const FilterControls = ({ onFilterChange, dateRange, setDateRange }) => {
         <select className="input-field" value={projectStatus} onChange={(e) => setProjectStatus(e.target.value)}>
           <option value="">All Projects</option>
           {['Not started', 'In progress', 'Done'].map(status => (
-            <option key={status} value={status}>{status}</option>
+            <option key={status} value={status}>{status === 'Done' ? 'Completed' : status}</option>
           ))}
         </select>
       </div>
