@@ -5,10 +5,9 @@
 @tailwind utilities;
 
 body {
-  @apply bg-[#F8FAFC] text-[#0F172A] antialiased selection:bg-blue-600 selection:text-white text-base;
+  @apply bg-[#F8FAFC] text-[#0F172A] antialiased selection:bg-blue-600 selection:text-white;
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   letter-spacing: -0.011em;
-  font-size: 1.25rem;
 }
 
 @layer components {
@@ -109,28 +108,4 @@ body {
 .custom-scrollbar::-webkit-scrollbar-corner,
 .modal-scrollbar::-webkit-scrollbar-corner {
   background: transparent;
-}
-
-/* Scaled font sizes: 2 sizes bigger (+4px) across arbitrary pixel classes */
-@layer utilities {
-  .text-\[8px\] { font-size: 12px !important; }
-  .text-\[9px\] { font-size: 13px !important; }
-  .text-\[10px\] { font-size: 14px !important; }
-  .text-\[11px\] { font-size: 15px !important; }
-  .text-\[12px\] { font-size: 16px !important; }
-  .text-\[13px\] { font-size: 17px !important; }
-  .text-\[14px\] { font-size: 18px !important; }
-  .text-\[15px\] { font-size: 19px !important; }
-  .text-\[16px\] { font-size: 20px !important; }
-  .text-\[17px\] { font-size: 21px !important; }
-  .text-\[18px\] { font-size: 22px !important; }
-  .text-\[19px\] { font-size: 23px !important; }
-  .text-\[20px\] { font-size: 24px !important; }
-  .text-\[22px\] { font-size: 26px !important; }
-  .text-\[24px\] { font-size: 28px !important; }
-  .text-\[26px\] { font-size: 30px !important; }
-  .text-\[28px\] { font-size: 32px !important; }
-  .text-\[32px\] { font-size: 36px !important; }
-  .text-\[36px\] { font-size: 40px !important; }
-  .text-\[40px\] { font-size: 44px !important; }
 }
