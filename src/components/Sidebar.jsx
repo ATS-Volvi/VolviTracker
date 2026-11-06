@@ -103,69 +103,67 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
   }, [location.pathname, currentTab]);
 
   const renderSidebarContent = (collapsed = false) => (
-    <div className="flex flex-col h-full justify-between bg-white border-r border-gray-200/80 transition-all duration-300">
-      {/* Top Brand Section & Scrollable Navigation */}
-      <div className="flex flex-col flex-1 overflow-hidden">
-        {/* Header / Brand Logo */}
-        <div className={`h-16 flex items-center border-b border-gray-100 shrink-0 relative ${
-          collapsed ? 'justify-center px-2' : 'justify-between px-5'
-        }`}>
-          <Link
-            to={canManageProjects ? '/projects' : `/employee/${user?.id}`}
-            className="flex items-center gap-2.5 hover:opacity-90 transition"
-            title={collapsed ? "Volvitech" : undefined}
+    <div className="flex flex-col h-full justify-between bg-white border-r border-gray-200/80 transition-all duration-300 relative">
+      {/* Header / Brand Logo */}
+      <div className={`h-16 flex items-center border-b border-gray-100 shrink-0 relative ${
+        collapsed ? 'justify-center px-2' : 'justify-between px-5'
+      }`}>
+        <Link
+          to={canManageProjects ? '/projects' : `/employee/${user?.id}`}
+          className="flex items-center gap-2.5 hover:opacity-90 transition"
+          title={collapsed ? "Volvitech" : undefined}
+        >
+          {collapsed ? (
+            <img
+              src={iconLogo}
+              alt="Volvitech"
+              className="h-8 w-8 object-contain"
+            />
+          ) : (
+            <img
+              src={logo}
+              alt="Volvitech"
+              className="h-8 w-auto object-contain"
+            />
+          )}
+        </Link>
+
+        {/* Mobile close button */}
+        {mobileOpen && (
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 md:hidden"
+            aria-label="Close sidebar"
           >
-            {collapsed ? (
-              <img
-                src={iconLogo}
-                alt="Volvitech"
-                className="h-8 w-8 object-contain"
-              />
-            ) : (
-              <img
-                src={logo}
-                alt="Volvitech"
-                className="h-8 w-auto object-contain"
-              />
-            )}
-          </Link>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
 
-          {/* Mobile close button */}
-          {mobileOpen && (
-            <button
-              onClick={() => setMobileOpen(false)}
-              className="p-1.5 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 md:hidden"
-              aria-label="Close sidebar"
+        {/* Desktop Collapse / Expand Toggle Edge Button */}
+        {onToggleCollapse && (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="hidden md:flex absolute -right-3.5 top-5 w-7 h-7 rounded-full bg-white border border-gray-200 shadow-md hover:shadow-lg items-center justify-center text-gray-500 hover:text-blue-600 hover:border-blue-400 transition-all z-50 cursor-pointer active:scale-95"
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            <svg
+              className={`w-4 h-4 transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        )}
+      </div>
 
-          {/* Desktop Collapse / Expand Toggle Edge Button */}
-          {onToggleCollapse && (
-            <button
-              type="button"
-              onClick={onToggleCollapse}
-              className="hidden md:flex absolute -right-3 top-5 w-6 h-6 rounded-full bg-white border border-gray-200 shadow-xs items-center justify-center text-gray-400 hover:text-blue-600 hover:border-blue-300 transition-all z-40 active:scale-95"
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              <svg
-                className={`w-3.5 h-3.5 transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-          )}
-        </div>
-
-        {/* Navigation Items (Scrollable) */}
-        <div className={`flex-1 overflow-y-auto scrollbar-thin py-3 space-y-3 ${collapsed ? 'px-2' : 'px-3.5'}`}>
+      {/* Navigation Items (Scrollable) */}
+      <div className={`flex-1 min-h-0 overflow-y-auto scrollbar-thin py-3 space-y-3 ${collapsed ? 'px-2' : 'px-3.5'}`}>
           {collapsed ? (
             /* ================= COLLAPSED VIEW ================= */
             <div className="space-y-2">
@@ -794,10 +792,9 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
             </div>
           )}
         </div>
-      </div>
 
       {/* User Footer Section */}
-      <div className={`border-t border-gray-100 relative ${collapsed ? 'p-2' : 'p-3'}`} ref={profileMenuRef}>
+      <div className={`border-t border-gray-100 relative shrink-0 ${collapsed ? 'p-2' : 'p-3'}`} ref={profileMenuRef}>
         {profileMenuOpen && (
           <div className={`absolute bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50 animate-slide-up text-left ${
             collapsed
@@ -962,7 +959,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
 
       {/* Desktop Fixed Collapsible Sidebar */}
       <aside
-        className={`hidden md:flex md:flex-col md:fixed md:inset-y-0 z-30 transition-all duration-300 ${
+        className={`hidden md:flex md:flex-col md:fixed md:inset-y-0 z-40 overflow-visible transition-all duration-300 ${
           isCollapsed ? 'md:w-20' : 'md:w-64'
         }`}
       >
