@@ -424,9 +424,9 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
     if (isEditing) {
       let initialAssigneeIds = [];
       if (Array.isArray(initial.assigneeIds) && initial.assigneeIds.length > 0) {
-        initialAssigneeIds = initial.assigneeIds;
+        initialAssigneeIds = initial.assigneeIds.map(String);
       } else if (initial.assigneeId) {
-        initialAssigneeIds = [initial.assigneeId];
+        initialAssigneeIds = [String(initial.assigneeId)];
       }
 
       const rawCreated = initial.createdDate || initial.createdAt || initial.created_date || initial.created_at;
@@ -439,7 +439,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
         name: initial.name || '',
         projectId: initial.projectId || '',
         assigneeIds: initialAssigneeIds,
-        assigneeId: initialAssigneeIds[0] || (user?.id || ''),
+        assigneeId: initialAssigneeIds[0] || (user?.id ? String(user.id) : ''),
         status: initial.status || 'Not started',
         createdDate: initialCreatedDate,
         dueDate: initial.dueDate ? initial.dueDate.slice(0, 10) : '',
@@ -451,11 +451,11 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
     } else {
       let defaultAssignees = [];
       if (Array.isArray(initial?.assigneeIds) && initial.assigneeIds.length > 0) {
-        defaultAssignees = initial.assigneeIds;
+        defaultAssignees = initial.assigneeIds.map(String);
       } else if (initial?.assigneeId) {
-        defaultAssignees = [initial.assigneeId];
+        defaultAssignees = [String(initial.assigneeId)];
       } else if (user?.id) {
-        defaultAssignees = [user.id];
+        defaultAssignees = [String(user.id)];
       }
 
       setForm({
@@ -543,17 +543,18 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
   };
 
   const toggleAssignee = (empId) => {
+    const targetId = String(empId);
     setForm(prev => {
-      const exists = prev.assigneeIds.includes(empId);
+      const exists = prev.assigneeIds.some(id => String(id) === targetId);
       const newIds = exists
-        ? prev.assigneeIds.filter(id => id !== empId)
-        : [...prev.assigneeIds, empId];
+        ? prev.assigneeIds.filter(id => String(id) !== targetId)
+        : [...prev.assigneeIds, targetId];
       return { ...prev, assigneeIds: newIds, assigneeId: newIds[0] || '' };
     });
   };
 
   const handleSelectAllAssignees = () => {
-    const allIds = employees.map(e => e.id);
+    const allIds = employees.map(e => String(e.id));
     setForm(prev => ({
       ...prev,
       assigneeIds: allIds,
@@ -795,10 +796,10 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
                   : (selectedProj?.assigneeId ? [selectedProj.assigneeId] : []);
 
                 const sorted = [...employees].sort((a, b) => {
-                  const aTask = form.assigneeIds.includes(a.id);
-                  const bTask = form.assigneeIds.includes(b.id);
-                  const aProj = projAssigneeIds.includes(a.id);
-                  const bProj = projAssigneeIds.includes(b.id);
+                  const aTask = form.assigneeIds.some(id => String(id) === String(a.id));
+                  const bTask = form.assigneeIds.some(id => String(id) === String(b.id));
+                  const aProj = projAssigneeIds.some(id => String(id) === String(a.id));
+                  const bProj = projAssigneeIds.some(id => String(id) === String(b.id));
 
                   const aChosen = aTask || aProj;
                   const bChosen = bTask || bProj;
@@ -812,8 +813,8 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
                 });
 
                 return sorted.map(emp => {
-                  const isSelected = form.assigneeIds.includes(emp.id);
-                  const isProjectMember = projAssigneeIds.includes(emp.id);
+                  const isSelected = form.assigneeIds.some(id => String(id) === String(emp.id));
+                  const isProjectMember = projAssigneeIds.some(id => String(id) === String(emp.id));
 
                   return (
                     <div

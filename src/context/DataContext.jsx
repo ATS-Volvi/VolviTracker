@@ -54,7 +54,9 @@ const cascadeParentAssignees = (tasksList) => {
             ? task.assigneeIds
             : (task.assigneeId ? [task.assigneeId] : []);
 
-          if (pAssignees.length > 0 && (myAssignees.length === 0 || JSON.stringify(myAssignees) !== JSON.stringify(pAssignees))) {
+          // Only auto-inherit assignees if the subtask has NO assignees configured yet.
+          // Never overwrite or strip existing assignees that the user explicitly configured!
+          if (pAssignees.length > 0 && myAssignees.length === 0) {
             task.assigneeIds = [...pAssignees];
             task.assigneeId = pAssignees[0] || '';
             changed = true;
@@ -213,17 +215,44 @@ export const DataProvider = ({ children }) => {
           const lt = localTasks.find(l => String(l.id) === String(rt.id));
           if (!lt) return rt;
 
+          // Preserve locally updated assignees if remote has not caught up yet
+          const ltAssignees = Array.isArray(lt.assigneeIds) ? lt.assigneeIds.map(String) : [];
+          const rtAssignees = Array.isArray(rt.assigneeIds) ? rt.assigneeIds.map(String) : [];
+          let finalAssigneeIds = rt.assigneeIds;
+          let finalAssigneeId = rt.assigneeId;
+
+          if (ltAssignees.length > 0 && JSON.stringify(ltAssignees) !== JSON.stringify(rtAssignees)) {
+            finalAssigneeIds = lt.assigneeIds;
+            finalAssigneeId = lt.assigneeId || ltAssignees[0] || '';
+            apiUpdateTask(lt.id, { assigneeIds: finalAssigneeIds, assigneeId: finalAssigneeId }).catch(() => {});
+          }
+
           // If task was marked Done locally but remote still has it as Not started / In progress:
           if (lt.status === 'Done' && rt.status !== 'Done') {
             apiUpdateTask(lt.id, lt).catch(() => {});
-            return { ...rt, status: 'Done', completedDate: lt.completedDate || rt.completedDate || '' };
+            return {
+              ...rt,
+              status: 'Done',
+              completedDate: lt.completedDate || rt.completedDate || '',
+              assigneeIds: finalAssigneeIds,
+              assigneeId: finalAssigneeId
+            };
           }
           // If task has a locally set completedDate but remote is missing it:
           if (lt.completedDate && !rt.completedDate && (rt.status === 'Done' || lt.status === 'Done')) {
             apiUpdateTask(lt.id, { completedDate: lt.completedDate }).catch(() => {});
-            return { ...rt, completedDate: lt.completedDate };
+            return {
+              ...rt,
+              completedDate: lt.completedDate,
+              assigneeIds: finalAssigneeIds,
+              assigneeId: finalAssigneeId
+            };
           }
-          return rt;
+          return {
+            ...rt,
+            assigneeIds: finalAssigneeIds,
+            assigneeId: finalAssigneeId
+          };
         });
 
         for (const lt of localTasks) {
@@ -737,10 +766,17 @@ export const DataProvider = ({ children }) => {
           } else if (updates.status && updates.status !== 'Done') {
             descendantCompleted = '';
           }
+
+          // Only inherit assignees if the subtask has NO assignees of its own. Never overwrite custom assignees!
+          const descendantCurrentAssignees = Array.isArray(t.assigneeIds) && t.assigneeIds.length > 0
+            ? t.assigneeIds
+            : (t.assigneeId ? [t.assigneeId] : []);
+          const shouldInherit = descendantCurrentAssignees.length === 0 && updates.assigneeIds !== undefined;
+
           return {
             ...t,
-            assigneeIds: cascadedAssigneeIds,
-            assigneeId: cascadedAssigneeId,
+            assigneeIds: shouldInherit ? cascadedAssigneeIds : t.assigneeIds,
+            assigneeId: shouldInherit ? cascadedAssigneeId : t.assigneeId,
             ...(updates.status ? { status: updates.status, completedDate: descendantCompleted } : {})
           };
         }
@@ -769,9 +805,14 @@ export const DataProvider = ({ children }) => {
     apiUpdateTask(id, taskPayload).catch(e => console.error('[Neon Error] updateTask:', e));
     if (cascadedDescendantIds.length > 0) {
       cascadedDescendantIds.forEach(descId => {
+        const descTask = dataRef.current?.tasks?.find(t => String(t.id) === String(descId));
+        const descAssignees = Array.isArray(descTask?.assigneeIds) && descTask.assigneeIds.length > 0
+          ? descTask.assigneeIds
+          : (descTask?.assigneeId ? [descTask.assigneeId] : []);
+        const shouldInherit = descAssignees.length === 0 && updates.assigneeIds !== undefined;
+
         apiUpdateTask(descId, {
-          assigneeIds: cascadedAssigneeIds,
-          assigneeId: cascadedAssigneeId,
+          ...(shouldInherit ? { assigneeIds: cascadedAssigneeIds, assigneeId: cascadedAssigneeId } : {}),
           ...(updates.status ? { status: updates.status, completedDate: updates.status === 'Done' ? todayStr : '' } : {})
         }).catch(e => console.error('[Neon Error] cascade updateTask:', e));
       });

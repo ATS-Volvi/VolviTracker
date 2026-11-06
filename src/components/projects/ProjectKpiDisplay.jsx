@@ -238,8 +238,8 @@ export const ProjectKpiDisplay = ({
   const pipelineLateWidth = metrics.overduePct;
 
   // Donut SVG circumference helper
-  const radius = 38;
-  const circumference = 2 * Math.PI * radius; // ~238.76
+  const radius = 40;
+  const circumference = 2 * Math.PI * radius; // ~251.33
 
   // Priority SVG Donut segments
   const highStroke = (metrics.highPct / 100) * circumference;
@@ -362,7 +362,7 @@ export const ProjectKpiDisplay = ({
           </div>
 
           {/* Right side: Overall Pipeline Completion */}
-          <div className="lg:w-[340px] shrink-0 space-y-2">
+          <div className="w-full lg:w-[460px] xl:w-[480px] shrink-0 space-y-2.5">
             <div className="flex items-center justify-between text-xs font-bold">
               <span className="text-slate-500 uppercase tracking-wider text-[11px]">Overall Pipeline Completion</span>
               <span className="text-blue-700 font-black text-sm">{metrics.completedPct}%</span>
@@ -393,21 +393,21 @@ export const ProjectKpiDisplay = ({
             </div>
 
             {/* Pipeline Legend */}
-            <div className="flex items-center justify-between text-[11px] text-slate-500 flex-wrap gap-x-2 pt-0.5">
-              <span className="flex items-center gap-1.5 font-medium">
-                <span className="w-2.5 h-2.5 rounded-xs bg-blue-700" />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2.5 gap-y-1 text-[11px] text-slate-500 pt-0.5">
+              <span className="flex items-center gap-1.5 font-medium whitespace-nowrap">
+                <span className="w-2.5 h-2.5 rounded-xs bg-blue-700 shrink-0" />
                 <span>{metrics.completed} Completed</span>
               </span>
-              <span className="flex items-center gap-1.5 font-medium">
-                <span className="w-2.5 h-2.5 rounded-xs bg-sky-400" />
+              <span className="flex items-center gap-1.5 font-medium whitespace-nowrap">
+                <span className="w-2.5 h-2.5 rounded-xs bg-sky-400 shrink-0" />
                 <span>{metrics.inProgress} Active</span>
               </span>
-              <span className="flex items-center gap-1.5 font-medium">
-                <span className="w-2.5 h-2.5 rounded-xs bg-sky-200" />
+              <span className="flex items-center gap-1.5 font-medium whitespace-nowrap">
+                <span className="w-2.5 h-2.5 rounded-xs bg-sky-200 shrink-0" />
                 <span>{metrics.inReview} Review</span>
               </span>
-              <span className="flex items-center gap-1.5 font-medium">
-                <span className="w-2.5 h-2.5 rounded-xs bg-rose-500" />
+              <span className="flex items-center gap-1.5 font-medium whitespace-nowrap">
+                <span className="w-2.5 h-2.5 rounded-xs bg-rose-500 shrink-0" />
                 <span>{metrics.overdue} Late</span>
               </span>
             </div>
@@ -523,11 +523,11 @@ export const ProjectKpiDisplay = ({
             </div>
 
             {/* Donut Chart + Legend */}
-            <div className="mt-4 flex items-center justify-between gap-3">
+            <div className="mt-4 flex items-center justify-between gap-4">
               {/* SVG Donut */}
-              <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
-                <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r={radius} fill="none" stroke="#f1f5f9" strokeWidth="12" />
+              <div className="relative w-[102px] h-[102px] shrink-0 flex items-center justify-center">
+                <svg className="w-[102px] h-[102px] -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r={radius} fill="none" stroke="#f1f5f9" strokeWidth="9" />
 
                   {/* High Priority (Red) */}
                   {highStroke > 0 && (
@@ -537,7 +537,7 @@ export const ProjectKpiDisplay = ({
                       r={radius}
                       fill="none"
                       stroke="#ef4444"
-                      strokeWidth="12"
+                      strokeWidth="9"
                       strokeDasharray={`${highStroke} ${circumference}`}
                       strokeDashoffset={0}
                     />
@@ -551,7 +551,7 @@ export const ProjectKpiDisplay = ({
                       r={radius}
                       fill="none"
                       stroke="#38bdf8"
-                      strokeWidth="12"
+                      strokeWidth="9"
                       strokeDasharray={`${medStroke} ${circumference}`}
                       strokeDashoffset={-highStroke}
                     />
@@ -565,7 +565,7 @@ export const ProjectKpiDisplay = ({
                       r={radius}
                       fill="none"
                       stroke="#1d4ed8"
-                      strokeWidth="12"
+                      strokeWidth="9"
                       strokeDasharray={`${lowStroke} ${circumference}`}
                       strokeDashoffset={-(highStroke + medStroke)}
                     />
@@ -573,14 +573,21 @@ export const ProjectKpiDisplay = ({
                 </svg>
 
                 {/* Center text */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
-                  <span className="text-base font-black text-slate-900 leading-none">{metrics.total}</span>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Tasks</span>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-1">
+                  <span className="font-black text-slate-900 leading-none" style={{ fontSize: '16px' }}>
+                    {metrics.total}
+                  </span>
+                  <span
+                    className="font-bold text-slate-400 uppercase leading-none mt-1"
+                    style={{ fontSize: '8.5px', letterSpacing: '0.04em' }}
+                  >
+                    Tasks
+                  </span>
                 </div>
               </div>
 
               {/* Legend */}
-              <div className="space-y-1.5 text-xs text-slate-600 flex-1 min-w-0">
+              <div className="space-y-2 text-xs text-slate-600 flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1">
                   <span className="flex items-center gap-1.5 truncate">
                     <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
@@ -690,11 +697,11 @@ export const ProjectKpiDisplay = ({
             </div>
 
             {/* Donut Chart + Legend */}
-            <div className="mt-4 flex items-center justify-between gap-3">
+            <div className="mt-4 flex items-center justify-between gap-4">
               {/* SVG Donut */}
-              <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
-                <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r={radius} fill="none" stroke="#f1f5f9" strokeWidth="12" />
+              <div className="relative w-[102px] h-[102px] shrink-0 flex items-center justify-center">
+                <svg className="w-[102px] h-[102px] -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r={radius} fill="none" stroke="#f1f5f9" strokeWidth="9" />
 
                   {/* Completed (Deep Blue) */}
                   {statusDoneStroke > 0 && (
@@ -704,7 +711,7 @@ export const ProjectKpiDisplay = ({
                       r={radius}
                       fill="none"
                       stroke="#0284c7"
-                      strokeWidth="12"
+                      strokeWidth="9"
                       strokeDasharray={`${statusDoneStroke} ${circumference}`}
                       strokeDashoffset={0}
                     />
@@ -718,7 +725,7 @@ export const ProjectKpiDisplay = ({
                       r={radius}
                       fill="none"
                       stroke="#38bdf8"
-                      strokeWidth="12"
+                      strokeWidth="9"
                       strokeDasharray={`${statusActiveStroke} ${circumference}`}
                       strokeDashoffset={-statusDoneStroke}
                     />
@@ -732,7 +739,7 @@ export const ProjectKpiDisplay = ({
                       r={radius}
                       fill="none"
                       stroke="#93c5fd"
-                      strokeWidth="12"
+                      strokeWidth="9"
                       strokeDasharray={`${statusReviewStroke} ${circumference}`}
                       strokeDashoffset={-(statusDoneStroke + statusActiveStroke)}
                     />
@@ -746,7 +753,7 @@ export const ProjectKpiDisplay = ({
                       r={radius}
                       fill="none"
                       stroke="#ef4444"
-                      strokeWidth="12"
+                      strokeWidth="9"
                       strokeDasharray={`${statusLateStroke} ${circumference}`}
                       strokeDashoffset={-(statusDoneStroke + statusActiveStroke + statusReviewStroke)}
                     />
@@ -754,14 +761,21 @@ export const ProjectKpiDisplay = ({
                 </svg>
 
                 {/* Center text */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
-                  <span className="text-sm font-black text-slate-900 leading-none">{metrics.completedPct}%</span>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Completed</span>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-1">
+                  <span className="font-black text-slate-900 leading-none" style={{ fontSize: '15px' }}>
+                    {metrics.completedPct}%
+                  </span>
+                  <span
+                    className="font-bold text-slate-400 uppercase leading-none mt-1"
+                    style={{ fontSize: '8.5px', letterSpacing: '0.04em' }}
+                  >
+                    Completed
+                  </span>
                 </div>
               </div>
 
               {/* Legend */}
-              <div className="space-y-1.5 text-xs text-slate-600 flex-1 min-w-0">
+              <div className="space-y-2 text-xs text-slate-600 flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1">
                   <span className="flex items-center gap-1.5 truncate">
                     <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
