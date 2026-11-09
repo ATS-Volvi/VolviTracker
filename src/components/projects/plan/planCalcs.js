@@ -267,3 +267,130 @@ export function calculateDashboardMetrics(plan = {}, today = getLocalDateString(
   };
 }
 
+/**
+ * Standard project phases matching the project delivery methodology
+ */
+export const PROJECT_PHASES = [
+  'Prepare',
+  'Explore',
+  'Realize – Build',
+  'Realize – Test & Train',
+  'Deploy',
+  'Run'
+];
+
+/**
+ * Default Gate code to Phase mapping
+ */
+export const GATE_CODE_TO_PHASE = {
+  'SG-00': 'Prepare',
+  'SG-01': 'Explore',
+  'SG-02': 'Realize – Build',
+  'SG-03': 'Realize – Test & Train',
+  'SG-04': 'Realize – Test & Train',
+  'SG-05': 'Deploy',
+  'SG-06': 'Run'
+};
+
+/**
+ * Resolves the project phase for a stage gate.
+ */
+export function getGatePhase(gate = {}, linkedTasks = [], sprints = []) {
+  if (gate.phase && String(gate.phase).trim()) {
+    return String(gate.phase).trim();
+  }
+
+  // Check tasks linked to this gate and inspect their sprint's phase
+  if (linkedTasks && linkedTasks.length > 0 && sprints && sprints.length > 0) {
+    const sprintMap = new Map(sprints.map(s => [String(s.id), s]));
+    for (const t of linkedTasks) {
+      const sp = sprintMap.get(String(t.sprintId));
+      if (sp && sp.phase && String(sp.phase).trim()) {
+        return String(sp.phase).trim();
+      }
+    }
+  }
+
+  // Check standard gate code
+  const code = String(gate.code || '').trim().toUpperCase();
+  if (GATE_CODE_TO_PHASE[code]) {
+    return GATE_CODE_TO_PHASE[code];
+  }
+
+  // Keyword heuristic
+  const text = `${gate.code || ''} ${gate.name || ''}`.toLowerCase();
+  if (text.includes('prepare') || text.includes('initiation') || text.includes('charter')) return 'Prepare';
+  if (text.includes('explore') || text.includes('blueprint')) return 'Explore';
+  if (text.includes('build') || text.includes('solution design') || text.includes('realize – build')) return 'Realize – Build';
+  if (text.includes('test') || text.includes('train') || text.includes('sit') || text.includes('uat')) return 'Realize – Test & Train';
+  if (text.includes('deploy') || text.includes('go-live') || text.includes('cutover')) return 'Deploy';
+  if (text.includes('run') || text.includes('hypercare') || text.includes('transition')) return 'Run';
+
+  return 'Explore';
+}
+
+/**
+ * Theme styling for each Project Phase badge and accent
+ */
+export function getPhaseTheme(phase) {
+  const p = String(phase || '').trim();
+  switch (p) {
+    case 'Prepare':
+      return {
+        badge: 'bg-sky-50 text-sky-700 border-sky-200',
+        dot: 'bg-sky-500',
+        cardBorder: 'border-sky-200',
+        bgSubtle: 'bg-sky-50/40',
+        accentText: 'text-sky-700'
+      };
+    case 'Explore':
+      return {
+        badge: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        dot: 'bg-indigo-500',
+        cardBorder: 'border-indigo-200',
+        bgSubtle: 'bg-indigo-50/40',
+        accentText: 'text-indigo-700'
+      };
+    case 'Realize – Build':
+      return {
+        badge: 'bg-purple-50 text-purple-700 border-purple-200',
+        dot: 'bg-purple-500',
+        cardBorder: 'border-purple-200',
+        bgSubtle: 'bg-purple-50/40',
+        accentText: 'text-purple-700'
+      };
+    case 'Realize – Test & Train':
+      return {
+        badge: 'bg-amber-50 text-amber-800 border-amber-200',
+        dot: 'bg-amber-500',
+        cardBorder: 'border-amber-200',
+        bgSubtle: 'bg-amber-50/40',
+        accentText: 'text-amber-800'
+      };
+    case 'Deploy':
+      return {
+        badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        dot: 'bg-emerald-500',
+        cardBorder: 'border-emerald-200',
+        bgSubtle: 'bg-emerald-50/40',
+        accentText: 'text-emerald-700'
+      };
+    case 'Run':
+      return {
+        badge: 'bg-teal-50 text-teal-700 border-teal-200',
+        dot: 'bg-teal-500',
+        cardBorder: 'border-teal-200',
+        bgSubtle: 'bg-teal-50/40',
+        accentText: 'text-teal-700'
+      };
+    default:
+      return {
+        badge: 'bg-slate-100 text-slate-700 border-slate-200',
+        dot: 'bg-slate-500',
+        cardBorder: 'border-slate-200',
+        bgSubtle: 'bg-slate-50/40',
+        accentText: 'text-slate-700'
+      };
+  }
+}
+

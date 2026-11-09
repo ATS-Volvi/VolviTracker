@@ -6,7 +6,9 @@ import {
   calculateDaysVariance,
   calculateWeightedCompletion,
   calculateGateStatus,
-  calculateDashboardMetrics
+  calculateDashboardMetrics,
+  getGatePhase,
+  getPhaseTheme
 } from './planCalcs';
 
 describe('planCalcs - Task Status, Variance, and Risk Calculations', () => {
@@ -204,6 +206,39 @@ describe('planCalcs - Dashboard Metrics & Sprint Summaries', () => {
     expect(metrics.sprintProgress[0].weightedCompletion).toBe(62.5);
     expect(metrics.sprintProgress[0].overdueCount).toBe(1);
     expect(metrics.sprintProgress[0].dueSoonCount).toBe(1);
+  });
+});
+
+describe('planCalcs - Gate Phase and Sprint Phase Resolution', () => {
+  it('resolves explicit gate phase if specified', () => {
+    expect(getGatePhase({ code: 'SG-99', name: 'Custom Gate', phase: 'Realize – Build' })).toBe('Realize – Build');
+  });
+
+  it('resolves phase from linked tasks and sprints', () => {
+    const sprints = [
+      { id: 'sp1', code: 'Sprint 1', phase: 'Explore' }
+    ];
+    const linkedTasks = [
+      { id: 't1', sprintId: 'sp1', gateId: 'g1' }
+    ];
+    expect(getGatePhase({ id: 'g1', code: 'CUSTOM-01', name: 'Workstream Gate' }, linkedTasks, sprints)).toBe('Explore');
+  });
+
+  it('maps standard gate codes (SG-00 to SG-06) to appropriate project phases', () => {
+    expect(getGatePhase({ code: 'SG-00', name: 'Project Initiation Gate' })).toBe('Prepare');
+    expect(getGatePhase({ code: 'SG-01', name: 'Business Blueprint Approval Gate' })).toBe('Explore');
+    expect(getGatePhase({ code: 'SG-02', name: 'Solution Design Approval Gate' })).toBe('Realize – Build');
+    expect(getGatePhase({ code: 'SG-03', name: 'SIT Completion Gate' })).toBe('Realize – Test & Train');
+    expect(getGatePhase({ code: 'SG-04', name: 'UAT & Go-Live Readiness Gate' })).toBe('Realize – Test & Train');
+    expect(getGatePhase({ code: 'SG-05', name: 'Go-Live Approval Gate' })).toBe('Deploy');
+    expect(getGatePhase({ code: 'SG-06', name: 'Hypercare Exit' })).toBe('Run');
+  });
+
+  it('returns appropriate theme styling classes for phases', () => {
+    const exploreTheme = getPhaseTheme('Explore');
+    expect(exploreTheme.badge).toContain('indigo');
+    const prepareTheme = getPhaseTheme('Prepare');
+    expect(prepareTheme.badge).toContain('sky');
   });
 });
 

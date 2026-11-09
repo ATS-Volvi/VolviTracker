@@ -338,6 +338,7 @@ export const toGateDto = (row) => row ? ({
   projectId: String(row.project_id),
   code: row.code,
   name: row.name,
+  phase: row.phase || '',
   targetDate: row.target_date || '',
   approvers: row.approvers || '',
   requiredEvidence: row.required_evidence || '',
@@ -858,6 +859,7 @@ export async function initDb() {
         project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
         code TEXT NOT NULL,
         name TEXT NOT NULL,
+        phase TEXT DEFAULT '',
         target_date TEXT,
         approvers TEXT DEFAULT '',
         required_evidence TEXT DEFAULT '',
@@ -872,6 +874,19 @@ export async function initDb() {
         updated_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE (project_id, code)
       );
+    `;
+
+    // Idempotent column check for gate phase
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'project_gates' AND column_name = 'phase'
+        ) THEN
+          ALTER TABLE project_gates ADD COLUMN phase TEXT DEFAULT '';
+        END IF;
+      END $$;
     `;
 
     // 21. Project Sprint Tasks Table
@@ -4316,6 +4331,7 @@ export async function createGateRecord(projectId, data, actor = {}) {
   const id = data.id || ('gate_' + Date.now() + Math.random().toString(36).substring(2, 7));
   const code = (data.code || '').trim();
   const name = (data.name || '').trim();
+  const phase = (data.phase || '').trim();
   const targetDate = data.targetDate || '';
   const approvers = data.approvers || '';
   const requiredEvidence = data.requiredEvidence || '';
@@ -4329,14 +4345,15 @@ export async function createGateRecord(projectId, data, actor = {}) {
 
   await sql`
     INSERT INTO project_gates (
-      id, project_id, code, name, target_date, approvers, required_evidence, exit_criteria,
+      id, project_id, code, name, phase, target_date, approvers, required_evidence, exit_criteria,
       percent_complete, actual_approval_date, approved_by, decision_notes, notes_risk, sort_order, created_at, updated_at
     ) VALUES (
-      ${id}, ${projectId}, ${code}, ${name}, ${targetDate}, ${approvers}, ${requiredEvidence}, ${exitCriteria},
+      ${id}, ${projectId}, ${code}, ${name}, ${phase}, ${targetDate}, ${approvers}, ${requiredEvidence}, ${exitCriteria},
       ${percentComplete}, ${actualApprovalDate}, ${approvedBy}, ${decisionNotes}, ${notesRisk}, ${sortOrder}, NOW(), NOW()
     )
     ON CONFLICT (project_id, code) DO UPDATE SET
       name = EXCLUDED.name,
+      phase = CASE WHEN EXCLUDED.phase != '' THEN EXCLUDED.phase ELSE project_gates.phase END,
       target_date = EXCLUDED.target_date,
       approvers = EXCLUDED.approvers,
       required_evidence = EXCLUDED.required_evidence,
@@ -4393,6 +4410,7 @@ export async function updateGateRecord(projectId, gateId, updates, actor = {}) {
 
   const code = updates.code !== undefined ? updates.code : current.code;
   const name = updates.name !== undefined ? updates.name : current.name;
+  const phase = updates.phase !== undefined ? updates.phase : (current.phase || '');
   const targetDate = updates.targetDate !== undefined ? updates.targetDate : current.target_date;
   const approvers = updates.approvers !== undefined ? updates.approvers : current.approvers;
   const requiredEvidence = updates.requiredEvidence !== undefined ? updates.requiredEvidence : current.required_evidence;
@@ -4408,6 +4426,7 @@ export async function updateGateRecord(projectId, gateId, updates, actor = {}) {
     UPDATE project_gates SET
       code = ${code},
       name = ${name},
+      phase = ${phase},
       target_date = ${targetDate},
       approvers = ${approvers},
       required_evidence = ${requiredEvidence},
@@ -4677,6 +4696,7 @@ export async function importProjectPlanTx(projectId, { mode = 'merge', sprints =
     }
 
     const pct = Math.min(100, Math.max(0, Number(g.percentComplete ?? 0)));
+    const phase = (g.phase || '').trim();
     const targetDate = g.targetDate || '';
     const approvers = g.approvers || '';
     const requiredEvidence = g.requiredEvidence || '';
@@ -4688,15 +4708,16 @@ export async function importProjectPlanTx(projectId, { mode = 'merge', sprints =
 
     queries.push(sql`
       INSERT INTO project_gates (
-        id, project_id, code, name, target_date, approvers, required_evidence, exit_criteria,
+        id, project_id, code, name, phase, target_date, approvers, required_evidence, exit_criteria,
         percent_complete, actual_approval_date, approved_by, decision_notes, notes_risk, sort_order, created_at, updated_at
       ) VALUES (
-        ${id}, ${projectId}, ${code}, ${name}, ${targetDate}, ${approvers}, ${requiredEvidence}, ${exitCriteria},
+        ${id}, ${projectId}, ${code}, ${name}, ${phase}, ${targetDate}, ${approvers}, ${requiredEvidence}, ${exitCriteria},
         ${pct}, ${actualApprovalDate}, ${approvedBy}, ${decisionNotes}, ${notesRisk},
         ${g.sortOrder !== undefined ? Number(g.sortOrder) : i}, NOW(), NOW()
       )
       ON CONFLICT (project_id, code) DO UPDATE SET
         name = EXCLUDED.name,
+        phase = CASE WHEN EXCLUDED.phase != '' THEN EXCLUDED.phase ELSE project_gates.phase END,
         target_date = EXCLUDED.target_date,
         approvers = EXCLUDED.approvers,
         required_evidence = EXCLUDED.required_evidence,

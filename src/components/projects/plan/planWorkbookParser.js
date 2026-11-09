@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { getGatePhase } from './planCalcs';
 
 export function parseExcelDateUtc(val) {
   if (val === null || val === undefined || val === '') return '';
@@ -55,6 +56,7 @@ export function parsePlanWorkbook(fileBuffer) {
     parsedGates.push({
       code,
       name,
+      phase: getGatePhase({ code, name }),
       targetDate,
       approvers,
       requiredEvidence,

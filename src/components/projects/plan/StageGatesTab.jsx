@@ -9,7 +9,10 @@ import {
 import {
   calculateGateStatus,
   calculateWeightedCompletion,
-  getLocalDateString
+  getLocalDateString,
+  PROJECT_PHASES,
+  getGatePhase,
+  getPhaseTheme
 } from './planCalcs';
 import { AddEditGateModal } from './AddEditGateModal';
 import { ApproveGateModal } from './ApproveGateModal';
@@ -70,6 +73,8 @@ export function StageGatesTab({ project }) {
     return () => window.removeEventListener('project_plan_updated', handlePlanUpdated);
   }, [projectId, loadPlan]);
 
+  const [selectedPhase, setSelectedPhase] = useState('all');
+
   // Sort gates by sort_order
   const sortedGates = useMemo(() => {
     return [...planData.gates].sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0));
@@ -98,6 +103,15 @@ export function StageGatesTab({ project }) {
     });
     return map;
   }, [planData.tasks]);
+
+  // Filter gates by selected project phase
+  const filteredGates = useMemo(() => {
+    if (selectedPhase === 'all') return sortedGates;
+    return sortedGates.filter(g => {
+      const linkedTasks = tasksByGate.get(String(g.id)) || [];
+      return getGatePhase(g, linkedTasks, planData.sprints) === selectedPhase;
+    });
+  }, [sortedGates, selectedPhase, tasksByGate, planData.sprints]);
 
   // Toggle checklist item
   const handleToggleChecklist = async (gateId, itemId, currentDone) => {
@@ -185,6 +199,49 @@ export function StageGatesTab({ project }) {
         </div>
       </div>
 
+      {/* Phase Filter Tabs */}
+      {!isEmpty && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
+          <button
+            type="button"
+            onClick={() => setSelectedPhase('all')}
+            className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition cursor-pointer ${
+              selectedPhase === 'all'
+                ? 'bg-slate-900 text-white shadow-2xs'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            All Gates ({sortedGates.length})
+          </button>
+          {PROJECT_PHASES.map(phaseName => {
+            const count = sortedGates.filter(g => {
+              const linkedTasks = tasksByGate.get(String(g.id)) || [];
+              return getGatePhase(g, linkedTasks, planData.sprints) === phaseName;
+            }).length;
+            if (count === 0) return null;
+            const theme = getPhaseTheme(phaseName);
+            const isSelected = selectedPhase === phaseName;
+
+            return (
+              <button
+                key={phaseName}
+                type="button"
+                onClick={() => setSelectedPhase(phaseName)}
+                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                  isSelected
+                    ? `${theme.badge} shadow-2xs font-extrabold ring-1 ring-inset ring-current`
+                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${theme.dot}`} />
+                <span>{phaseName}</span>
+                <span className="text-[10px] opacity-75">({count})</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Empty State */}
       {isEmpty ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-4 shadow-2xs">
@@ -221,14 +278,35 @@ export function StageGatesTab({ project }) {
             </div>
           )}
         </div>
+      ) : filteredGates.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-2 shadow-2xs">
+          <p className="text-sm font-bold text-slate-700">No stage gates found for phase &quot;{selectedPhase}&quot;.</p>
+          <button
+            type="button"
+            onClick={() => setSelectedPhase('all')}
+            className="text-xs font-semibold text-purple-600 hover:underline cursor-pointer"
+          >
+            View all gates
+          </button>
+        </div>
       ) : (
         /* Gate Timeline / Cards ordered by sort_order */
         <div className="space-y-5">
-          {sortedGates.map((g, index) => {
+          {filteredGates.map((g) => {
             const status = calculateGateStatus(g, today);
             const items = checklistByGate.get(String(g.id)) || [];
             const linkedTasks = tasksByGate.get(String(g.id)) || [];
             const linkedTasksCompletion = calculateWeightedCompletion(linkedTasks);
+            const gatePhase = getGatePhase(g, linkedTasks, planData.sprints);
+            const phaseTheme = getPhaseTheme(gatePhase);
+
+            // Associated sprints for this stage gate
+            const directSprintIds = new Set(linkedTasks.map(t => String(t.sprintId)).filter(Boolean));
+            const associatedSprints = planData.sprints.filter(s => {
+              if (directSprintIds.has(String(s.id))) return true;
+              if (s.phase && gatePhase && s.phase.toLowerCase().trim() === gatePhase.toLowerCase().trim()) return true;
+              return false;
+            });
 
             const isApproved = status === 'Approved';
             const isOverdue = status === 'Date passed – approval unconfirmed';
@@ -256,6 +334,10 @@ export function StageGatesTab({ project }) {
                     <div className="flex items-center gap-2.5 flex-wrap">
                       <span className="px-2.5 py-0.5 rounded-lg bg-purple-100 text-purple-800 font-mono font-black text-xs border border-purple-200 shadow-2xs">
                         {g.code}
+                      </span>
+                      <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border inline-flex items-center gap-1.5 shadow-2xs ${phaseTheme.badge}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${phaseTheme.dot}`} />
+                        <span>Phase: {gatePhase}</span>
                       </span>
                       <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
                         {g.name}
@@ -426,6 +508,84 @@ export function StageGatesTab({ project }) {
                         {g.decisionNotes && (
                           <p className="text-slate-600 text-[11px]"><strong className="text-slate-700">Decisions:</strong> {g.decisionNotes}</p>
                         )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sprint Phases in this Stage Gate */}
+                  <div className="space-y-2.5 pt-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-[16px] text-purple-600">directions_run</span>
+                          Sprint Phases in this Stage Gate
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${phaseTheme.badge}`}>
+                          {gatePhase}
+                        </span>
+                      </div>
+                      <span className="text-slate-400 text-[11px]">
+                        {associatedSprints.length} {associatedSprints.length === 1 ? 'sprint' : 'sprints'} in scope
+                      </span>
+                    </div>
+
+                    {associatedSprints.length === 0 ? (
+                      <div className="p-3 bg-slate-50/70 rounded-xl text-slate-400 text-xs italic text-center border border-dashed border-slate-200">
+                        No sprints assigned to the {gatePhase} phase yet.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        {associatedSprints.map(sp => {
+                          const spTasks = (planData.tasks || []).filter(t => String(t.sprintId) === String(sp.id));
+                          const spDone = spTasks.filter(t => (t.percentComplete ?? 0) >= 100).length;
+                          const spWeighted = calculateWeightedCompletion(spTasks);
+                          const spTheme = getPhaseTheme(sp.phase || gatePhase);
+
+                          return (
+                            <div
+                              key={sp.id}
+                              className={`p-3 rounded-xl border bg-white shadow-2xs hover:shadow-xs transition space-y-2 ${spTheme.cardBorder}`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-black text-slate-900 text-xs tracking-tight">
+                                      {sp.code}
+                                    </span>
+                                    <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${spTheme.badge}`}>
+                                      {sp.phase || gatePhase}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] font-medium text-slate-600 truncate mt-0.5" title={sp.name || sp.code}>
+                                    {sp.name || 'Sprint Deliverables'}
+                                  </p>
+                                </div>
+                                <span className="text-[11px] font-black text-slate-800 font-mono shrink-0">
+                                  {spWeighted}%
+                                </span>
+                              </div>
+
+                              {/* Progress bar */}
+                              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className="bg-blue-600 h-full rounded-full transition-all duration-300"
+                                  style={{ width: `${Math.min(100, Math.max(0, spWeighted))}%` }}
+                                />
+                              </div>
+
+                              <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                                <span>
+                                  {sp.startDate && sp.endDate
+                                    ? `${sp.startDate.slice(5)} → ${sp.endDate.slice(5)}`
+                                    : (sp.startDate || sp.endDate || 'Timeline TBD')}
+                                </span>
+                                <span className="font-medium text-slate-600">
+                                  {spDone}/{spTasks.length} tasks
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

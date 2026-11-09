@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createGate, updateGate } from '../../../services/projectPlanApi';
 import { useToast } from '../../../context/ToastContext';
+import { PROJECT_PHASES, GATE_CODE_TO_PHASE, getGatePhase } from './planCalcs';
 
 export function AddEditGateModal({
   isOpen,
@@ -14,6 +15,7 @@ export function AddEditGateModal({
 
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const [phase, setPhase] = useState('Explore');
   const [targetDate, setTargetDate] = useState('');
   const [approvers, setApprovers] = useState('');
   const [requiredEvidence, setRequiredEvidence] = useState('');
@@ -26,6 +28,7 @@ export function AddEditGateModal({
     if (gate) {
       setCode(gate.code || '');
       setName(gate.name || '');
+      setPhase(gate.phase || getGatePhase(gate));
       setTargetDate(gate.targetDate || '');
       setApprovers(gate.approvers || '');
       setRequiredEvidence(gate.requiredEvidence || '');
@@ -34,6 +37,7 @@ export function AddEditGateModal({
     } else {
       setCode('');
       setName('');
+      setPhase('Explore');
       setTargetDate('');
       setApprovers('');
       setRequiredEvidence('');
@@ -63,6 +67,7 @@ export function AddEditGateModal({
     const payload = {
       code: code.trim(),
       name: name.trim(),
+      phase: phase.trim(),
       targetDate: targetDate || '',
       approvers: approvers.trim(),
       requiredEvidence: requiredEvidence.trim(),
@@ -123,8 +128,40 @@ export function AddEditGateModal({
               <input
                 type="text"
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCode(val);
+                  if (GATE_CODE_TO_PHASE[val.trim().toUpperCase()]) {
+                    setPhase(GATE_CODE_TO_PHASE[val.trim().toUpperCase()]);
+                  }
+                }}
                 placeholder="e.g. SG-00"
+                required
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+              />
+            </div>
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">Project Phase</label>
+              <select
+                value={phase}
+                onChange={(e) => setPhase(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+              >
+                {PROJECT_PHASES.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">Gate Name *</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Solution Design Approval Gate"
                 required
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
               />
@@ -138,18 +175,6 @@ export function AddEditGateModal({
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
               />
             </div>
-          </div>
-
-          <div>
-            <label className="font-bold text-slate-700 block mb-1">Gate Name *</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Solution Design Approval Gate"
-              required
-              className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
-            />
           </div>
 
           <div>

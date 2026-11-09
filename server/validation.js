@@ -289,6 +289,7 @@ export const sprintTaskPutSchema = z.object({
 export const gatePostSchema = z.object({
   code: z.string().trim().min(1, 'Gate code is required'),
   name: z.string().trim().min(1, 'Gate name is required'),
+  phase: z.string().optional(),
   targetDate: z.string().optional().nullable(),
   approvers: z.string().optional(),
   requiredEvidence: z.string().optional(),
@@ -305,6 +306,7 @@ export const gatePostSchema = z.object({
 export const gatePutSchema = z.object({
   code: z.string().optional(),
   name: z.string().optional(),
+  phase: z.string().optional(),
   targetDate: z.string().optional().nullable(),
   approvers: z.string().optional(),
   requiredEvidence: z.string().optional(),
