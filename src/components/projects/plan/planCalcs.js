@@ -293,11 +293,28 @@ export const GATE_CODE_TO_PHASE = {
 };
 
 /**
+ * Normalizes project phase strings by removing excess whitespace and standardizing all Unicode dashes/hyphens
+ */
+export function normalizePhase(p) {
+  if (!p) return '';
+  return String(p)
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/**
  * Resolves the project phase for a stage gate.
  */
 export function getGatePhase(gate = {}, linkedTasks = [], sprints = []) {
   if (gate.phase && String(gate.phase).trim()) {
-    return String(gate.phase).trim();
+    const raw = String(gate.phase).trim();
+    const norm = normalizePhase(raw);
+    for (const p of PROJECT_PHASES) {
+      if (normalizePhase(p) === norm) return p;
+    }
+    return raw;
   }
 
   // Check tasks linked to this gate and inspect their sprint's phase
@@ -306,6 +323,10 @@ export function getGatePhase(gate = {}, linkedTasks = [], sprints = []) {
     for (const t of linkedTasks) {
       const sp = sprintMap.get(String(t.sprintId));
       if (sp && sp.phase && String(sp.phase).trim()) {
+        const norm = normalizePhase(sp.phase);
+        for (const p of PROJECT_PHASES) {
+          if (normalizePhase(p) === norm) return p;
+        }
         return String(sp.phase).trim();
       }
     }
@@ -321,7 +342,7 @@ export function getGatePhase(gate = {}, linkedTasks = [], sprints = []) {
   const text = `${gate.code || ''} ${gate.name || ''}`.toLowerCase();
   if (text.includes('prepare') || text.includes('initiation') || text.includes('charter')) return 'Prepare';
   if (text.includes('explore') || text.includes('blueprint')) return 'Explore';
-  if (text.includes('build') || text.includes('solution design') || text.includes('realize – build')) return 'Realize – Build';
+  if (text.includes('build') || text.includes('solution design') || text.includes('realize')) return 'Realize – Build';
   if (text.includes('test') || text.includes('train') || text.includes('sit') || text.includes('uat')) return 'Realize – Test & Train';
   if (text.includes('deploy') || text.includes('go-live') || text.includes('cutover')) return 'Deploy';
   if (text.includes('run') || text.includes('hypercare') || text.includes('transition')) return 'Run';
@@ -333,64 +354,67 @@ export function getGatePhase(gate = {}, linkedTasks = [], sprints = []) {
  * Theme styling for each Project Phase badge and accent
  */
 export function getPhaseTheme(phase) {
-  const p = String(phase || '').trim();
-  switch (p) {
-    case 'Prepare':
-      return {
-        badge: 'bg-sky-50 text-sky-700 border-sky-200',
-        dot: 'bg-sky-500',
-        cardBorder: 'border-sky-200',
-        bgSubtle: 'bg-sky-50/40',
-        accentText: 'text-sky-700'
-      };
-    case 'Explore':
-      return {
-        badge: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-        dot: 'bg-indigo-500',
-        cardBorder: 'border-indigo-200',
-        bgSubtle: 'bg-indigo-50/40',
-        accentText: 'text-indigo-700'
-      };
-    case 'Realize – Build':
-      return {
-        badge: 'bg-purple-50 text-purple-700 border-purple-200',
-        dot: 'bg-purple-500',
-        cardBorder: 'border-purple-200',
-        bgSubtle: 'bg-purple-50/40',
-        accentText: 'text-purple-700'
-      };
-    case 'Realize – Test & Train':
-      return {
-        badge: 'bg-amber-50 text-amber-800 border-amber-200',
-        dot: 'bg-amber-500',
-        cardBorder: 'border-amber-200',
-        bgSubtle: 'bg-amber-50/40',
-        accentText: 'text-amber-800'
-      };
-    case 'Deploy':
-      return {
-        badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-        dot: 'bg-emerald-500',
-        cardBorder: 'border-emerald-200',
-        bgSubtle: 'bg-emerald-50/40',
-        accentText: 'text-emerald-700'
-      };
-    case 'Run':
-      return {
-        badge: 'bg-teal-50 text-teal-700 border-teal-200',
-        dot: 'bg-teal-500',
-        cardBorder: 'border-teal-200',
-        bgSubtle: 'bg-teal-50/40',
-        accentText: 'text-teal-700'
-      };
-    default:
-      return {
-        badge: 'bg-slate-100 text-slate-700 border-slate-200',
-        dot: 'bg-slate-500',
-        cardBorder: 'border-slate-200',
-        bgSubtle: 'bg-slate-50/40',
-        accentText: 'text-slate-700'
-      };
+  const norm = normalizePhase(phase);
+  if (norm === 'prepare') {
+    return {
+      badge: 'bg-sky-50 text-sky-700 border-sky-200',
+      dot: 'bg-sky-500',
+      cardBorder: 'border-sky-200',
+      bgSubtle: 'bg-sky-50/40',
+      accentText: 'text-sky-700'
+    };
   }
+  if (norm === 'explore') {
+    return {
+      badge: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+      dot: 'bg-indigo-500',
+      cardBorder: 'border-indigo-200',
+      bgSubtle: 'bg-indigo-50/40',
+      accentText: 'text-indigo-700'
+    };
+  }
+  if (norm.includes('realize') && norm.includes('build')) {
+    return {
+      badge: 'bg-purple-50 text-purple-700 border-purple-200',
+      dot: 'bg-purple-500',
+      cardBorder: 'border-purple-200',
+      bgSubtle: 'bg-purple-50/40',
+      accentText: 'text-purple-700'
+    };
+  }
+  if (norm.includes('realize') && (norm.includes('test') || norm.includes('train'))) {
+    return {
+      badge: 'bg-amber-50 text-amber-800 border-amber-200',
+      dot: 'bg-amber-500',
+      cardBorder: 'border-amber-200',
+      bgSubtle: 'bg-amber-50/40',
+      accentText: 'text-amber-800'
+    };
+  }
+  if (norm === 'deploy') {
+    return {
+      badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      dot: 'bg-emerald-500',
+      cardBorder: 'border-emerald-200',
+      bgSubtle: 'bg-emerald-50/40',
+      accentText: 'text-emerald-700'
+    };
+  }
+  if (norm === 'run' || norm === 'hypercare') {
+    return {
+      badge: 'bg-teal-50 text-teal-700 border-teal-200',
+      dot: 'bg-teal-500',
+      cardBorder: 'border-teal-200',
+      bgSubtle: 'bg-teal-50/40',
+      accentText: 'text-teal-700'
+    };
+  }
+  return {
+    badge: 'bg-slate-100 text-slate-700 border-slate-200',
+    dot: 'bg-slate-500',
+    cardBorder: 'border-slate-200',
+    bgSubtle: 'bg-slate-50/40',
+    accentText: 'text-slate-700'
+  };
 }
 

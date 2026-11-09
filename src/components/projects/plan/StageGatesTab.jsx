@@ -12,7 +12,8 @@ import {
   getLocalDateString,
   PROJECT_PHASES,
   getGatePhase,
-  getPhaseTheme
+  getPhaseTheme,
+  normalizePhase
 } from './planCalcs';
 import { AddEditGateModal } from './AddEditGateModal';
 import { ApproveGateModal } from './ApproveGateModal';
@@ -109,7 +110,7 @@ export function StageGatesTab({ project }) {
     if (selectedPhase === 'all') return sortedGates;
     return sortedGates.filter(g => {
       const linkedTasks = tasksByGate.get(String(g.id)) || [];
-      return getGatePhase(g, linkedTasks, planData.sprints) === selectedPhase;
+      return normalizePhase(getGatePhase(g, linkedTasks, planData.sprints)) === normalizePhase(selectedPhase);
     });
   }, [sortedGates, selectedPhase, tasksByGate, planData.sprints]);
 
@@ -216,7 +217,7 @@ export function StageGatesTab({ project }) {
           {PROJECT_PHASES.map(phaseName => {
             const count = sortedGates.filter(g => {
               const linkedTasks = tasksByGate.get(String(g.id)) || [];
-              return getGatePhase(g, linkedTasks, planData.sprints) === phaseName;
+              return normalizePhase(getGatePhase(g, linkedTasks, planData.sprints)) === normalizePhase(phaseName);
             }).length;
             if (count === 0) return null;
             const theme = getPhaseTheme(phaseName);
@@ -304,7 +305,7 @@ export function StageGatesTab({ project }) {
             const directSprintIds = new Set(linkedTasks.map(t => String(t.sprintId)).filter(Boolean));
             const associatedSprints = planData.sprints.filter(s => {
               if (directSprintIds.has(String(s.id))) return true;
-              if (s.phase && gatePhase && s.phase.toLowerCase().trim() === gatePhase.toLowerCase().trim()) return true;
+              if (s.phase && gatePhase && normalizePhase(s.phase) === normalizePhase(gatePhase)) return true;
               return false;
             });
 

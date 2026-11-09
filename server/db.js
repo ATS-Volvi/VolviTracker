@@ -4067,11 +4067,112 @@ export async function recordPlanAuditLog({
   }
 }
 
+export const DEFAULT_STAGE_GATES = [
+  {
+    code: 'SG-00',
+    name: 'Project Initiation Gate',
+    phase: 'Prepare',
+    approvers: 'Sponsor + Program Director',
+    requiredEvidence: 'Signed charter; agreed scope/exclusions/success criteria; governance/RACI; detailed project plan; named workstream and integration/testing leads; SAP environment access and escalation path.',
+    exitCriteria: 'Project initiation formally approved and decision recorded.',
+    sortOrder: 0
+  },
+  {
+    code: 'SG-01',
+    name: 'Business Blueprint Approval Gate',
+    phase: 'Explore',
+    approvers: 'Project Manager + Business Owners',
+    requiredEvidence: 'Approved blueprint for all modules; FSD/RTM; WRICEF baseline reconciled to proposal; INT-01 to INT-07 register; employee/equipment mapping; portal integration matrix; FI/CO and PS/CO scenarios; open assumptions documented.',
+    exitCriteria: 'Business owners accept requirements and scope; no unresolved critical scope decisions.',
+    sortOrder: 1
+  },
+  {
+    code: 'SG-02',
+    name: 'Solution Design Approval Gate',
+    phase: 'Realize – Build',
+    approvers: 'IT Head + Project Manager',
+    requiredEvidence: 'Solution architecture; technical/security design; interface design and mappings; master-data extract layout; platform baseline/demo; error handling, monitoring and deployment approach.',
+    exitCriteria: 'Designs approved; critical dependencies/risks have owners and treatment plans.',
+    sortOrder: 2
+  },
+  {
+    code: 'SG-03',
+    name: 'SIT Completion Gate',
+    phase: 'Realize – Test & Train',
+    approvers: 'Testing Lead + IT Head + Project Manager',
+    requiredEvidence: 'SIT plan/results; traceability; end-to-end evidence; regression, performance and security test evidence; defect register; migration readiness.',
+    exitCriteria: 'SIT pass rate >=98%; zero open critical defects; failed/blocked tests dispositioned.',
+    sortOrder: 3
+  },
+  {
+    code: 'SG-04',
+    name: 'UAT & Go-Live Readiness Gate',
+    phase: 'Realize – Test & Train',
+    approvers: 'Steering Committee',
+    requiredEvidence: 'Signed UAT by all Business Owners; training attendance/assessment; operations manual/runbook; support roster; security and performance results; migration rehearsal; cutover/rollback plan.',
+    exitCriteria: 'Business acceptance; operational support ready; no unacceptable defects; readiness decision recorded.',
+    sortOrder: 4
+  },
+  {
+    code: 'SG-05',
+    name: 'Go-Live Approval Gate',
+    phase: 'Deploy',
+    approvers: 'Steering Committee + Sponsor',
+    requiredEvidence: 'Go-live checklist; production infrastructure; successful migration/reconciliation; access/security approvals; monitoring and incident response; rollback plan; support coverage.',
+    exitCriteria: 'Formal Go/No-Go approval; accountable business and IT owners accept production risk.',
+    sortOrder: 5
+  },
+  {
+    code: 'SG-06',
+    name: 'Hypercare Exit',
+    phase: 'Run',
+    approvers: 'Confirm named Expertise Service Owner + Volvitech PMO',
+    requiredEvidence: 'Stability/SLA reports; unresolved defect list and accepted workarounds; first-month SAP posting reconciliation; knowledge transfer; operations runbooks; AMS transition evidence.',
+    exitCriteria: 'Exit criteria met; support ownership accepted; open items have owners/dates; formal exit approval recorded.',
+    sortOrder: 6
+  }
+];
+
+export async function autoSeedDefaultGates(projectId) {
+  for (const g of DEFAULT_STAGE_GATES) {
+    const id = 'gate_' + Date.now() + Math.random().toString(36).substring(2, 7);
+    await sql`
+      INSERT INTO project_gates (
+        id, project_id, code, name, phase, approvers, required_evidence, exit_criteria,
+        percent_complete, actual_approval_date, approved_by, decision_notes, notes_risk, sort_order, created_at, updated_at
+      ) VALUES (
+        ${id}, ${projectId}, ${g.code}, ${g.name}, ${g.phase}, ${g.approvers}, ${g.requiredEvidence}, ${g.exitCriteria},
+        0, '', '', '', '', ${g.sortOrder}, NOW(), NOW()
+      )
+      ON CONFLICT (project_id, code) DO NOTHING;
+    `;
+
+    const pieces = g.requiredEvidence.split(';').map(s => s.trim()).filter(Boolean);
+    for (let i = 0; i < pieces.length; i++) {
+      const gciId = 'gci_' + Date.now() + Math.random().toString(36).substring(2, 7);
+      await sql`
+        INSERT INTO project_gate_checklist_items (id, gate_id, project_id, label, is_done, sort_order)
+        SELECT ${gciId}, id, ${projectId}, ${pieces[i]}, false, ${i}
+        FROM project_gates
+        WHERE project_id = ${projectId} AND code = ${g.code}
+        ON CONFLICT DO NOTHING;
+      `;
+    }
+  }
+}
+
 export async function getProjectPlanData(projectId) {
   await initDb();
-  const [sprints, gates, tasks, checklistItems] = await Promise.all([
+  let gates = await sql`SELECT * FROM project_gates WHERE project_id = ${projectId} ORDER BY sort_order ASC, code ASC`;
+
+  // Auto-seed default stage gates if none exist for this project
+  if (!gates || gates.length === 0) {
+    await autoSeedDefaultGates(projectId);
+    gates = await sql`SELECT * FROM project_gates WHERE project_id = ${projectId} ORDER BY sort_order ASC, code ASC`;
+  }
+
+  const [sprints, tasks, checklistItems] = await Promise.all([
     sql`SELECT * FROM project_sprints WHERE project_id = ${projectId} ORDER BY sort_order ASC, code ASC`,
-    sql`SELECT * FROM project_gates WHERE project_id = ${projectId} ORDER BY sort_order ASC, code ASC`,
     sql`SELECT * FROM project_sprint_tasks WHERE project_id = ${projectId} ORDER BY sort_order ASC, task_code ASC`,
     sql`SELECT * FROM project_gate_checklist_items WHERE project_id = ${projectId} ORDER BY sort_order ASC, id ASC`
   ]);
