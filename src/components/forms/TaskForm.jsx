@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../widgets/Modal';
+import { PROJECT_PHASES, getPhaseTheme } from '../projects/plan/planCalcs';
 
 const STATUSES = ['Not started', 'In progress', 'Done'];
 const PRIORITIES = ['Low', 'Medium', 'High'];
@@ -301,6 +302,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
   const [form, setForm] = useState({
     name: '',
     projectId: '',
+    sprintPhase: '',
     assigneeIds: [],
     assigneeId: '',
     status: 'Not started',
@@ -438,6 +440,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
       setForm({
         name: initial.name || '',
         projectId: initial.projectId || '',
+        sprintPhase: initial.sprintPhase || initial.sprint_phase || '',
         assigneeIds: initialAssigneeIds,
         assigneeId: initialAssigneeIds[0] || (user?.id ? String(user.id) : ''),
         status: initial.status || 'Not started',
@@ -461,6 +464,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
       setForm({
         name: initial?.name || '',
         projectId: initial?.projectId || '',
+        sprintPhase: initial?.sprintPhase || initial?.sprint_phase || '',
         assigneeIds: defaultAssignees,
         assigneeId: defaultAssignees[0] || '',
         status: initial?.status || 'Not started',
@@ -681,6 +685,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
       addTask(payload);
       addToast(`Created new task "${form.name}"`, 'success');
     }
+    window.dispatchEvent(new CustomEvent('project_plan_updated', { detail: { projectId: form.projectId || initial?.projectId } }));
     onClose();
   };
 
@@ -719,20 +724,43 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
             <input className="input-field text-sm" value={form.name} onChange={set('name')} required placeholder="e.g. Design homepage hero" />
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-gray-700">Project (Optional)</label>
-            <select
-              className="input-field text-sm bg-white"
-              value={form.projectId ? String(form.projectId) : ''}
-              onChange={set('projectId')}
-            >
-              <option value="">Select project (Optional)</option>
-              {accessibleProjects.map(p => (
-                <option key={p.id} value={String(p.id)}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-gray-700">Project (Optional)</label>
+              <select
+                className="input-field text-sm bg-white"
+                value={form.projectId ? String(form.projectId) : ''}
+                onChange={set('projectId')}
+              >
+                <option value="">Select project (Optional)</option>
+                {accessibleProjects.map(p => (
+                  <option key={p.id} value={String(p.id)}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-gray-700 flex items-center justify-between">
+                <span>Sprint Phase (Optional)</span>
+                {form.sprintPhase && (
+                  <span className={`px-2 py-0.2 rounded-md font-bold text-[10px] border ${getPhaseTheme(form.sprintPhase).badge}`}>
+                    {form.sprintPhase}
+                  </span>
+                )}
+              </label>
+              <select
+                className="input-field text-sm bg-white"
+                value={form.sprintPhase || ''}
+                onChange={set('sprintPhase')}
+              >
+                <option value="">Select Sprint Phase (Optional)</option>
+                {PROJECT_PHASES.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Parent Task Selector (for n-level Subtasks) */}

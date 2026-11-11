@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../../context/AuthContext';
+import { useData } from '../../../context/DataContext';
 import { useToast } from '../../../context/ToastContext';
 import {
   fetchProjectPlan,
@@ -13,7 +14,8 @@ import {
   PROJECT_PHASES,
   getGatePhase,
   getPhaseTheme,
-  normalizePhase
+  normalizePhase,
+  GATE_CODE_TO_PHASE
 } from './planCalcs';
 import { AddEditGateModal } from './AddEditGateModal';
 import { ApproveGateModal } from './ApproveGateModal';
@@ -22,12 +24,17 @@ import { PlanImportModal } from './PlanImportModal';
 
 export function StageGatesTab({ project }) {
   const { user, isAdmin } = useAuth();
+  const { tasks: allTasks = [] } = useData();
   const { addToast } = useToast();
   const projectId = String(project.id);
   const today = getLocalDateString();
 
   const [loading, setLoading] = useState(true);
   const [planData, setPlanData] = useState({ sprints: [], tasks: [], gates: [], checklistItems: [] });
+
+  const projectTasks = useMemo(() => {
+    return (allTasks || []).filter(t => String(t.projectId) === String(projectId));
+  }, [allTasks, projectId]);
 
   // Modals
   const [isGateModalOpen, setIsGateModalOpen] = useState(false);
@@ -75,6 +82,28 @@ export function StageGatesTab({ project }) {
   }, [projectId, loadPlan]);
 
   const [selectedPhase, setSelectedPhase] = useState('all');
+  const [collapsedGates, setCollapsedGates] = useState(new Set());
+
+  // Toggle single gate collapse
+  const toggleGateCollapse = (gateId) => {
+    setCollapsedGates(prev => {
+      const next = new Set(prev);
+      if (next.has(gateId)) {
+        next.delete(gateId);
+      } else {
+        next.add(gateId);
+      }
+      return next;
+    });
+  };
+
+  const expandAllGates = () => {
+    setCollapsedGates(new Set());
+  };
+
+  const collapseAllGates = () => {
+    setCollapsedGates(new Set(sortedGates.map(g => String(g.id))));
+  };
 
   // Sort gates by sort_order
   const sortedGates = useMemo(() => {
@@ -92,18 +121,43 @@ export function StageGatesTab({ project }) {
     return map;
   }, [planData.checklistItems]);
 
-  // Group tasks by gateId
+  // Group tasks by gateId or sprintPhase
   const tasksByGate = useMemo(() => {
     const map = new Map();
-    planData.tasks.forEach(t => {
-      if (t.gateId) {
-        const gId = String(t.gateId);
-        if (!map.has(gId)) map.set(gId, []);
-        map.get(gId).push(t);
+    planData.gates.forEach(g => map.set(String(g.id), []));
+
+    // Combine projectTasks and planData.tasks
+    const unified = [...projectTasks];
+    const seen = new Set(unified.map(t => String(t.id)));
+    (planData.tasks || []).forEach(pt => {
+      const cleanId = String(pt.id).replace(/^stk_/, '');
+      if (!seen.has(String(pt.id)) && !seen.has(cleanId)) {
+        unified.push(pt);
+        seen.add(String(pt.id));
       }
     });
+
+    unified.forEach(t => {
+      let matchedGateId = null;
+      if (t.sprintPhase) {
+        const norm = normalizePhase(t.sprintPhase);
+        const match = planData.gates.find(g => 
+          (g.phase && normalizePhase(g.phase) === norm) ||
+          (GATE_CODE_TO_PHASE[g.code] && normalizePhase(GATE_CODE_TO_PHASE[g.code]) === norm)
+        );
+        if (match) matchedGateId = String(match.id);
+      }
+      if (!matchedGateId && t.gateId && map.has(String(t.gateId))) {
+        matchedGateId = String(t.gateId);
+      }
+
+      if (matchedGateId && map.has(matchedGateId)) {
+        map.get(matchedGateId).push(t);
+      }
+    });
+
     return map;
-  }, [planData.tasks]);
+  }, [planData.gates, planData.tasks, projectTasks]);
 
   // Filter gates by selected project phase
   const filteredGates = useMemo(() => {
@@ -292,8 +346,42 @@ export function StageGatesTab({ project }) {
         </div>
       ) : (
         /* Gate Timeline / Cards ordered by sort_order */
-        <div className="space-y-5">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 pt-1 pb-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                Stage Gates Governance
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold text-[11px]">
+                {filteredGates.length} {filteredGates.length === 1 ? 'Gate' : 'Gates'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs">
+              <button
+                type="button"
+                onClick={expandAllGates}
+                className="px-2.5 py-1 rounded-lg text-slate-600 hover:text-purple-600 hover:bg-slate-100 font-semibold transition cursor-pointer inline-flex items-center gap-1"
+                title="Expand all gates"
+              >
+                <span className="material-symbols-outlined text-[16px]">unfold_more</span>
+                <span>Expand All</span>
+              </button>
+              <span className="text-slate-300">|</span>
+              <button
+                type="button"
+                onClick={collapseAllGates}
+                className="px-2.5 py-1 rounded-lg text-slate-600 hover:text-purple-600 hover:bg-slate-100 font-semibold transition cursor-pointer inline-flex items-center gap-1"
+                title="Collapse all gates"
+              >
+                <span className="material-symbols-outlined text-[16px]">unfold_less</span>
+                <span>Collapse All</span>
+              </button>
+            </div>
+          </div>
+
           {filteredGates.map((g) => {
+            const isCollapsed = collapsedGates.has(String(g.id));
             const status = calculateGateStatus(g, today);
             const items = checklistByGate.get(String(g.id)) || [];
             const linkedTasks = tasksByGate.get(String(g.id)) || [];
@@ -329,69 +417,87 @@ export function StageGatesTab({ project }) {
                     : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
-                {/* Gate Card Top Banner */}
-                <div className="p-5 sm:p-6 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50/40">
-                  <div className="space-y-1.5 min-w-0">
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      <span className="px-2.5 py-0.5 rounded-lg bg-purple-100 text-purple-800 font-mono font-black text-xs border border-purple-200 shadow-2xs">
-                        {g.code}
+                {/* Gate Card Top Banner (Collapsible) */}
+                <div
+                  onClick={() => toggleGateCollapse(String(g.id))}
+                  className="p-5 sm:p-6 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50/40 hover:bg-slate-100/70 transition cursor-pointer select-none group"
+                >
+                  <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                    {/* Expand/Collapse Chevron Indicator */}
+                    <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 group-hover:text-purple-600 group-hover:border-purple-200 shadow-2xs transition shrink-0">
+                      <span className={`material-symbols-outlined text-[20px] transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}>
+                        expand_more
                       </span>
-                      <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border inline-flex items-center gap-1.5 shadow-2xs ${phaseTheme.badge}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${phaseTheme.dot}`} />
-                        <span>Phase: {gatePhase}</span>
-                      </span>
-                      <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                        {g.name}
-                      </h3>
-
-                      {/* Status Chip */}
-                      {isApproved && (
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold inline-flex items-center gap-1">
-                          <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                          <span>Approved</span>
-                        </span>
-                      )}
-                      {isOverdue && (
-                        <span className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold inline-flex items-center gap-1">
-                          <span className="material-symbols-outlined text-[14px]">event_busy</span>
-                          <span>Date passed – approval unconfirmed</span>
-                        </span>
-                      )}
-                      {isDueSoon && (
-                        <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold inline-flex items-center gap-1">
-                          <span className="material-symbols-outlined text-[14px]">hourglass_top</span>
-                          <span>Due soon</span>
-                        </span>
-                      )}
-                      {!isApproved && !isOverdue && !isDueSoon && (
-                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold">
-                          Not yet approved
-                        </span>
-                      )}
                     </div>
 
-                    <div className="flex items-center gap-4 text-xs text-slate-500 flex-wrap">
-                      <span className="inline-flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[16px] text-slate-400">calendar_today</span>
-                        <span>Target Date: <strong className="text-slate-800 font-semibold">{g.targetDate || 'TBD'}</strong></span>
-                      </span>
-                      {g.approvers && (
+                    <div className="space-y-1.5 min-w-0 flex-1">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-lg bg-purple-100 text-purple-800 font-mono font-black text-xs border border-purple-200 shadow-2xs">
+                          {g.code}
+                        </span>
+                        <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border inline-flex items-center gap-1.5 shadow-2xs ${phaseTheme.badge}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${phaseTheme.dot}`} />
+                          <span>Phase: {gatePhase}</span>
+                        </span>
+                        <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                          {g.name}
+                        </h3>
+
+                        {/* Status Chip */}
+                        {isApproved && (
+                          <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold inline-flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                            <span>Approved</span>
+                          </span>
+                        )}
+                        {isOverdue && (
+                          <span className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold inline-flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[14px]">event_busy</span>
+                            <span>Date passed – approval unconfirmed</span>
+                          </span>
+                        )}
+                        {isDueSoon && (
+                          <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold inline-flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[14px]">hourglass_top</span>
+                            <span>Due soon</span>
+                          </span>
+                        )}
+                        {!isApproved && !isOverdue && !isDueSoon && (
+                          <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold">
+                            Not yet approved
+                          </span>
+                        )}
+
+                        {isCollapsed && (
+                          <span className="text-[11px] text-slate-400 font-medium">
+                            (Collapsed • {doneItemsCount}/{items.length} items • {linkedTasks.length} {linkedTasks.length === 1 ? 'deliverable' : 'deliverables'})
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-4 text-xs text-slate-500 flex-wrap">
                         <span className="inline-flex items-center gap-1">
-                          <span className="material-symbols-outlined text-[16px] text-slate-400">verified_user</span>
-                          <span>Approvers: <span className="text-slate-700">{g.approvers}</span></span>
+                          <span className="material-symbols-outlined text-[16px] text-slate-400">calendar_today</span>
+                          <span>Target Date: <strong className="text-slate-800 font-semibold">{g.targetDate || 'TBD'}</strong></span>
                         </span>
-                      )}
-                      {isApproved && g.actualApprovalDate && (
-                        <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
-                          <span className="material-symbols-outlined text-[16px]">check</span>
-                          <span>Approved {g.actualApprovalDate} {g.approvedBy ? `by ${g.approvedBy}` : ''}</span>
-                        </span>
-                      )}
+                        {g.approvers && (
+                          <span className="inline-flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[16px] text-slate-400">verified_user</span>
+                            <span>Approvers: <span className="text-slate-700">{g.approvers}</span></span>
+                          </span>
+                        )}
+                        {isApproved && g.actualApprovalDate && (
+                          <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
+                            <span className="material-symbols-outlined text-[16px]">check</span>
+                            <span>Approved {g.actualApprovalDate} {g.approvedBy ? `by ${g.approvedBy}` : ''}</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
                   {/* Actions Buttons */}
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap shrink-0" onClick={(e) => e.stopPropagation()}>
                     {/* Approve button for Admin or PM */}
                     {canEdit && !isApproved && (
                       <button
@@ -452,8 +558,9 @@ export function StageGatesTab({ project }) {
                   </div>
                 </div>
 
-                {/* Gate Body: Progress & Criteria & Linked Tasks */}
-                <div className="p-5 sm:p-6 space-y-5">
+                {/* Gate Body: Progress & Criteria & Linked Tasks (Collapsible) */}
+                {!isCollapsed && (
+                <div className="p-5 sm:p-6 space-y-5 animate-fade-in">
                   {/* Readiness Progress Bar & Linked Task Stats */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50/60 p-4 rounded-xl border border-slate-100">
                     <div className="space-y-1.5">
@@ -637,6 +744,7 @@ export function StageGatesTab({ project }) {
                     )}
                   </div>
                 </div>
+                )}
               </div>
             );
           })}

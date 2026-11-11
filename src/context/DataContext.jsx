@@ -227,6 +227,21 @@ export const DataProvider = ({ children }) => {
             apiUpdateTask(lt.id, { assigneeIds: finalAssigneeIds, assigneeId: finalAssigneeId }).catch(() => {});
           }
 
+          // If task was recently updated locally (within 15 seconds), protect local state from stale remote revert
+          if (lt._updatedAt && (Date.now() - lt._updatedAt < 15000)) {
+            if (lt.status !== rt.status) {
+              apiUpdateTask(lt.id, { status: lt.status, completedDate: lt.completedDate }).catch(() => {});
+            }
+            return {
+              ...rt,
+              status: lt.status,
+              completedDate: lt.completedDate,
+              assigneeIds: finalAssigneeIds,
+              assigneeId: finalAssigneeId,
+              _updatedAt: lt._updatedAt
+            };
+          }
+
           // If task was marked Done locally but remote still has it as Not started / In progress:
           if (lt.status === 'Done' && rt.status !== 'Done') {
             apiUpdateTask(lt.id, lt).catch(() => {});
@@ -721,17 +736,17 @@ export const DataProvider = ({ children }) => {
     setData(prev => {
       const oldTask = prev.tasks.find(t => String(t.id) === String(id));
       const descendants = new Set();
-      if (updates.assigneeIds !== undefined) {
-        let added = true;
-        while (added) {
-          added = false;
-          prev.tasks.forEach(t => {
-            if (t.parentId && (String(t.parentId) === String(id) || descendants.has(String(t.parentId))) && !descendants.has(String(t.id))) {
-              descendants.add(String(t.id));
-              added = true;
-            }
-          });
-        }
+      
+      // Always find all recursive descendants (subtasks, sub-subtasks, etc. at depth n)
+      let added = true;
+      while (added) {
+        added = false;
+        prev.tasks.forEach(t => {
+          if (t.parentId && (String(t.parentId) === String(id) || descendants.has(String(t.parentId))) && !descendants.has(String(t.id))) {
+            descendants.add(String(t.id));
+            added = true;
+          }
+        });
       }
 
       cascadedAssigneeIds = Array.isArray(updates.assigneeIds) ? updates.assigneeIds : [];
@@ -753,7 +768,7 @@ export const DataProvider = ({ children }) => {
           }
           // IMPORTANT: If task was ALREADY Done, and status didn't change (e.g. due date updated),
           // updatedCompletedDate stays strictly preserved as t.completedDate!
-          const merged = { ...t, ...updates, completedDate: updatedCompletedDate };
+          const merged = { ...t, ...updates, completedDate: updatedCompletedDate, _updatedAt: Date.now() };
           updatedTargetTask = merged;
           return merged;
         }
@@ -773,11 +788,17 @@ export const DataProvider = ({ children }) => {
             : (t.assigneeId ? [t.assigneeId] : []);
           const shouldInherit = descendantCurrentAssignees.length === 0 && updates.assigneeIds !== undefined;
 
+          // Always cascade sprintPhase, sprintId, gateId, and projectId to all subsequent subtasks!
           return {
             ...t,
+            ...(updates.sprintPhase !== undefined ? { sprintPhase: updates.sprintPhase } : {}),
+            ...(updates.sprintId !== undefined ? { sprintId: updates.sprintId } : {}),
+            ...(updates.gateId !== undefined ? { gateId: updates.gateId } : {}),
+            ...(updates.projectId !== undefined ? { projectId: updates.projectId } : {}),
             assigneeIds: shouldInherit ? cascadedAssigneeIds : t.assigneeIds,
             assigneeId: shouldInherit ? cascadedAssigneeId : t.assigneeId,
-            ...(updates.status ? { status: updates.status, completedDate: descendantCompleted } : {})
+            ...(updates.status ? { status: updates.status, completedDate: descendantCompleted } : {}),
+            _updatedAt: Date.now()
           };
         }
         return t;
@@ -812,6 +833,10 @@ export const DataProvider = ({ children }) => {
         const shouldInherit = descAssignees.length === 0 && updates.assigneeIds !== undefined;
 
         apiUpdateTask(descId, {
+          ...(updates.sprintPhase !== undefined ? { sprintPhase: updates.sprintPhase } : {}),
+          ...(updates.sprintId !== undefined ? { sprintId: updates.sprintId } : {}),
+          ...(updates.gateId !== undefined ? { gateId: updates.gateId } : {}),
+          ...(updates.projectId !== undefined ? { projectId: updates.projectId } : {}),
           ...(shouldInherit ? { assigneeIds: cascadedAssigneeIds, assigneeId: cascadedAssigneeId } : {}),
           ...(updates.status ? { status: updates.status, completedDate: updates.status === 'Done' ? todayStr : '' } : {})
         }).catch(e => console.error('[Neon Error] cascade updateTask:', e));

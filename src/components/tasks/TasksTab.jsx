@@ -9,6 +9,7 @@ import { PriorityPill } from '../widgets/PriorityPill';
 import { TaskForm } from '../forms/TaskForm';
 import { GanttRoadmapModal } from './GanttRoadmapModal';
 import { sortTasks } from '../../utils/taskSort';
+import { useTableFlipAnimation } from '../../utils/useTableFlipAnimation';
 import { downloadTaskTemplateExcel, parseTaskExcelFile } from '../../utils/excelTaskImport';
 
 const STATUSES = ['In progress', 'Not started', 'Done'];
@@ -210,6 +211,9 @@ export const TasksTab = ({
 
   // Tasks sorted: incomplete on top, upcoming next, completed at the bottom
   const sortedCurrentProjectTasks = sortTasks(currentProjectTasks);
+
+  // Smooth FLIP animation hook for table rows moving up or down
+  const { registerRow, triggerRowAnimation, movingTaskInfo } = useTableFlipAnimation(allTasks);
 
   // Tasks further filtered by status
   const displayedTasks = sortedCurrentProjectTasks.filter(t => {
@@ -554,6 +558,10 @@ export const TasksTab = ({
   const handleStatusChange = (taskId, newStatus, taskName) => {
     const isDone = newStatus === 'Done';
     const todayStr = getLocalDateString();
+
+    // Trigger smooth FLIP table row animation: moves down when completed, moves up when undone
+    triggerRowAnimation(taskId, isDone ? 'down' : 'up');
+
     updateTask(taskId, {
       status: newStatus,
       completedDate: isDone ? todayStr : ''
@@ -1399,11 +1407,27 @@ export const TasksTab = ({
                       const dueMeta = getDueMeta(t.dueDate, t.status);
                       const taskIdCode = t.taskCode || t.code || `TSK-${String(idx + 1).padStart(2, '0')}`;
                       const isSelected = selectedTaskIds.has(t.id);
+                      const isMoving = movingTaskInfo?.id === String(t.id);
+                      const moveDir = isMoving ? movingTaskInfo?.direction : null;
 
                       return (
                         <tr
                           key={t.id}
-                          className={`hover:bg-slate-50/80 transition ${isSelected ? 'bg-blue-50/30' : ''}`}
+                          ref={registerRow(t.id)}
+                          className={`transition-colors duration-500 ${
+                            isMoving
+                              ? moveDir === 'down'
+                                ? 'bg-emerald-50/90 ring-2 ring-emerald-400/80 shadow-lg shadow-emerald-500/10'
+                                : 'bg-blue-50/90 ring-2 ring-blue-400/80 shadow-lg shadow-blue-500/10'
+                              : isSelected
+                                ? 'bg-blue-50/30 hover:bg-blue-50/50'
+                                : t.status === 'Done'
+                                  ? 'bg-slate-50/30 hover:bg-slate-50/80'
+                                  : 'hover:bg-slate-50/80'
+                          }`}
+                          style={{
+                            willChange: isMoving ? 'transform' : 'auto'
+                          }}
                         >
                           {/* 1. Checkbox */}
                           <td className="py-3.5 px-3.5 w-10 align-middle">
@@ -1508,24 +1532,29 @@ export const TasksTab = ({
                                 role="switch"
                                 aria-checked={t.status === 'Done'}
                                 onClick={() => handleStatusChange(t.id, t.status === 'Done' ? 'In progress' : 'Done', t.name)}
-                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 ${
-                                  t.status === 'Done' ? 'bg-emerald-500' : 'bg-slate-200 hover:bg-slate-300'
+                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-500 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 ${
+                                  t.status === 'Done' ? 'bg-emerald-500 shadow-xs' : 'bg-slate-200 hover:bg-slate-300'
                                 }`}
                                 title={t.status === 'Done' ? `Completed! Click to mark In Progress` : `Click to mark "${t.name}" as Completed`}
                               >
                                 <span
-                                  className={`pointer-events-none inline-flex items-center justify-center h-4 w-4 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                                  className={`pointer-events-none inline-flex items-center justify-center h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1) ${
                                     t.status === 'Done' ? 'translate-x-4' : 'translate-x-0'
                                   }`}
                                 >
-                                  {t.status === 'Done' && (
-                                    <svg className="w-2.5 h-2.5 text-emerald-600 stroke-[3]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                    </svg>
-                                  )}
+                                  <svg
+                                    className={`w-2.5 h-2.5 text-emerald-600 stroke-[3] transition-all duration-500 ease-in-out ${
+                                      t.status === 'Done' ? 'opacity-100 scale-100 rotate-0' : 'opacity-0 scale-50 -rotate-45'
+                                    }`}
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
                                 </span>
                               </button>
-                              <span className={`text-[11px] font-semibold select-none ${t.status === 'Done' ? 'text-emerald-700' : 'text-slate-400'}`}>
+                              <span className={`text-[11px] font-semibold select-none transition-colors duration-500 ${t.status === 'Done' ? 'text-emerald-700' : 'text-slate-400'}`}>
                                 {t.status === 'Done' ? 'Completed' : 'Off'}
                               </span>
                             </div>

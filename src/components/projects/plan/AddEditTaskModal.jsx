@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createSprintTask, updateSprintTask } from '../../../services/projectPlanApi';
 import { useToast } from '../../../context/ToastContext';
-import { getLocalDateString } from './planCalcs';
+import { getLocalDateString, PROJECT_PHASES, normalizePhase, getPhaseTheme } from './planCalcs';
 
 export function AddEditTaskModal({
   isOpen,
@@ -11,11 +11,13 @@ export function AddEditTaskModal({
   sprints = [],
   gates = [],
   defaultSprintId = '',
-  onSuccess
+  onSuccess,
+  onCreateSprint
 }) {
   const { addToast } = useToast();
   const isEdit = Boolean(task && task.id);
 
+  const [sprintPhase, setSprintPhase] = useState('ALL');
   const [sprintId, setSprintId] = useState('');
   const [gateId, setGateId] = useState('');
   const [taskCode, setTaskCode] = useState('');
@@ -34,7 +36,14 @@ export function AddEditTaskModal({
 
   useEffect(() => {
     if (task) {
-      setSprintId(task.sprintId || defaultSprintId || (sprints[0]?.id || ''));
+      const initialSprintId = task.sprintId || defaultSprintId || (sprints[0]?.id || '');
+      setSprintId(initialSprintId);
+      const sp = sprints.find(s => String(s.id) === String(initialSprintId));
+      if (sp && sp.phase) {
+        setSprintPhase(sp.phase);
+      } else {
+        setSprintPhase('ALL');
+      }
       setGateId(task.gateId || '');
       setTaskCode(task.taskCode || '');
       setWorkstream(task.workstream || '');
@@ -48,7 +57,14 @@ export function AddEditTaskModal({
       setActualCompletionDate(task.actualCompletionDate || '');
       setPlanningBasis(task.planningBasis || '');
     } else {
-      setSprintId(defaultSprintId || (sprints[0]?.id || ''));
+      const initialSprintId = defaultSprintId || (sprints[0]?.id || '');
+      setSprintId(initialSprintId);
+      const sp = sprints.find(s => String(s.id) === String(initialSprintId));
+      if (sp && sp.phase) {
+        setSprintPhase(sp.phase);
+      } else {
+        setSprintPhase('ALL');
+      }
       setGateId('');
       setTaskCode('');
       setWorkstream('');
@@ -64,6 +80,38 @@ export function AddEditTaskModal({
     }
     setErrorMsg('');
   }, [task, defaultSprintId, sprints, isOpen]);
+
+  // Sprints filtered by chosen Sprint Phase
+  const availableSprints = useMemo(() => {
+    if (!sprintPhase || sprintPhase === 'ALL') return sprints;
+    const norm = normalizePhase(sprintPhase);
+    return sprints.filter(s => normalizePhase(s.phase) === norm);
+  }, [sprints, sprintPhase]);
+
+  const handlePhaseChange = (newPhase) => {
+    setSprintPhase(newPhase);
+    if (!newPhase || newPhase === 'ALL') return;
+
+    const norm = normalizePhase(newPhase);
+    const matches = sprints.filter(s => normalizePhase(s.phase) === norm);
+
+    const isCurrentInMatches = matches.some(s => String(s.id) === String(sprintId));
+    if (!isCurrentInMatches) {
+      if (matches.length > 0) {
+        setSprintId(matches[0].id);
+      } else {
+        setSprintId('');
+      }
+    }
+  };
+
+  const handleSprintChange = (newSprintId) => {
+    setSprintId(newSprintId);
+    const sp = sprints.find(s => String(s.id) === String(newSprintId));
+    if (sp && sp.phase) {
+      setSprintPhase(sp.phase);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -167,7 +215,7 @@ export function AddEditTaskModal({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="font-bold text-slate-700 block mb-1">Task Code *</label>
               <input
@@ -180,19 +228,59 @@ export function AddEditTaskModal({
               />
             </div>
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Sprint / Wave *</label>
+              <label className="font-bold text-slate-700 block mb-1">Sprint Phase *</label>
               <select
-                value={sprintId}
-                onChange={(e) => setSprintId(e.target.value)}
-                required
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                value={sprintPhase}
+                onChange={(e) => handlePhaseChange(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
               >
-                {sprints.map(s => (
-                  <option key={s.id} value={s.id}>{s.code} {s.name ? `— ${s.name}` : ''}</option>
+                <option value="ALL">All Phases</option>
+                {PROJECT_PHASES.map(p => (
+                  <option key={p} value={p}>{p}</option>
                 ))}
               </select>
             </div>
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">Sprint (ID / Name) *</label>
+              <select
+                value={sprintId}
+                onChange={(e) => handleSprintChange(e.target.value)}
+                required
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              >
+                {availableSprints.length === 0 ? (
+                  <option value="" disabled>No sprints in this phase</option>
+                ) : (
+                  availableSprints.map(s => (
+                    <option key={s.id} value={s.id}>
+                      Sprint ID: {s.code} {s.name && s.name !== s.code ? `— ${s.name}` : ''} ({s.phase})
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
           </div>
+
+          {availableSprints.length === 0 && sprintPhase !== 'ALL' && (
+            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-amber-600">info</span>
+                <span>No sprints configured under <strong>{sprintPhase}</strong> yet.</span>
+              </div>
+              {onCreateSprint && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onCreateSprint(sprintPhase);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition cursor-pointer"
+                >
+                  + Add Sprint
+                </button>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="font-bold text-slate-700 block mb-1">Task Title / Deliverable *</label>

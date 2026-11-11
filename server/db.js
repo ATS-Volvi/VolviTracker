@@ -307,6 +307,9 @@ export const toTaskDto = (row) => row ? ({
   name: row.name,
   projectId: row.project_id ? String(row.project_id) : '',
   parentId: row.parent_id ? String(row.parent_id) : null,
+  sprintPhase: row.sprint_phase || '',
+  sprintId: row.sprint_id ? String(row.sprint_id) : '',
+  gateId: row.gate_id ? String(row.gate_id) : null,
   status: row.status || 'Not started',
   dueDate: row.due_date || '',
   createdDate: row.created_date || (row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : ''),
@@ -509,6 +512,9 @@ export async function initDb() {
     `;
     await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parent_id VARCHAR(100);`;
     await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_date TEXT DEFAULT '';`;
+    await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sprint_phase TEXT DEFAULT '';`;
+    await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sprint_id VARCHAR(100);`;
+    await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS gate_id VARCHAR(100);`;
     await sql`CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id);`;
 
     // 4. Meetings Table
@@ -1216,6 +1222,25 @@ export async function deleteProjectRecord(id) {
   return { success: true };
 }
 
+const DB_GATE_CODE_TO_PHASE = {
+  'SG-00': 'Prepare',
+  'SG-01': 'Explore',
+  'SG-02': 'Realize – Build',
+  'SG-03': 'Realize – Test & Train',
+  'SG-04': 'Realize – Test & Train',
+  'SG-05': 'Deploy',
+  'SG-06': 'Run'
+};
+
+const normalizeDbPhase = (p) => {
+  if (!p) return '';
+  return String(p)
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+};
+
 // Task Operations
 export async function createTaskRecord(task) {
   await initDb();
@@ -1225,19 +1250,47 @@ export async function createTaskRecord(task) {
   const assigneeId = (task.assigneeIds && task.assigneeIds[0]) || task.assigneeId || '';
   const projectId = task.projectId || '';
   const parentId = task.parentId ? String(task.parentId) : null;
+  const sprintPhase = task.sprintPhase || task.sprint_phase || '';
+  let sprintId = task.sprintId || task.sprint_id || '';
+  let gateId = task.gateId ? String(task.gateId) : (task.gate_id ? String(task.gate_id) : null);
   const status = task.status || 'Not started';
+
+  if (sprintPhase && projectId) {
+    const norm = normalizeDbPhase(sprintPhase);
+    try {
+      const sprints = await sql`SELECT id, phase FROM project_sprints WHERE project_id = ${projectId} ORDER BY sort_order ASC, code ASC`;
+      const matchSp = sprints.find(s => normalizeDbPhase(s.phase) === norm);
+      if (matchSp) {
+        sprintId = matchSp.id;
+      }
+
+      const gates = await sql`SELECT id, phase, code FROM project_gates WHERE project_id = ${projectId} ORDER BY sort_order ASC, code ASC`;
+      const matchGate = gates.find(g => 
+        normalizeDbPhase(g.phase) === norm ||
+        (DB_GATE_CODE_TO_PHASE[g.code] && normalizeDbPhase(DB_GATE_CODE_TO_PHASE[g.code]) === norm)
+      );
+      if (matchGate) {
+        gateId = matchGate.id;
+      }
+    } catch (e) {
+      console.error('[DB] Error aligning sprint and gate for phase in create:', e);
+    }
+  }
 
   await sql`
     INSERT INTO tasks (
-      id, name, project_id, parent_id, status, due_date, priority, description, assignee_ids, assignee_id, completed_date
+      id, name, project_id, parent_id, sprint_phase, sprint_id, gate_id, status, due_date, priority, description, assignee_ids, assignee_id, completed_date
     ) VALUES (
-      ${id}, ${taskName}, ${projectId}, ${parentId}, ${status}, ${task.dueDate || ''},
+      ${id}, ${taskName}, ${projectId}, ${parentId}, ${sprintPhase}, ${sprintId}, ${gateId}, ${status}, ${task.dueDate || ''},
       ${task.priority || 'Medium'}, ${task.description || ''}, ${assigneeIdsJson}::jsonb, ${assigneeId}, ${task.completedDate || (status === 'Done' ? (task.dueDate || new Date().toISOString().slice(0, 10)) : '')}
     )
     ON CONFLICT (id) DO UPDATE SET
       name = EXCLUDED.name,
       project_id = EXCLUDED.project_id,
       parent_id = EXCLUDED.parent_id,
+      sprint_phase = EXCLUDED.sprint_phase,
+      sprint_id = EXCLUDED.sprint_id,
+      gate_id = EXCLUDED.gate_id,
       status = EXCLUDED.status,
       due_date = EXCLUDED.due_date,
       priority = EXCLUDED.priority,
@@ -1246,6 +1299,24 @@ export async function createTaskRecord(task) {
       assignee_id = EXCLUDED.assignee_id,
       completed_date = EXCLUDED.completed_date;
   `;
+
+  // Sync to project_sprint_tasks
+  if (projectId) {
+    try {
+      const pstId1 = 'stk_' + id;
+      const pstId2 = 'stk_' + id.replace(/-/g, '_');
+      await sql`
+        UPDATE project_sprint_tasks SET
+          sprint_id = ${sprintId || null},
+          gate_id = ${gateId || null},
+          title = ${taskName},
+          updated_at = NOW()
+        WHERE project_id = ${projectId} AND (id = ${id} OR id = ${pstId1} OR id = ${pstId2});
+      `;
+    } catch (e) {
+      console.error('[DB] Error syncing project_sprint_tasks in create:', e);
+    }
+  }
 
   // Auto-recalculate project progress if associated with a project
   if (projectId) {
@@ -1267,6 +1338,33 @@ export async function updateTaskRecord(id, updates) {
   const name = updates.name !== undefined ? updates.name : current.name;
   const projectId = updates.projectId !== undefined ? updates.projectId : current.project_id;
   const parentId = updates.parentId !== undefined ? (updates.parentId ? String(updates.parentId) : null) : current.parent_id;
+  const sprintPhase = updates.sprintPhase !== undefined ? updates.sprintPhase : (updates.sprint_phase !== undefined ? updates.sprint_phase : (current.sprint_phase || ''));
+  let sprintId = updates.sprintId !== undefined ? (updates.sprintId ? String(updates.sprintId) : '') : (current.sprint_id || '');
+  let gateId = updates.gateId !== undefined ? (updates.gateId ? String(updates.gateId) : null) : (updates.gate_id !== undefined ? (updates.gate_id ? String(updates.gate_id) : null) : (current.gate_id || null));
+
+  // If sprintPhase is provided or updated, align sprintId and gateId with that phase!
+  if (sprintPhase && projectId) {
+    const norm = normalizeDbPhase(sprintPhase);
+    try {
+      const sprints = await sql`SELECT id, phase FROM project_sprints WHERE project_id = ${projectId} ORDER BY sort_order ASC, code ASC`;
+      const matchSp = sprints.find(s => normalizeDbPhase(s.phase) === norm);
+      if (matchSp) {
+        sprintId = matchSp.id;
+      }
+
+      const gates = await sql`SELECT id, phase, code FROM project_gates WHERE project_id = ${projectId} ORDER BY sort_order ASC, code ASC`;
+      const matchGate = gates.find(g => 
+        normalizeDbPhase(g.phase) === norm ||
+        (DB_GATE_CODE_TO_PHASE[g.code] && normalizeDbPhase(DB_GATE_CODE_TO_PHASE[g.code]) === norm)
+      );
+      if (matchGate) {
+        gateId = matchGate.id;
+      }
+    } catch (e) {
+      console.error('[DB] Error aligning sprint and gate for phase:', e);
+    }
+  }
+
   const status = updates.status !== undefined ? updates.status : current.status;
   const dueDate = updates.dueDate !== undefined ? updates.dueDate : current.due_date;
   const completedDate = updates.completedDate !== undefined
@@ -1285,6 +1383,9 @@ export async function updateTaskRecord(id, updates) {
       name = ${name},
       project_id = ${projectId},
       parent_id = ${parentId},
+      sprint_phase = ${sprintPhase},
+      sprint_id = ${sprintId},
+      gate_id = ${gateId},
       status = ${status},
       due_date = ${dueDate},
       completed_date = ${completedDate},
@@ -1294,6 +1395,68 @@ export async function updateTaskRecord(id, updates) {
       assignee_id = ${assigneeId}
     WHERE id = ${id};
   `;
+
+  // Keep project_sprint_tasks row in sync
+  if (projectId) {
+    try {
+      const pstId1 = 'stk_' + id;
+      const pstId2 = 'stk_' + id.replace(/-/g, '_');
+      const isDone = String(status || '').toLowerCase() === 'done';
+      await sql`
+        UPDATE project_sprint_tasks SET
+          sprint_id = ${sprintId || null},
+          gate_id = ${gateId || null},
+          title = ${name},
+          percent_complete = ${isDone ? 100 : (status === 'In progress' ? 50 : 0)},
+          actual_completion_date = ${isDone ? (completedDate || new Date().toISOString().slice(0, 10)) : null},
+          updated_at = NOW()
+        WHERE project_id = ${projectId} AND (id = ${id} OR id = ${pstId1} OR id = ${pstId2} OR title = ${name});
+      `;
+    } catch (e) {
+      console.error('[DB] Error syncing project_sprint_tasks in update:', e);
+    }
+  }
+
+  // Cascade sprintPhase, sprintId, gateId, and projectId to all subsequent subtasks recursively!
+  if (sprintPhase !== undefined || projectId !== undefined) {
+    try {
+      await sql`
+        WITH RECURSIVE task_tree AS (
+          SELECT id FROM tasks WHERE parent_id = ${id}
+          UNION ALL
+          SELECT t.id FROM tasks t INNER JOIN task_tree tt ON t.parent_id = tt.id
+        )
+        UPDATE tasks SET
+          sprint_phase = ${sprintPhase},
+          sprint_id = ${sprintId || null},
+          gate_id = ${gateId || null},
+          project_id = ${projectId}
+        WHERE id IN (SELECT id FROM task_tree);
+      `;
+
+      if (projectId) {
+        await sql`
+          WITH RECURSIVE task_tree AS (
+            SELECT id FROM tasks WHERE parent_id = ${id}
+            UNION ALL
+            SELECT t.id FROM tasks t INNER JOIN task_tree tt ON t.parent_id = tt.id
+          )
+          UPDATE project_sprint_tasks SET
+            sprint_id = ${sprintId || null},
+            gate_id = ${gateId || null},
+            project_id = ${projectId},
+            updated_at = NOW()
+          WHERE (
+            id IN (SELECT id FROM task_tree) OR
+            id IN (SELECT 'stk_' || id FROM task_tree) OR
+            id IN (SELECT 'stk_' || replace(id, '-', '_') FROM task_tree)
+          );
+        `;
+      }
+    } catch (e) {
+      console.error('[DB] Error cascading sprintPhase to subtasks:', e);
+    }
+  }
 
   if (projectId) await recalcProjectProgress(projectId);
   if (current.project_id && current.project_id !== projectId) {
@@ -4352,9 +4515,16 @@ export async function createSprintTaskRecord(projectId, data, actor = {}) {
 
 export async function updateSprintTaskRecord(projectId, taskId, updates, actor = {}) {
   await initDb();
-  const existing = await sql`SELECT * FROM project_sprint_tasks WHERE id = ${taskId} AND project_id = ${projectId}`;
+  const rawId = String(taskId);
+  const pstId1 = 'stk_' + rawId;
+  const pstId2 = 'stk_' + rawId.replace(/-/g, '_');
+  const existing = await sql`
+    SELECT * FROM project_sprint_tasks 
+    WHERE project_id = ${projectId} AND (id = ${rawId} OR id = ${pstId1} OR id = ${pstId2})
+  `;
   if (!existing || existing.length === 0) return null;
   const current = existing[0];
+  const realId = current.id;
 
   const sprintId = updates.sprintId !== undefined ? String(updates.sprintId) : current.sprint_id;
   const gateId = updates.gateId !== undefined ? (updates.gateId ? String(updates.gateId) : null) : current.gate_id;
@@ -4388,13 +4558,27 @@ export async function updateSprintTaskRecord(projectId, taskId, updates, actor =
       planning_basis = ${planningBasis},
       sort_order = ${sortOrder},
       updated_at = NOW()
-    WHERE id = ${taskId} AND project_id = ${projectId};
+    WHERE id = ${realId} AND project_id = ${projectId};
   `;
+
+  // Keep tasks table in sync
+  try {
+    const isDone = percentComplete >= 100;
+    const cleanId = rawId.replace(/^stk_/, '').replace(/_/g, '-');
+    await sql`
+      UPDATE tasks SET
+        status = ${isDone ? 'Done' : (percentComplete > 0 ? 'In progress' : 'Not started')},
+        completed_date = ${isDone ? (actualCompletionDate || new Date().toISOString().slice(0, 10)) : ''}
+      WHERE project_id = ${projectId} AND (id = ${rawId} OR id = ${cleanId} OR name = ${title});
+    `;
+  } catch (e) {
+    console.error('[DB] Error syncing tasks in updateSprintTaskRecord:', e);
+  }
 
   await recordPlanAuditLog({
     projectId,
     entityType: 'sprint_task',
-    entityId: taskId,
+    entityId: realId,
     action: 'update',
     oldValue: JSON.stringify({ percentComplete: current.percent_complete, actualCompletionDate: current.actual_completion_date }),
     newValue: JSON.stringify({ percentComplete, actualCompletionDate }),
@@ -4402,21 +4586,28 @@ export async function updateSprintTaskRecord(projectId, taskId, updates, actor =
     actorEmail: actor.email
   });
 
-  const row = await sql`SELECT * FROM project_sprint_tasks WHERE id = ${taskId}`;
+  const row = await sql`SELECT * FROM project_sprint_tasks WHERE id = ${realId}`;
   return toSprintTaskDto(row[0]);
 }
 
 export async function deleteSprintTaskRecord(projectId, taskId, actor = {}) {
   await initDb();
-  const existing = await sql`SELECT * FROM project_sprint_tasks WHERE id = ${taskId} AND project_id = ${projectId}`;
+  const rawId = String(taskId);
+  const pstId1 = 'stk_' + rawId;
+  const pstId2 = 'stk_' + rawId.replace(/-/g, '_');
+  const existing = await sql`
+    SELECT * FROM project_sprint_tasks 
+    WHERE project_id = ${projectId} AND (id = ${rawId} OR id = ${pstId1} OR id = ${pstId2})
+  `;
   if (!existing || existing.length === 0) return null;
+  const realId = existing[0].id;
 
-  await sql`DELETE FROM project_sprint_tasks WHERE id = ${taskId} AND project_id = ${projectId}`;
+  await sql`DELETE FROM project_sprint_tasks WHERE id = ${realId} AND project_id = ${projectId}`;
 
   await recordPlanAuditLog({
     projectId,
     entityType: 'sprint_task',
-    entityId: taskId,
+    entityId: realId,
     action: 'delete',
     oldValue: JSON.stringify({ taskCode: existing[0].task_code, title: existing[0].title }),
     actorId: actor.id,

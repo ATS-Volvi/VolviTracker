@@ -660,8 +660,10 @@ export async function apiHandler(req, res, next) {
         if (!auth.allowed) return sendJson(res, auth.status, { error: auth.error });
 
         // IDOR check
-        const rows = await sql`SELECT project_id FROM project_sprint_tasks WHERE id = ${taskId}`;
-        if (!rows || rows.length === 0 || rows[0].project_id !== id) {
+        const pstId1 = 'stk_' + taskId;
+        const pstId2 = 'stk_' + taskId.replace(/-/g, '_');
+        const rows = await sql`SELECT project_id FROM project_sprint_tasks WHERE (id = ${taskId} OR id = ${pstId1} OR id = ${pstId2}) AND project_id = ${id}`;
+        if (!rows || rows.length === 0) {
           return sendJson(res, 404, { error: 'Task not found for this project' });
         }
 
