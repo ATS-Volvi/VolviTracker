@@ -5,11 +5,24 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  font-size: 17px;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   @apply bg-[#F8FAFC] text-[#0F172A] antialiased selection:bg-blue-600 selection:text-white;
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   letter-spacing: -0.011em;
+  font-size: 1rem;
 }
+
+/* Elevate micro-copy slightly so it stays in proportion with the scaled base */
+:not(.material-symbols-outlined).text-\[9px\] { font-size: 10px; }
+:not(.material-symbols-outlined).text-\[10px\] { font-size: 11px; }
+:not(.material-symbols-outlined).text-\[11px\] { font-size: 12px; }
+:not(.material-symbols-outlined).text-\[12px\] { font-size: 13px; }
+:not(.material-symbols-outlined).text-\[13px\] { font-size: 14px; }
 
 @layer components {
   .badge {
