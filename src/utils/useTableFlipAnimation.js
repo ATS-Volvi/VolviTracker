@@ -3,7 +3,8 @@ import { useRef, useLayoutEffect, useState, useCallback } from 'react';
 /**
  * Custom hook to provide smooth FLIP (First, Last, Invert, Play) table row animations
  * when tasks are toggled between Incomplete and Completed statuses, causing them to move
- * up or down in the sorted hierarchy.
+ * up or down in the sorted hierarchy, while strictly preserving the user's scroll position
+ * and preventing browser focus from forcibly jumping/scrolling the page.
  *
  * @param {Array|any} dataDependency - The task list or dependency that triggers re-render
  * @returns {Object} { registerRow, triggerRowAnimation, movingTaskInfo }
@@ -11,6 +12,7 @@ import { useRef, useLayoutEffect, useState, useCallback } from 'react';
 export function useTableFlipAnimation(dataDependency) {
   const rowElementsRef = useRef(new Map());
   const lastPositionsRef = useRef(null);
+  const scrollPositionRef = useRef(null);
   const cleanupTimeoutRef = useRef(null);
   const [movingTaskInfo, setMovingTaskInfo] = useState(null);
 
@@ -29,7 +31,17 @@ export function useTableFlipAnimation(dataDependency) {
       clearTimeout(cleanupTimeoutRef.current);
     }
 
-    // Capture initial positions of all currently mounted rows in the table
+    // 1. Release active element focus so the browser does not scroll viewport to follow focused button
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+
+    // 2. Lock current page scroll position
+    const scrollY = window.pageYOffset || document.documentElement.scrollTop || window.scrollY || 0;
+    const scrollX = window.pageXOffset || document.documentElement.scrollLeft || window.scrollX || 0;
+    scrollPositionRef.current = { x: scrollX, y: scrollY };
+
+    // 3. Capture initial positions of all currently mounted rows in the table
     const snapshot = new Map();
     rowElementsRef.current.forEach((el, id) => {
       if (el) {
@@ -46,6 +58,12 @@ export function useTableFlipAnimation(dataDependency) {
   }, []);
 
   useLayoutEffect(() => {
+    // Preserve and lock scroll position so page NEVER jumps or scrolls to top/bottom
+    if (scrollPositionRef.current) {
+      const { x, y } = scrollPositionRef.current;
+      window.scrollTo(x, y);
+    }
+
     if (!lastPositionsRef.current) return;
 
     const snapshot = lastPositionsRef.current;
@@ -90,7 +108,19 @@ export function useTableFlipAnimation(dataDependency) {
 
     // PLAY: in the next animation frames, smoothly animate everyone to their final slots
     requestAnimationFrame(() => {
+      // Re-assert scroll position
+      if (scrollPositionRef.current) {
+        const { x, y } = scrollPositionRef.current;
+        window.scrollTo(x, y);
+      }
+
       requestAnimationFrame(() => {
+        // Re-assert scroll position
+        if (scrollPositionRef.current) {
+          const { x, y } = scrollPositionRef.current;
+          window.scrollTo(x, y);
+        }
+
         elementsToAnimate.forEach(({ el, id }) => {
           const isTarget = id === targetId;
           // Target row that was toggled gets a silky spring glide curve; other rows slide to make room
@@ -113,6 +143,7 @@ export function useTableFlipAnimation(dataDependency) {
         }
       });
       setMovingTaskInfo(null);
+      scrollPositionRef.current = null;
     }, 750);
 
     return () => {
@@ -128,4 +159,3 @@ export function useTableFlipAnimation(dataDependency) {
     movingTaskInfo
   };
 }
-

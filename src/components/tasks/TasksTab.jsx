@@ -1531,7 +1531,11 @@ export const TasksTab = ({
                                 type="button"
                                 role="switch"
                                 aria-checked={t.status === 'Done'}
-                                onClick={() => handleStatusChange(t.id, t.status === 'Done' ? 'In progress' : 'Done', t.name)}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={(e) => {
+                                  e.currentTarget?.blur();
+                                  handleStatusChange(t.id, t.status === 'Done' ? 'In progress' : 'Done', t.name);
+                                }}
                                 className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-500 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 ${
                                   t.status === 'Done' ? 'bg-emerald-500 shadow-xs' : 'bg-slate-200 hover:bg-slate-300'
                                 }`}
