@@ -8,7 +8,9 @@ import {
   calculateGateStatus,
   calculateDashboardMetrics,
   getGatePhase,
-  getPhaseTheme
+  getPhaseTheme,
+  getPhaseIndex,
+  sortSprintsByPhaseHierarchy
 } from './planCalcs';
 
 describe('planCalcs - Task Status, Variance, and Risk Calculations', () => {
@@ -239,6 +241,56 @@ describe('planCalcs - Gate Phase and Sprint Phase Resolution', () => {
     expect(exploreTheme.badge).toContain('indigo');
     const prepareTheme = getPhaseTheme('Prepare');
     expect(prepareTheme.badge).toContain('sky');
+  });
+});
+
+describe('planCalcs - Sprint Phase Hierarchy Sorting', () => {
+  it('correctly maps phase hierarchy indices', () => {
+    expect(getPhaseIndex('Prepare')).toBe(0);
+    expect(getPhaseIndex('Explore')).toBe(1);
+    expect(getPhaseIndex('Realize – Build')).toBe(2);
+    expect(getPhaseIndex('Realize - Build')).toBe(2);
+    expect(getPhaseIndex('Realize – Test & Train')).toBe(3);
+    expect(getPhaseIndex('Realize - Test & Train')).toBe(3);
+    expect(getPhaseIndex('Deploy')).toBe(4);
+    expect(getPhaseIndex('Run')).toBe(5);
+    expect(getPhaseIndex('Unknown Phase')).toBe(999);
+  });
+
+  it('sorts sprints in the hierarchy of the sprint phases (Prepare -> Explore -> Realize - Build -> Realize - Test & Train -> Deploy -> Run)', () => {
+    const unsorted = [
+      { id: 'sp-build', code: '02', name: 'Sprint 02', phase: 'Realize – Build' },
+      { id: 'sp-prep', code: 'Sprint 1', name: 'Prepare the Project Plan', phase: 'Prepare' },
+      { id: 'sp-run', code: 'Sprint Hypercare', name: 'Hypercare', phase: 'Run' },
+      { id: 'sp-deploy', code: 'Sprint 10', name: 'Deployment', phase: 'Deploy' },
+      { id: 'sp-explore', code: 'Sprint 01', name: 'Exploration', phase: 'Explore' },
+      { id: 'sp-test', code: 'Sprint 08', name: 'Testing', phase: 'Realize – Test & Train' }
+    ];
+
+    const sorted = sortSprintsByPhaseHierarchy(unsorted);
+
+    expect(sorted.map(s => s.phase)).toEqual([
+      'Prepare',
+      'Explore',
+      'Realize – Build',
+      'Realize – Test & Train',
+      'Deploy',
+      'Run'
+    ]);
+    expect(sorted[0].code).toBe('Sprint 1');
+    expect(sorted[1].code).toBe('Sprint 01');
+    expect(sorted[2].code).toBe('02');
+  });
+
+  it('sorts multiple sprints within the same phase by sprint number / sortOrder', () => {
+    const sprintsSamePhase = [
+      { id: 'sp-5', code: 'Sprint 5', phase: 'Realize – Build' },
+      { id: 'sp-3', code: 'Sprint 3', phase: 'Realize – Build' },
+      { id: 'sp-4', code: 'Sprint 4', phase: 'Realize – Build' }
+    ];
+
+    const sorted = sortSprintsByPhaseHierarchy(sprintsSamePhase);
+    expect(sorted.map(s => s.code)).toEqual(['Sprint 3', 'Sprint 4', 'Sprint 5']);
   });
 });
 

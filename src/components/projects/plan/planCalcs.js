@@ -309,6 +309,85 @@ export function normalizePhase(p) {
 }
 
 /**
+ * Returns the 0-based hierarchy index of a project/sprint phase.
+ * Hierarchy:
+ * 0. Prepare
+ * 1. Explore
+ * 2. Realize – Build
+ * 3. Realize – Test & Train
+ * 4. Deploy
+ * 5. Run
+ */
+export function getPhaseIndex(phase) {
+  if (!phase) return 999;
+  const norm = normalizePhase(phase);
+
+  for (let i = 0; i < PROJECT_PHASES.length; i++) {
+    if (normalizePhase(PROJECT_PHASES[i]) === norm) {
+      return i;
+    }
+  }
+
+  // Keyword heuristic
+  if (norm.includes('prepare') || norm.includes('initiat') || norm.includes('charter')) return 0;
+  if (norm.includes('explore') || norm.includes('blueprint') || norm.includes('discovery')) return 1;
+  if (norm.includes('test') || norm.includes('train') || norm.includes('sit') || norm.includes('uat') || norm.includes('qa')) return 3;
+  if (norm.includes('build') || norm.includes('construct') || norm.includes('realize') || norm.includes('dev')) return 2;
+  if (norm.includes('deploy') || norm.includes('go-live') || norm.includes('cutover') || norm.includes('release')) return 4;
+  if (norm.includes('run') || norm.includes('hypercare') || norm.includes('transition') || norm.includes('support')) return 5;
+
+  return 999;
+}
+
+/**
+ * Sorts sprints in the hierarchy of project sprint phases:
+ * Prepare -> Explore -> Realize – Build -> Realize – Test & Train -> Deploy -> Run.
+ * Within the same phase, sprints are sorted by sortOrder, then sprint number/code, then startDate.
+ */
+export function sortSprintsByPhaseHierarchy(sprints = []) {
+  if (!Array.isArray(sprints) || sprints.length <= 1) return sprints ? [...sprints] : [];
+
+  return [...sprints].sort((a, b) => {
+    const pA = getPhaseIndex(a?.phase);
+    const pB = getPhaseIndex(b?.phase);
+
+    if (pA !== pB) {
+      return pA - pB;
+    }
+
+    // Secondary: sortOrder if explicitly provided and distinct
+    const orderA = a?.sortOrder !== undefined && a?.sortOrder !== null ? Number(a.sortOrder) : null;
+    const orderB = b?.sortOrder !== undefined && b?.sortOrder !== null ? Number(b.sortOrder) : null;
+    if (orderA !== null && orderB !== null && orderA !== orderB && !isNaN(orderA) && !isNaN(orderB)) {
+      return orderA - orderB;
+    }
+
+    // Tertiary: extract sprint number (e.g. "Sprint 01", "02", "Sprint 2", "Sprint 10")
+    const extractNum = (s) => {
+      if (!s) return null;
+      const str = `${s.code || ''} ${s.name || ''}`;
+      const match = str.match(/(?:sprint\s*)?(\d+)/i);
+      return match ? parseInt(match[1], 10) : null;
+    };
+    const numA = extractNum(a);
+    const numB = extractNum(b);
+    if (numA !== null && numB !== null && numA !== numB) {
+      return numA - numB;
+    }
+
+    // Quaternary: start date
+    if (a?.startDate && b?.startDate && a.startDate !== b.startDate) {
+      return String(a.startDate).localeCompare(String(b.startDate));
+    }
+
+    // Quinary: code or name alphanumeric
+    const codeA = String(a?.code || a?.name || '');
+    const codeB = String(b?.code || b?.name || '');
+    return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+  });
+}
+
+/**
  * Resolves the project phase for a stage gate.
  */
 export function getGatePhase(gate = {}, linkedTasks = [], sprints = []) {

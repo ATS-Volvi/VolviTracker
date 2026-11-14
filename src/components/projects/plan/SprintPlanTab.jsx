@@ -20,7 +20,8 @@ import {
   getLocalDateString,
   PROJECT_PHASES,
   normalizePhase,
-  getPhaseTheme
+  getPhaseTheme,
+  sortSprintsByPhaseHierarchy
 } from './planCalcs';
 import { downloadBlankPlanTemplate, exportProjectPlanToExcel } from './planExcelExports';
 import { PlanImportModal } from './PlanImportModal';
@@ -267,7 +268,10 @@ export function SprintPlanTab({ project }) {
     try {
       if (!force) setLoading(true);
       const data = await fetchProjectPlan(projectId, { force });
-      setPlanData(data);
+      setPlanData({
+        ...data,
+        sprints: sortSprintsByPhaseHierarchy(data.sprints || [])
+      });
     } catch (err) {
       if (!err.message?.includes('Unauthorized')) {
         addToast(err.message || 'Failed to load project plan', 'error');
@@ -477,9 +481,9 @@ export function SprintPlanTab({ project }) {
     });
   }, [projectTasks, planData.sprints, phaseFilter, sprintFilter, workstreamFilter, gateFilter, statusFilter, riskFilter, searchQuery, today, getTaskAssignees]);
 
-  // Sprints matching current filters
+  // Sprints matching current filters, sorted in phase hierarchy order
   const displayedSprints = useMemo(() => {
-    let list = planData.sprints;
+    let list = sortSprintsByPhaseHierarchy(planData.sprints || []);
     if (phaseFilter !== 'ALL') {
       const norm = normalizePhase(phaseFilter);
       list = list.filter(s => normalizePhase(s.phase) === norm);
@@ -963,9 +967,15 @@ export function SprintPlanTab({ project }) {
                 className="px-3 py-1.5 text-xs border border-slate-200 rounded-xl bg-slate-50/50 focus:bg-white font-medium text-slate-700"
               >
                 <option value="ALL">All Sprints</option>
-                {planData.sprints.map(s => (
-                  <option key={s.id} value={String(s.id)}>Sprint {s.code} ({s.phase})</option>
-                ))}
+                {sortSprintsByPhaseHierarchy(planData.sprints || []).map(s => {
+                  const rawCode = String(s.code || '').trim();
+                  const codeLabel = rawCode.toLowerCase().startsWith('sprint')
+                    ? rawCode
+                    : (/^\d+$/.test(rawCode) ? `Sprint ${rawCode}` : (rawCode ? `Sprint ${rawCode}` : 'Sprint'));
+                  return (
+                    <option key={s.id} value={String(s.id)}>{codeLabel} ({s.phase})</option>
+                  );
+                })}
               </select>
 
               {/* Workstream Filter */}

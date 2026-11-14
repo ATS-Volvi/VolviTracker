@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Avatar } from '../widgets/Avatar';
 import { formatTaskCode } from '../../utils/taskCode';
+import { sortSprintsByPhaseHierarchy } from '../projects/plan/planCalcs';
 
 /**
  * Flexible Date Parser
@@ -467,10 +468,13 @@ export const GanttRoadmapModal = ({
     });
   }, [processedTasks, searchQuery, filterSprint, filterPhase, filterStatus, viewTimeframe, todayDate]);
 
+  // Sprints sorted in phase hierarchy order
+  const sortedSprints = useMemo(() => sortSprintsByPhaseHierarchy(sprints || []), [sprints]);
+
   // Project milestones / Sprints summary
   const sprintMilestones = useMemo(() => {
-    if (sprints && sprints.length > 0) {
-      return sprints.map((sp, idx) => {
+    if (sortedSprints && sortedSprints.length > 0) {
+      return sortedSprints.map((sp, idx) => {
         const sprintTasks = processedTasks.filter(t => String(t.sprintId) === String(sp.id));
         const doneTasks = sprintTasks.filter(t => t.isDone).length;
         const total = sprintTasks.length;
@@ -502,7 +506,7 @@ export const GanttRoadmapModal = ({
       dueDate: formatOrdinalDate(t.parsedDue, false),
       isSignedOff: t.isDone || t.progress >= 95
     }));
-  }, [sprints, processedTasks]);
+  }, [sortedSprints, processedTasks]);
 
   const onScheduleMilestonesCount = useMemo(() => {
     const onSchedule = sprintMilestones.filter(m => m.progress >= 50 || m.isSignedOff).length;
@@ -800,14 +804,14 @@ export const GanttRoadmapModal = ({
                 />
 
                 {/* Sprint Filter */}
-                {sprints && sprints.length > 0 && (
+                {sortedSprints && sortedSprints.length > 0 && (
                   <select
                     value={filterSprint}
                     onChange={(e) => setFilterSprint(e.target.value)}
                     className="px-2 py-1 text-xs font-semibold border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                   >
                     <option value="ALL">All Sprints</option>
-                    {sprints.map(s => (
+                    {sortedSprints.map(s => (
                       <option key={s.id} value={s.id}>{s.name || s.code}</option>
                     ))}
                   </select>

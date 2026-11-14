@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Avatar from '../widgets/Avatar';
 import { fetchProjectPlan } from '../../services/projectPlanApi';
-import { normalizePhase, calculateWeightedCompletion } from './plan/planCalcs';
+import { normalizePhase, calculateWeightedCompletion, sortSprintsByPhaseHierarchy } from './plan/planCalcs';
 import { GanttRoadmapModal } from '../tasks/GanttRoadmapModal';
 
 /**
@@ -32,7 +32,7 @@ export const ProjectKpiDisplay = ({
       try {
         const data = await fetchProjectPlan(project.id);
         if (isMounted && data) {
-          setPlanSprints(data.sprints || []);
+          setPlanSprints(sortSprintsByPhaseHierarchy(data.sprints || []));
           setPlanTasks(data.tasks || []);
         }
       } catch (err) {
@@ -391,7 +391,7 @@ export const ProjectKpiDisplay = ({
       return { list: [], avgTrackPct: 0, totalSprints: 0 };
     }
 
-    const list = planSprints.map((s, idx) => {
+    const list = sortSprintsByPhaseHierarchy(planSprints).map((s, idx) => {
       const sTasks = combinedTasks.filter(t => {
         if (t.sprintPhase && s.phase && normalizePhase(t.sprintPhase) === normalizePhase(s.phase)) {
           return true;
