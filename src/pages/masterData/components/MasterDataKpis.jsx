@@ -4,6 +4,7 @@ export default function MasterDataKpis({
   masterDirectory,
   clientCount,
   supplierCount,
+  employeeCount,
   kycComplianceStats,
   vaultVolumeStats,
   currencyStats,
@@ -23,11 +24,11 @@ export default function MasterDataKpis({
           <span className="text-3xl font-extrabold text-gray-900 font-display tracking-tight">{masterDirectory.length}</span>
           <span className="text-xs text-gray-500 font-medium">Entities in Master</span>
         </div>
-        <div className="bg-gray-50/90 border border-gray-100 rounded-xl px-3 py-1.5 flex items-center justify-between text-[11px] font-medium text-gray-600">
+        <div className="bg-gray-50/90 border border-gray-100 rounded-xl px-2.5 py-1.5 flex items-center justify-between text-[11px] font-medium text-gray-600 flex-wrap gap-1">
           <button
             type="button"
             onClick={() => handleSelectSegment('CLIENTS')}
-            className="flex items-center gap-1.5 hover:text-blue-600 transition"
+            className="flex items-center gap-1 hover:text-blue-600 transition cursor-pointer"
             title="Filter Clients"
           >
             <span className="w-2 h-2 rounded-full bg-blue-600"></span>
@@ -37,12 +38,26 @@ export default function MasterDataKpis({
           <button
             type="button"
             onClick={() => handleSelectSegment('SUPPLIERS')}
-            className="flex items-center gap-1.5 hover:text-emerald-600 transition"
+            className="flex items-center gap-1 hover:text-emerald-600 transition cursor-pointer"
             title="Filter Suppliers"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
             <span><strong>{supplierCount}</strong> Suppliers</span>
           </button>
+          {employeeCount !== undefined && (
+            <>
+              <span className="text-gray-300">•</span>
+              <button
+                type="button"
+                onClick={() => handleSelectSegment('EMPLOYEES')}
+                className="flex items-center gap-1 hover:text-purple-600 transition cursor-pointer"
+                title="View Team & Users"
+              >
+                <span className="w-2 h-2 rounded-full bg-purple-600"></span>
+                <span><strong>{employeeCount}</strong> Users</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 

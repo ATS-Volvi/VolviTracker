@@ -13,7 +13,17 @@ export default function MasterDataHeader({
         <div className="flex items-center gap-2 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
           <span>Governance & Master Data</span>
           <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-          <span className="text-blue-600 font-bold">Client & Supplier Directory</span>
+          <span className="text-blue-600 font-bold">
+            {activeSegment === 'EMPLOYEES'
+              ? 'Team & Users Directory'
+              : activeSegment === 'VAULT'
+              ? 'Document Vault'
+              : activeSegment === 'POS'
+              ? 'PO Master Registry'
+              : activeSegment === 'SUPPLIERS'
+              ? 'Supplier Directory'
+              : 'Client & Supplier Directory'}
+          </span>
         </div>
         <div className="flex items-center gap-3">
           <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 font-display tracking-tight">

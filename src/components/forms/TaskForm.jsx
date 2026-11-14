@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../widgets/Modal';
+import { SearchableEmployeeSelect } from '../widgets/SearchableEmployeeSelect';
 import { PROJECT_PHASES, getPhaseTheme } from '../projects/plan/planCalcs';
 
 const STATUSES = ['Not started', 'In progress', 'Done'];
@@ -546,30 +547,6 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
     });
   };
 
-  const toggleAssignee = (empId) => {
-    const targetId = String(empId);
-    setForm(prev => {
-      const exists = prev.assigneeIds.some(id => String(id) === targetId);
-      const newIds = exists
-        ? prev.assigneeIds.filter(id => String(id) !== targetId)
-        : [...prev.assigneeIds, targetId];
-      return { ...prev, assigneeIds: newIds, assigneeId: newIds[0] || '' };
-    });
-  };
-
-  const handleSelectAllAssignees = () => {
-    const allIds = employees.map(e => String(e.id));
-    setForm(prev => ({
-      ...prev,
-      assigneeIds: allIds,
-      assigneeId: allIds[0] || ''
-    }));
-  };
-
-  const handleClearAssignees = () => {
-    setForm(prev => ({ ...prev, assigneeIds: [], assigneeId: '' }));
-  };
-
   const handleCreateSubtask = (parentId) => {
     const title = newSubtaskTitle.trim();
     if (!title) return;
@@ -674,6 +651,7 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
       createdDate: effectiveCreatedDate,
       createdAt: new Date(effectiveCreatedDate).toISOString(),
       parentId: form.parentId || null,
+      taskCode: initial?.taskCode || initial?.code || undefined,
       assigneeIds: finalAssigneeIds,
       assigneeId: finalAssigneeIds[0] || ''
     };
@@ -791,103 +769,30 @@ export const TaskForm = ({ isOpen, open, onClose, initial = null, projects: proj
             </div>
           )}
 
-          {/* Assignee Selection */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-semibold text-gray-700">
-                Assign Team Members ({form.assigneeIds.length} selected)
-              </label>
-              <div className="flex items-center gap-2 text-[11px]">
-                <button
-                  type="button"
-                  onClick={handleSelectAllAssignees}
-                  className="text-blue-600 hover:underline font-semibold"
-                >
-                  Select all
-                </button>
-                <span className="text-gray-300">|</span>
-                <button
-                  type="button"
-                  onClick={handleClearAssignees}
-                  className="text-gray-500 hover:underline"
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2 border border-gray-200 rounded-xl bg-gray-50/60 custom-scrollbar">
-              {(() => {
-                const selectedProj = accessibleProjects.find(p => p.id === form.projectId);
-                const projAssigneeIds = Array.isArray(selectedProj?.assigneeIds)
-                  ? selectedProj.assigneeIds
-                  : (selectedProj?.assigneeId ? [selectedProj.assigneeId] : []);
-
-                const sorted = [...employees].sort((a, b) => {
-                  const aTask = form.assigneeIds.some(id => String(id) === String(a.id));
-                  const bTask = form.assigneeIds.some(id => String(id) === String(b.id));
-                  const aProj = projAssigneeIds.some(id => String(id) === String(a.id));
-                  const bProj = projAssigneeIds.some(id => String(id) === String(b.id));
-
-                  const aChosen = aTask || aProj;
-                  const bChosen = bTask || bProj;
-                  if (aChosen && !bChosen) return -1;
-                  if (!aChosen && bChosen) return 1;
-
-                  if (aTask && !bTask) return -1;
-                  if (!aTask && bTask) return 1;
-
-                  return (a.fullName || '').localeCompare(b.fullName || '');
-                });
-
-                return sorted.map(emp => {
-                  const isSelected = form.assigneeIds.some(id => String(id) === String(emp.id));
-                  const isProjectMember = projAssigneeIds.some(id => String(id) === String(emp.id));
-
-                  return (
-                    <div
-                      key={emp.id}
-                      onClick={() => toggleAssignee(emp.id)}
-                      className={`flex items-center gap-2.5 p-1.5 rounded-lg cursor-pointer border transition text-xs select-none ${
-                        isSelected
-                          ? 'bg-blue-50 border-blue-400 text-blue-900 shadow-2xs font-semibold'
-                          : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          toggleAssignee(emp.id);
-                        }}
-                        className="h-3.5 w-3.5 accent-blue-600 rounded cursor-pointer"
-                      />
-                      <img
-                        src={emp.avatar}
-                        alt={emp.fullName}
-                        className="w-5 h-5 rounded-full object-cover shrink-0"
-                        onError={(ev) => {
-                          ev.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.fullName)}&background=0070F3&color=fff`;
-                        }}
-                      />
-                      <div className="truncate flex-1">
-                        <div className="flex items-center gap-1.5 truncate">
-                          <span className="truncate">{emp.fullName}</span>
-                          {isProjectMember && (
-                            <span className="text-[9px] font-medium text-purple-700 bg-purple-50 px-1 py-0.2 rounded border border-purple-200 shrink-0">
-                              Project Team
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[10px] text-gray-400 font-normal truncate">{emp.role || emp.email}</div>
-                      </div>
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-          </div>
+          {/* Assignee Selection - Searchable Dropdown */}
+          <SearchableEmployeeSelect
+            label="Assign Team Members"
+            employees={employees}
+            selectedIds={form.assigneeIds}
+            onChange={(newIds) => {
+              setForm(prev => ({
+                ...prev,
+                assigneeIds: newIds,
+                assigneeId: newIds[0] || ''
+              }));
+            }}
+            placeholder="Select team members..."
+            searchPlaceholder="Search team members by name, role, email..."
+            accentColor="blue"
+            highlightIds={(() => {
+              const selectedProj = accessibleProjects.find(p => String(p.id) === String(form.projectId));
+              return Array.isArray(selectedProj?.assigneeIds)
+                ? selectedProj.assigneeIds
+                : (selectedProj?.assigneeId ? [selectedProj.assigneeId] : []);
+            })()}
+            highlightBadgeLabel="Project Team"
+            showChips={true}
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <div>

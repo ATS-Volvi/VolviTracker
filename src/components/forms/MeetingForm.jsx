@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../widgets/Modal';
+import { SearchableEmployeeSelect } from '../widgets/SearchableEmployeeSelect';
 
 const STATUSES = ['Not started', 'In progress', 'Done'];
 
@@ -59,7 +60,6 @@ export const MeetingForm = ({ isOpen, open, onClose, initial = null, defaultDate
   };
 
   const setTimePreset = (type) => {
-    const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     let target = form.dateTime ? new Date(form.dateTime) : new Date();
     if (isNaN(target.getTime())) target = new Date();
@@ -118,16 +118,6 @@ export const MeetingForm = ({ isOpen, open, onClose, initial = null, defaultDate
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
-  const toggleAttendee = (empId) => {
-    setForm(prev => {
-      const exists = prev.attendeeIds.includes(empId);
-      const newIds = exists
-        ? prev.attendeeIds.filter(id => id !== empId)
-        : [...prev.attendeeIds, empId];
-      return { ...prev, attendeeIds: newIds };
-    });
-  };
-
   const submit = (e) => {
     e.preventDefault();
     if (form.attendeeIds.length === 0) {
@@ -158,66 +148,17 @@ export const MeetingForm = ({ isOpen, open, onClose, initial = null, defaultDate
           <input className="input-field font-medium" value={form.name} onChange={set('name')} required placeholder="e.g. Design Review & Sync" />
         </div>
 
-        {/* Multi-Attendee Picker */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="block text-xs font-semibold text-gray-600">
-              Attendees ({form.attendeeIds.length} selected)
-            </label>
-            <div className="flex items-center gap-2 text-[11px]">
-              <button
-                type="button"
-                onClick={() => setForm(prev => ({ ...prev, attendeeIds: employees.map(e => e.id) }))}
-                className="text-blue-600 hover:underline font-medium"
-              >
-                Select all
-              </button>
-              <span className="text-gray-300">|</span>
-              <button
-                type="button"
-                onClick={() => setForm(prev => ({ ...prev, attendeeIds: [] }))}
-                className="text-gray-500 hover:underline"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-y-auto p-2 border border-gray-200 rounded-xl bg-gray-50/50">
-            {employees.map(emp => {
-              const isSelected = form.attendeeIds.includes(emp.id);
-              return (
-                <div
-                  key={emp.id}
-                  onClick={() => toggleAttendee(emp.id)}
-                  className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer border transition text-xs select-none ${
-                    isSelected
-                      ? 'bg-blue-50/80 border-blue-400 text-blue-900 shadow-xs'
-                      : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => {}}
-                    className="h-3.5 w-3.5 accent-blue-600 rounded"
-                  />
-                  {emp.avatar ? (
-                    <img src={emp.avatar} alt={emp.fullName} className="w-5 h-5 rounded-full object-cover" />
-                  ) : (
-                    <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-[9px]">
-                      {emp.fullName?.charAt(0) || 'U'}
-                    </div>
-                  )}
-                  <div className="truncate flex-1">
-                    <div className="font-semibold truncate">{emp.fullName}</div>
-                    <div className="text-[10px] text-gray-400 truncate">{emp.role || emp.email}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        {/* Multi-Attendee Picker - Searchable Dropdown */}
+        <SearchableEmployeeSelect
+          label="Attendees"
+          employees={employees}
+          selectedIds={form.attendeeIds}
+          onChange={(newIds) => setForm(prev => ({ ...prev, attendeeIds: newIds }))}
+          placeholder="Select attendees..."
+          searchPlaceholder="Search attendees by name, role, email..."
+          accentColor="indigo"
+          showChips={true}
+        />
 
         <div>
           <div className="flex items-center justify-between mb-1">

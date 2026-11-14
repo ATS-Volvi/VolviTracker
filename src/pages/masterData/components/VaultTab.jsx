@@ -5,6 +5,7 @@ export default function VaultTab({
   vaultDocs,
   clientCount,
   supplierCount,
+  employeeCount,
   totalPoCount,
   handleSelectSegment,
   onOpenUploadVault,
@@ -30,6 +31,7 @@ export default function VaultTab({
           handleSelectSegment={handleSelectSegment}
           clientCount={clientCount}
           supplierCount={supplierCount}
+          employeeCount={employeeCount}
           vaultDocsCount={vaultDocs.length}
           totalPoCount={totalPoCount}
         />

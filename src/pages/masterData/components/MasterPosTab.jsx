@@ -8,6 +8,7 @@ export default function MasterPosTab({
   poMetrics,
   clientCount,
   supplierCount,
+  employeeCount,
   vaultDocsCount,
   totalPoCount,
   handleSelectSegment,
@@ -43,6 +44,7 @@ export default function MasterPosTab({
           handleSelectSegment={handleSelectSegment}
           clientCount={clientCount}
           supplierCount={supplierCount}
+          employeeCount={employeeCount}
           vaultDocsCount={vaultDocsCount}
           totalPoCount={totalPoCount}
         />

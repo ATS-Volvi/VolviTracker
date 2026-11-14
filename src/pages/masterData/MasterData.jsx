@@ -3,6 +3,7 @@ import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { useData } from '../../context/DataContext';
 import { fetchFinanceData, loadFinanceData, saveFinanceData, subscribeFinanceData } from '../finance/financeData';
 import FinanceBrowserImportBanner from '../../components/finance/FinanceBrowserImportBanner';
 import { FinanceLoadingSpinner, FinanceErrorBanner } from '../../components/finance/FinancePageStatus';
@@ -18,12 +19,14 @@ import MasterEntityTable from './components/MasterEntityTable';
 import EntityInspector from './components/EntityInspector';
 import VaultTab from './components/VaultTab';
 import MasterPosTab from './components/MasterPosTab';
+import EmployeesTab from './components/EmployeesTab';
 import DeleteEntityModal from './components/DeleteEntityModal';
 import DeletePoModal from './components/DeletePoModal';
 
 const MasterData = () => {
   const { addToast } = useToast();
   const { isAdmin } = useAuth();
+  const { employees = [] } = useData();
   const [searchParams, setSearchParams] = useSearchParams();
   const { companyId } = useParams();
   const navigate = useNavigate();
@@ -71,10 +74,11 @@ const MasterData = () => {
   // Filters state from URL or default
   const paramTab = searchParams.get('tab')?.toUpperCase();
   const initialSegment = paramTab === 'SUPPLIERS' || paramTab === 'SUPPLIER' ? 'SUPPLIERS' :
+    paramTab === 'EMPLOYEES' || paramTab === 'EMPLOYEE' || paramTab === 'USERS' || paramTab === 'TEAM' ? 'EMPLOYEES' :
     paramTab === 'VAULT' ? 'VAULT' :
     paramTab === 'POS' || paramTab === 'PO' ? 'POS' : 'CLIENTS';
 
-  const [activeSegment, setActiveSegment] = useState(initialSegment); // 'CLIENTS' | 'SUPPLIERS' | 'VAULT' | 'POS'
+  const [activeSegment, setActiveSegment] = useState(initialSegment); // 'CLIENTS' | 'SUPPLIERS' | 'EMPLOYEES' | 'VAULT' | 'POS'
 
   const masterDirectory = data.masterDirectory || [];
   const vaultDocs = data.vault || [];
@@ -635,6 +639,7 @@ const MasterData = () => {
             masterDirectory={masterDirectory}
             clientCount={clientCount}
             supplierCount={supplierCount}
+            employeeCount={employees.length}
             kycComplianceStats={kycComplianceStats}
             vaultVolumeStats={vaultVolumeStats}
             currencyStats={currencyStats}
@@ -642,7 +647,7 @@ const MasterData = () => {
           />
 
           {/* Main Grid: Directory Table + 360 Entity Inspector Side Panel */}
-          {activeSegment !== 'VAULT' && activeSegment !== 'POS' && (
+          {activeSegment !== 'VAULT' && activeSegment !== 'POS' && activeSegment !== 'EMPLOYEES' && (
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
               {/* Left / Center: Interactive Master Table */}
               <div className="xl:col-span-8 bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden flex flex-col">
@@ -652,6 +657,7 @@ const MasterData = () => {
                     handleSelectSegment={handleSelectSegment}
                     clientCount={clientCount}
                     supplierCount={supplierCount}
+                    employeeCount={employees.length}
                     vaultDocsCount={vaultDocs.length}
                     totalPoCount={totalPoCount}
                   />
@@ -707,12 +713,24 @@ const MasterData = () => {
             </div>
           )}
 
+          {/* Team & Users Directory Tab (List View) */}
+          {activeSegment === 'EMPLOYEES' && (
+            <EmployeesTab
+              clientCount={clientCount}
+              supplierCount={supplierCount}
+              vaultDocsCount={vaultDocs.length}
+              totalPoCount={totalPoCount}
+              handleSelectSegment={handleSelectSegment}
+            />
+          )}
+
           {/* Document Vault Tab */}
           {activeSegment === 'VAULT' && (
             <VaultTab
               vaultDocs={vaultDocs}
               clientCount={clientCount}
               supplierCount={supplierCount}
+              employeeCount={employees.length}
               totalPoCount={totalPoCount}
               handleSelectSegment={handleSelectSegment}
               onOpenUploadVault={() => setUploadVaultOpen(true)}
@@ -728,6 +746,7 @@ const MasterData = () => {
               poMetrics={poMetrics}
               clientCount={clientCount}
               supplierCount={supplierCount}
+              employeeCount={employees.length}
               vaultDocsCount={vaultDocs.length}
               totalPoCount={totalPoCount}
               handleSelectSegment={handleSelectSegment}

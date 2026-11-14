@@ -6,6 +6,7 @@ import { Avatar } from '../../widgets/Avatar';
 import { TaskForm } from '../../forms/TaskForm';
 import { sortTasks } from '../../../utils/taskSort';
 import { useTableFlipAnimation } from '../../../utils/useTableFlipAnimation';
+import { formatTaskCode } from '../../../utils/taskCode';
 import {
   fetchProjectPlan,
   updateSprintTask,
@@ -13,7 +14,7 @@ import {
   deleteSprint
 } from '../../../services/projectPlanApi';
 import {
-  calculateDashboardMetrics,
+  calculateWeightedCompletion,
   calculateTaskScheduleStatus,
   calculateTaskRiskFlag,
   getLocalDateString,
@@ -24,6 +25,7 @@ import {
 import { downloadBlankPlanTemplate, exportProjectPlanToExcel } from './planExcelExports';
 import { PlanImportModal } from './PlanImportModal';
 import { AddEditSprintModal } from './AddEditSprintModal';
+import { GanttRoadmapModal } from '../../tasks/GanttRoadmapModal';
 
 const fmtFullDate = (d) => {
   if (!d) return '—';
@@ -242,6 +244,7 @@ export function SprintPlanTab({ project }) {
 
   const [isSprintModalOpen, setIsSprintModalOpen] = useState(false);
   const [editingSprint, setEditingSprint] = useState(null);
+  const [isGanttModalOpen, setIsGanttModalOpen] = useState(false);
 
   // Permission: Admin or Project Manager of this project
   const canEdit = useMemo(() => {
@@ -329,6 +332,9 @@ export function SprintPlanTab({ project }) {
         if (pt.sprintId && !matched.sprintId) matched.sprintId = pt.sprintId;
         if (pt.gateId && !matched.gateId) matched.gateId = pt.gateId;
         if (pt.workstream && !matched.workstream) matched.workstream = pt.workstream;
+        if (pt.priority && !matched.priority) matched.priority = pt.priority;
+        if (pt.owner && !matched.owner) matched.owner = pt.owner;
+        if ((pt.plannedFinish || pt.dueDate) && !matched.dueDate) matched.dueDate = pt.plannedFinish || pt.dueDate;
       } else {
         // Only if it doesn't match any existing task by ID or Title, add it as a new plan task
         const isKnown = idMap.has(rawPtId) || idMap.has(cleanPtId) || idMap.has(normPtId) || (ptTitle && titleMap.has(ptTitle));
@@ -340,14 +346,14 @@ export function SprintPlanTab({ project }) {
             sprintId: pt.sprintId,
             gateId: pt.gateId,
             taskCode: pt.taskCode,
-            status: (Number(pt.percentComplete || 0) >= 100) ? 'Done' : 'In progress',
-            dueDate: pt.plannedFinish,
+            status: (Number(pt.percentComplete || 0) >= 100) ? 'Done' : (pt.status || 'In progress'),
+            dueDate: pt.plannedFinish || pt.dueDate,
             createdDate: pt.plannedStart,
             completedDate: pt.actualCompletionDate,
-            priority: 'Medium',
+            priority: pt.priority || 'Medium',
             description: pt.planningBasis || '',
-            assigneeIds: [],
-            owner: pt.owner
+            assigneeIds: Array.isArray(pt.assigneeIds) ? pt.assigneeIds : (pt.assigneeId ? [pt.assigneeId] : []),
+            owner: pt.owner || ''
           });
           idMap.add(rawPtId);
           idMap.add(cleanPtId);
@@ -396,11 +402,6 @@ export function SprintPlanTab({ project }) {
     }
     return [];
   }, [employees]);
-
-  // Derived metrics for project dashboard tiles
-  const metrics = useMemo(() => {
-    return calculateDashboardMetrics(planData, today);
-  }, [planData, today]);
 
   // Workstream and Gate options for filters
   const workstreams = useMemo(() => {
@@ -840,6 +841,17 @@ export function SprintPlanTab({ project }) {
             </button>
           )}
 
+          {/* Gantt Chart Button */}
+          <button
+            type="button"
+            onClick={() => setIsGanttModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 active:bg-indigo-200 text-xs font-bold text-indigo-700 shadow-2xs transition cursor-pointer"
+            title="Open Interactive Gantt Chart & Roadmap"
+          >
+            <span className="material-symbols-outlined text-[16px] text-indigo-600">view_timeline</span>
+            <span>Gantt Chart</span>
+          </button>
+
           {canEdit && (
             <>
               <button
@@ -927,186 +939,7 @@ export function SprintPlanTab({ project }) {
         </div>
       ) : (
         <>
-          {/* 2. Summary Metric Cards (6 KPI Tiles) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {/* Overall Completion */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Overall Progress</div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-2xl font-black text-slate-900">{metrics.overallCompletion}%</span>
-                <span className="material-symbols-outlined text-blue-600 text-[20px]">trending_up</span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                <div
-                  className="bg-blue-600 h-full rounded-full transition-all duration-300"
-                  style={{ width: `${Math.min(100, Math.max(0, metrics.overallCompletion))}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Tasks Overdue */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tasks Overdue</div>
-              <div className="flex items-baseline justify-between">
-                <span className={`text-2xl font-black ${metrics.tasksOverdue > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
-                  {metrics.tasksOverdue}
-                </span>
-                <span className="material-symbols-outlined text-rose-500 text-[20px]">warning</span>
-              </div>
-              <p className="text-[10px] text-slate-400">Target date elapsed</p>
-            </div>
-
-            {/* High-Risk Tasks */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">High-Risk Tasks</div>
-              <div className="flex items-baseline justify-between">
-                <span className={`text-2xl font-black ${metrics.highRiskTasks > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
-                  {metrics.highRiskTasks}
-                </span>
-                <span className="material-symbols-outlined text-amber-500 text-[20px]">flag</span>
-              </div>
-              <p className="text-[10px] text-slate-400">Overdue or due soon</p>
-            </div>
-
-            {/* Gates Approved */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Gates Approved</div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-2xl font-black text-emerald-600">
-                  {metrics.gatesApproved} / {planData.gates.length}
-                </span>
-                <span className="material-symbols-outlined text-emerald-500 text-[20px]">verified</span>
-              </div>
-              <p className="text-[10px] text-slate-400">Formal sign-off recorded</p>
-            </div>
-
-            {/* Gates Past Target */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Gates Past Target</div>
-              <div className="flex items-baseline justify-between">
-                <span className={`text-2xl font-black ${metrics.gatesPastTarget > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
-                  {metrics.gatesPastTarget}
-                </span>
-                <span className="material-symbols-outlined text-rose-400 text-[20px]">event_busy</span>
-              </div>
-              <p className="text-[10px] text-slate-400">Approval unconfirmed</p>
-            </div>
-
-            {/* Planned Go-Live */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Planned Go-Live</div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-base font-black text-slate-900 truncate">
-                  {metrics.plannedGoLive || 'TBD'}
-                </span>
-                <span className="material-symbols-outlined text-indigo-500 text-[20px]">rocket_launch</span>
-              </div>
-              <p className="text-[10px] text-slate-400">Target milestone</p>
-            </div>
-          </div>
-
-          {/* 3. Progress by Sprint Table */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <h3 className="text-xs font-black text-slate-900 tracking-wide uppercase">Progress by Sprint</h3>
-              <span className="text-xs text-slate-500 font-semibold">{planData.sprints.length} Sprints</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50/70 border-b border-slate-200/80 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                    <th className="py-2.5 px-4">Sprint</th>
-                    <th className="py-2.5 px-3">Phase</th>
-                    <th className="py-2.5 px-3">Window</th>
-                    <th className="py-2.5 px-3 text-center">Tasks</th>
-                    <th className="py-2.5 px-3 w-44">Weighted Completion</th>
-                    <th className="py-2.5 px-3 text-center">Overdue</th>
-                    <th className="py-2.5 px-3 text-center">Due Soon</th>
-                    <th className="py-2.5 px-3 text-center">High Risk</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {planData.sprints.map(s => {
-                    const phaseTheme = getPhaseTheme(s.phase);
-                    const sprintTasks = tasksBySprint.get(String(s.id)) || [];
-                    const completedCount = sprintTasks.filter(t => String(t.status || '').toLowerCase() === 'done').length;
-                    const completionPct = sprintTasks.length > 0 ? Math.round((completedCount / sprintTasks.length) * 100) : 0;
-                    const overdueCount = sprintTasks.filter(t => getDueMeta(t.dueDate, t.status).isOverdue).length;
-                    const dueSoonCount = sprintTasks.filter(t => {
-                      const dm = getDueMeta(t.dueDate, t.status);
-                      return !dm.isOverdue && dm.subtext && dm.subtext.startsWith('Due');
-                    }).length;
-                    const highRiskCount = sprintTasks.filter(t => {
-                      const isDone = String(t.status || '').toLowerCase() === 'done';
-                      return !isDone && (getDueMeta(t.dueDate, t.status).isOverdue || String(t.priority).toLowerCase() === 'high');
-                    }).length;
-
-                    return (
-                      <tr key={s.id} className="hover:bg-blue-50/20 transition">
-                        <td className="py-2.5 px-4 font-bold text-slate-900">
-                          <span className="font-mono text-[11px] font-bold text-slate-900 mr-1.5">
-                            {s.code}
-                          </span>
-                          {s.name && s.name !== s.code && (
-                            <span className="text-slate-600 font-normal">({s.name})</span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className="text-slate-700 font-medium text-[11px]">
-                            {s.phase || '—'}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-500 text-[11px]">
-                          {s.startDate && s.endDate ? `${s.startDate} → ${s.endDate}` : 'TBD'}
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-bold text-slate-800">{sprintTasks.length}</td>
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                              <div
-                                className="bg-blue-600 h-full rounded-full"
-                                style={{ width: `${Math.min(100, Math.max(0, completionPct))}%` }}
-                              />
-                            </div>
-                            <span className="text-[11px] font-bold text-slate-700 w-10 text-right">{completionPct}%</span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          {overdueCount > 0 ? (
-                            <span className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 font-bold text-[11px]">
-                              {overdueCount}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">0</span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          {dueSoonCount > 0 ? (
-                            <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[11px]">
-                              {dueSoonCount}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">0</span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          {highRiskCount > 0 ? (
-                            <span className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 font-bold text-[11px]">
-                              {highRiskCount}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">0</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* 4. Filter Bar */}
+          {/* Filter Bar */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
             <div className="flex items-center gap-2.5 flex-wrap">
               {/* Search */}
@@ -1245,6 +1078,12 @@ export function SprintPlanTab({ project }) {
               const sprintTasks = buildSprintHierarchy(rawSprintTasks);
               const isCollapsed = collapsedSprints.has(String(s.id));
               const sprintCompletedTasks = rawSprintTasks.filter(t => String(t.status || '').toLowerCase() === 'done').length;
+              const sprintWeightedCompletion = calculateWeightedCompletion(rawSprintTasks);
+              const sprintOverdueCount = rawSprintTasks.filter(t => getDueMeta(t.dueDate, t.status).isOverdue).length;
+              const sprintHighRiskCount = rawSprintTasks.filter(t => {
+                const isDone = String(t.status || '').toLowerCase() === 'done';
+                return !isDone && (getDueMeta(t.dueDate, t.status).isOverdue || String(t.priority).toLowerCase() === 'high');
+              }).length;
               const phaseTheme = getPhaseTheme(s.phase);
 
               return (
@@ -1301,11 +1140,55 @@ export function SprintPlanTab({ project }) {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-4 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      {/* Completion Progress */}
-                      <div className="text-right text-xs">
-                        <span className="font-bold text-slate-900">{sprintCompletedTasks}/{rawSprintTasks.length}</span>
-                        <span className="text-slate-400 text-[11px] ml-1">tasks</span>
+                    <div className="flex items-center gap-4 sm:gap-6 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      {/* Sprint Metrics: Tasks & Weighted Completion */}
+                      <div className="flex items-center gap-4 sm:gap-5">
+                        {/* Tasks Count */}
+                        <div className="flex flex-col items-end text-right">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            Tasks
+                          </span>
+                          <div className="text-xs font-bold text-slate-900 flex items-center gap-1">
+                            <span>{rawSprintTasks.length}</span>
+                            <span className="text-[11px] font-normal text-slate-400">
+                              ({sprintCompletedTasks}/{rawSprintTasks.length})
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Weighted Completion */}
+                        <div className="flex flex-col items-end min-w-[130px] sm:min-w-[160px]">
+                          <div className="flex items-center justify-between w-full mb-1 text-[10px]">
+                            <span className="font-bold text-slate-400 uppercase tracking-wider">
+                              Weighted Completion
+                            </span>
+                            <span className="font-bold text-slate-900 tabular-nums">
+                              {sprintWeightedCompletion}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-200/80 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className="bg-blue-600 h-full rounded-full transition-all duration-300"
+                              style={{ width: `${Math.min(100, Math.max(0, sprintWeightedCompletion))}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Badges for Overdue or High Risk if any */}
+                        {(sprintOverdueCount > 0 || sprintHighRiskCount > 0) && (
+                          <div className="hidden lg:flex items-center gap-1.5">
+                            {sprintOverdueCount > 0 && (
+                              <span className="px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 font-bold text-[10px]" title={`${sprintOverdueCount} tasks overdue`}>
+                                {sprintOverdueCount} Overdue
+                              </span>
+                            )}
+                            {sprintHighRiskCount > 0 && (
+                              <span className="px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold text-[10px]" title={`${sprintHighRiskCount} high risk tasks`}>
+                                {sprintHighRiskCount} High Risk
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {canEdit && (
@@ -1405,7 +1288,7 @@ export function SprintPlanTab({ project }) {
                               const taskTags = getTaskTags(t);
                               const subInfo = subtasksMap.get(String(t.id));
                               const dueMeta = getDueMeta(t.dueDate, t.status);
-                              const taskIdCode = t.taskCode || t.code || `TSK-${String(idx + 1).padStart(2, '0')}`;
+                              const taskIdCode = formatTaskCode(t) || `TSK-${String(idx + 1).padStart(2, '0')}`;
                               const isSelected = selectedTaskIds.has(t.id);
                               const isDone = String(t.status || '').toLowerCase() === 'done';
                               const isMoving = movingTaskInfo?.id === String(t.id);
@@ -1663,13 +1546,30 @@ export function SprintPlanTab({ project }) {
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-amber-600 text-white font-mono font-bold text-xs shadow-2xs">
                       Backlog / Unassigned
                     </span>
-                    <span className="text-xs text-amber-900 font-medium">
+                    <span className="text-xs text-amber-900 font-medium hidden sm:inline">
                       Tasks not assigned to any existing sprint
                     </span>
                   </div>
-                  <span className="text-xs font-bold text-amber-800">
-                    {unassignedTasks.length} {unassignedTasks.length === 1 ? 'task' : 'tasks'}
-                  </span>
+                  <div className="flex items-center gap-4 sm:gap-6 shrink-0">
+                    <div className="flex flex-col items-end text-right">
+                      <span className="text-[10px] font-bold text-amber-700/70 uppercase tracking-wider">Tasks</span>
+                      <span className="text-xs font-bold text-amber-900">
+                        {unassignedTasks.length} <span className="text-[11px] font-normal text-amber-700/80">({unassignedTasks.filter(t => String(t.status || '').toLowerCase() === 'done').length}/{unassignedTasks.length})</span>
+                      </span>
+                    </div>
+                    <div className="flex flex-col items-end min-w-[130px] sm:min-w-[160px]">
+                      <div className="flex items-center justify-between w-full mb-1 text-[10px]">
+                        <span className="font-bold text-amber-700/70 uppercase tracking-wider">Weighted Completion</span>
+                        <span className="font-bold text-amber-900 tabular-nums">{calculateWeightedCompletion(unassignedTasks)}%</span>
+                      </div>
+                      <div className="w-full bg-amber-200/70 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="bg-amber-600 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(100, Math.max(0, calculateWeightedCompletion(unassignedTasks)))}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -1700,7 +1600,7 @@ export function SprintPlanTab({ project }) {
                         const taskTags = getTaskTags(t);
                         const subInfo = subtasksMap.get(String(t.id));
                         const dueMeta = getDueMeta(t.dueDate, t.status);
-                        const taskIdCode = t.taskCode || t.code || `TSK-${String(idx + 1).padStart(2, '0')}`;
+                        const taskIdCode = formatTaskCode(t) || `TSK-${String(idx + 1).padStart(2, '0')}`;
                         const isSelected = selectedTaskIds.has(t.id);
                         const isDone = String(t.status || '').toLowerCase() === 'done';
                         const isMoving = movingTaskInfo?.id === String(t.id);
@@ -1930,6 +1830,24 @@ export function SprintPlanTab({ project }) {
           onSuccess={() => loadPlan(true)}
         />
       )}
+
+      {/* Interactive Gantt Roadmap Modal */}
+      <GanttRoadmapModal
+        isOpen={isGanttModalOpen}
+        onClose={() => setIsGanttModalOpen(false)}
+        project={project}
+        tasks={projectTasks}
+        sprints={planData.sprints}
+        employees={employees}
+        onAddTask={() => {
+          setEditingTask({ projectId });
+          setIsTaskModalOpen(true);
+        }}
+        onEditTask={(t) => {
+          setEditingTask(t);
+          setIsTaskModalOpen(true);
+        }}
+      />
     </div>
   );
 }

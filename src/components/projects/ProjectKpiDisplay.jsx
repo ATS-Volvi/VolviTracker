@@ -1,12 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Avatar from '../widgets/Avatar';
+import { fetchProjectPlan } from '../../services/projectPlanApi';
+import { normalizePhase, calculateWeightedCompletion } from './plan/planCalcs';
+import { GanttRoadmapModal } from '../tasks/GanttRoadmapModal';
 
 /**
  * ProjectKpiDisplay
  * Modern, streamlined dynamic KPI and analytical overview matching top-tier product design:
  * 1. Top banner: Project title, details button, status, dates, client, team stack, and multi-segment pipeline completion
- * 2. 6 Metric KPI cards: Total Tasks, Completed, In Progress, In Review, Overdue, Due <48H
- * 3. 4 Analytical cards: Priority Status Overview, Tasks by Responsible, Task Status Overview, Track Completion
+ * 2. 4 Analytical cards: Priority Status Overview, Tasks by Responsible, Task Status Overview, Track Completion
  */
 export const ProjectKpiDisplay = ({
   project,
@@ -14,15 +16,135 @@ export const ProjectKpiDisplay = ({
   employees = [],
   onOpenProjectDetails,
 }) => {
-  // 1. Calculate project task counts and statuses
+  const [planSprints, setPlanSprints] = useState([]);
+  const [planTasks, setPlanTasks] = useState([]);
+  const [isGanttModalOpen, setIsGanttModalOpen] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!project?.id) {
+      setPlanSprints([]);
+      setPlanTasks([]);
+      return;
+    }
+
+    const loadPlan = async () => {
+      try {
+        const data = await fetchProjectPlan(project.id);
+        if (isMounted && data) {
+          setPlanSprints(data.sprints || []);
+          setPlanTasks(data.tasks || []);
+        }
+      } catch (err) {
+        console.error('Failed to load project plan sprints for KPI display:', err);
+      }
+    };
+
+    loadPlan();
+
+    const handleUpdate = (e) => {
+      if (!e.detail?.projectId || String(e.detail.projectId) === String(project.id)) {
+        loadPlan();
+      }
+    };
+
+    window.addEventListener('project_plan_updated', handleUpdate);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('project_plan_updated', handleUpdate);
+    };
+  }, [project?.id]);
+
+  // 1. Combined tasks list enriched with plan task metadata (sprintId, sprintPhase, percentComplete, etc.)
+  const combinedTasks = useMemo(() => {
+    const list = Array.isArray(tasks) ? tasks.map(t => ({ ...t })) : [];
+    const idMap = new Set();
+    const titleMap = new Set();
+
+    list.forEach(t => {
+      const rawId = String(t.id);
+      idMap.add(rawId);
+      idMap.add(rawId.replace(/^stk_/, ''));
+      const normId = rawId.replace(/^stk_/, '').replace(/_/g, '-');
+      idMap.add(normId);
+      if (t.name) titleMap.add(t.name.trim().toLowerCase());
+      if (t.title) titleMap.add(t.title.trim().toLowerCase());
+    });
+
+    (planTasks || []).forEach(pt => {
+      const rawPtId = String(pt.id);
+      const cleanPtId = rawPtId.replace(/^stk_/, '');
+      const normPtId = cleanPtId.replace(/_/g, '-');
+      const ptTitle = (pt.title || pt.name || '').trim().toLowerCase();
+
+      const matched = list.find(t => {
+        const rawTId = String(t.id);
+        const normTId = rawTId.replace(/^stk_/, '').replace(/_/g, '-');
+        if (rawTId === rawPtId || normTId === normPtId) return true;
+        if (ptTitle && (t.name || t.title) && (t.name || t.title).trim().toLowerCase() === ptTitle) return true;
+        return false;
+      });
+
+      if (matched) {
+        if (pt.taskCode && !matched.taskCode) matched.taskCode = pt.taskCode;
+        if (pt.sprintId && !matched.sprintId) matched.sprintId = pt.sprintId;
+        if (pt.gateId && !matched.gateId) matched.gateId = pt.gateId;
+        if (pt.workstream && !matched.workstream) matched.workstream = pt.workstream;
+        if (pt.sprintPhase && !matched.sprintPhase) matched.sprintPhase = pt.sprintPhase;
+        if (pt.percentComplete !== undefined && matched.percentComplete === undefined) {
+          matched.percentComplete = pt.percentComplete;
+        }
+        if (pt.priority && !matched.priority) matched.priority = pt.priority;
+        if (pt.owner && !matched.owner) matched.owner = pt.owner;
+        if ((pt.plannedFinish || pt.dueDate) && !matched.dueDate) {
+          matched.dueDate = pt.plannedFinish || pt.dueDate;
+        }
+        if (pt.status && !matched.status) {
+          matched.status = pt.status;
+        }
+      } else {
+        const isKnown = idMap.has(rawPtId) || idMap.has(cleanPtId) || idMap.has(normPtId) || (ptTitle && titleMap.has(ptTitle));
+        if (!isKnown) {
+          list.push({
+            id: pt.id,
+            name: pt.title || pt.name,
+            title: pt.title || pt.name,
+            taskCode: pt.taskCode,
+            projectId: pt.projectId,
+            sprintId: pt.sprintId,
+            gateId: pt.gateId,
+            workstream: pt.workstream,
+            sprintPhase: pt.sprintPhase,
+            percentComplete: pt.percentComplete,
+            status: Number(pt.percentComplete || 0) >= 100 ? 'Done' : (pt.status || 'In progress'),
+            dueDate: pt.plannedFinish || pt.dueDate,
+            createdDate: pt.plannedStart,
+            completedDate: pt.actualCompletionDate,
+            priority: pt.priority || 'Medium',
+            description: pt.planningBasis || '',
+            assigneeIds: Array.isArray(pt.assigneeIds) ? pt.assigneeIds : (pt.assigneeId ? [pt.assigneeId] : []),
+            owner: pt.owner || ''
+          });
+          idMap.add(rawPtId);
+          idMap.add(cleanPtId);
+          idMap.add(normPtId);
+          if (ptTitle) titleMap.add(ptTitle);
+        }
+      }
+    });
+
+    return list;
+  }, [tasks, planTasks]);
+
+  // 2. Calculate project task counts, priorities, and statuses across all unified tasks
   const metrics = useMemo(() => {
-    const list = Array.isArray(tasks) ? tasks : [];
+    const list = Array.isArray(combinedTasks) ? combinedTasks : [];
     const total = list.length;
 
     let completed = 0;
     let inProgress = 0;
     let inReview = 0;
-    let notStarted = 0;
+    let pendingOrLate = 0;
 
     let high = 0;
     let medium = 0;
@@ -38,48 +160,59 @@ export const ProjectKpiDisplay = ({
 
     list.forEach(t => {
       const statusLower = String(t.status || '').toLowerCase().trim();
-      const isDone = statusLower === 'done' || statusLower === 'completed';
-      const isInReview = statusLower.includes('review');
-      const isInProgress = statusLower === 'in progress' || statusLower === 'in_progress' || statusLower === 'active';
+      const isDone = statusLower === 'done' || statusLower === 'completed' || Number(t.percentComplete || 0) >= 100;
+      const isInReview = !isDone && statusLower.includes('review');
+      const isInProgress = !isDone && !isInReview && (
+        statusLower === 'in progress' ||
+        statusLower === 'in_progress' ||
+        statusLower === 'active' ||
+        Number(t.percentComplete || 0) > 0
+      );
+
+      // Deadlines (only if not done)
+      let isTaskOverdue = false;
+      const dueDateVal = t.dueDate || t.plannedFinish;
+      if (!isDone && dueDateVal) {
+        const due = String(dueDateVal).slice(0, 10);
+        if (due < todayStr) {
+          isTaskOverdue = true;
+          overdue += 1;
+        } else if (due >= todayStr && due <= in48h) {
+          dueSoon += 1;
+        }
+      }
 
       if (isDone) {
         completed += 1;
+      } else if (isTaskOverdue) {
+        // Overdue pending tasks count in Pending/Late state to match SprintPlanTab visual status
+        pendingOrLate += 1;
       } else if (isInReview) {
         inReview += 1;
       } else if (isInProgress) {
         inProgress += 1;
       } else {
-        notStarted += 1;
+        pendingOrLate += 1;
       }
 
-      // Priority
+      // Priority (matches renderPriorityPill in SprintPlanTab)
       const priorityLower = String(t.priority || '').toLowerCase().trim();
       if (priorityLower === 'high' || priorityLower === 'critical') {
         high += 1;
+        if (isTaskOverdue) {
+          overdueHigh += 1;
+        }
       } else if (priorityLower === 'low') {
         low += 1;
       } else {
         medium += 1;
       }
-
-      // Deadlines (only if not done)
-      if (!isDone && t.dueDate) {
-        const due = String(t.dueDate).slice(0, 10);
-        if (due < todayStr) {
-          overdue += 1;
-          if (priorityLower === 'high' || priorityLower === 'critical') {
-            overdueHigh += 1;
-          }
-        } else if (due >= todayStr && due <= in48h) {
-          dueSoon += 1;
-        }
-      }
     });
 
-    const pendingOrLate = notStarted + overdue;
     const completedPct = total > 0 ? (completed / total) * 100 : 0;
     const inProgressPct = total > 0 ? (inProgress / total) * 100 : 0;
     const inReviewPct = total > 0 ? (inReview / total) * 100 : 0;
+    const pendingOrLatePct = total > 0 ? (pendingOrLate / total) * 100 : 0;
     const overduePct = total > 0 ? (overdue / total) * 100 : 0;
 
     const highPct = total > 0 ? Math.round((high / total) * 100) : 0;
@@ -91,7 +224,6 @@ export const ProjectKpiDisplay = ({
       completed,
       inProgress,
       inReview,
-      notStarted,
       pendingOrLate,
       overdue,
       dueSoon,
@@ -99,6 +231,7 @@ export const ProjectKpiDisplay = ({
       completedPct: Number(completedPct.toFixed(1)),
       inProgressPct: Number(inProgressPct.toFixed(1)),
       inReviewPct: Number(inReviewPct.toFixed(1)),
+      pendingOrLatePct: Number(pendingOrLatePct.toFixed(1)),
       overduePct: Number(overduePct.toFixed(1)),
       high,
       medium,
@@ -107,7 +240,7 @@ export const ProjectKpiDisplay = ({
       mediumPct,
       lowPct,
     };
-  }, [tasks]);
+  }, [combinedTasks]);
 
   // Project Manager resolution
   const projectManager = useMemo(() => {
@@ -117,10 +250,10 @@ export const ProjectKpiDisplay = ({
     return employees.find(e => String(e.id) === String(pmId)) || null;
   }, [project?.projectManagerId, project?.createdBy, employees, project]);
 
-  // 2. Resolve project team members and their task loads
-  const { memberStats, avgTasksPerMember, projectMembers } = useMemo(() => {
+  // 3. Resolve project team members and their task loads from combinedTasks
+  const { memberStats, maxMemberTasks, avgTasksPerMember, projectMembers } = useMemo(() => {
     if (!project) {
-      return { memberStats: [], avgTasksPerMember: '0.0', projectMembers: [] };
+      return { memberStats: [], maxMemberTasks: 1, avgTasksPerMember: '0.0', projectMembers: [] };
     }
     let ids = [];
     if (Array.isArray(project.assigneeIds) && project.assigneeIds.length > 0) {
@@ -133,15 +266,47 @@ export const ProjectKpiDisplay = ({
       .map(id => employees.find(e => String(e.id) === String(id)))
       .filter(Boolean);
 
-    // Compute task counts per member
+    // Compute task counts per member: total, completed, inProgress, other
     const countsMap = new Map();
-    (tasks || []).forEach(t => {
-      const taskAssignees = Array.isArray(t.assigneeIds) && t.assigneeIds.length > 0
+    (combinedTasks || []).forEach(t => {
+      let taskAssignees = Array.isArray(t.assigneeIds) && t.assigneeIds.length > 0
         ? t.assigneeIds
         : (t.assigneeId ? [t.assigneeId] : []);
 
+      if (taskAssignees.length === 0 && t.owner) {
+        const ownerLower = String(t.owner).trim().toLowerCase();
+        const emp = employees.find(e => {
+          const fn = String(e.fullName || '').trim().toLowerCase();
+          const n = String(e.name || '').trim().toLowerCase();
+          return fn === ownerLower || n === ownerLower || (fn && fn.includes(ownerLower)) || (n && n.includes(ownerLower));
+        });
+        if (emp) taskAssignees = [emp.id];
+      }
+
+      const statusLower = String(t.status || '').toLowerCase().trim();
+      const isDone = statusLower === 'done' || statusLower === 'completed' || Number(t.percentComplete || 0) >= 100;
+      const isInProgress = !isDone && (
+        statusLower === 'in progress' ||
+        statusLower === 'in_progress' ||
+        statusLower === 'active' ||
+        statusLower.includes('review') ||
+        Number(t.percentComplete || 0) > 0
+      );
+
       taskAssignees.forEach(aid => {
-        countsMap.set(String(aid), (countsMap.get(String(aid)) || 0) + 1);
+        const key = String(aid);
+        if (!countsMap.has(key)) {
+          countsMap.set(key, { total: 0, completed: 0, inProgress: 0, other: 0 });
+        }
+        const data = countsMap.get(key);
+        data.total += 1;
+        if (isDone) {
+          data.completed += 1;
+        } else if (isInProgress) {
+          data.inProgress += 1;
+        } else {
+          data.other += 1;
+        }
       });
     });
 
@@ -151,15 +316,18 @@ export const ProjectKpiDisplay = ({
       .filter(Boolean);
 
     const stats = allRelevantEmployees.map(emp => {
-      const taskCount = countsMap.get(String(emp.id)) || 0;
-      const firstName = (emp.fullName || 'Member').trim().split(' ')[0] || 'User';
-      const shortName = firstName.slice(0, 4);
+      const data = countsMap.get(String(emp.id)) || { total: 0, completed: 0, inProgress: 0, other: 0 };
+      const firstName = (emp.fullName || emp.name || 'Member').trim().split(' ')[0] || 'User';
+      const shortName = firstName.length > 5 ? firstName.slice(0, 5) : firstName;
       return {
         id: emp.id,
-        fullName: emp.fullName,
+        fullName: emp.fullName || emp.name,
         shortName,
         avatar: emp.avatar,
-        taskCount,
+        taskCount: data.total,
+        completed: data.completed,
+        inProgress: data.inProgress,
+        other: data.other,
       };
     });
 
@@ -171,65 +339,104 @@ export const ProjectKpiDisplay = ({
         ...s,
         pct: Math.round((s.taskCount / maxTasks) * 100),
       })),
+      maxMemberTasks: maxTasks,
       avgTasksPerMember: avg,
       projectMembers: members.length > 0 ? members : allRelevantEmployees,
     };
-  }, [project, tasks, employees, metrics.total]);
+  }, [project, combinedTasks, employees, metrics.total]);
 
-  // 3. Dynamic Track Completion
+  // 3. Dynamic Sprint Track Completion
   const tracks = useMemo(() => {
-    const list = Array.isArray(tasks) ? tasks : [];
-    if (list.length === 0) {
-      return {
-        list: [
-          { name: 'Marketing & Growth', pct: 0, done: 0, total: 0, color: 'bg-gradient-to-r from-blue-600 to-indigo-600' },
-          { name: 'Creative & Visuals', pct: 0, done: 0, total: 0, color: 'bg-gradient-to-r from-sky-500 to-cyan-500' },
-          { name: 'Engineering & API', pct: 0, done: 0, total: 0, color: 'bg-gradient-to-r from-indigo-500 to-purple-600' },
-          { name: 'Operations & Finance', pct: 0, done: 0, total: 0, color: 'bg-gradient-to-r from-amber-500 to-orange-500' },
-        ],
-        avgTrackPct: 0,
-      };
+    const sprintColors = [
+      'bg-gradient-to-r from-blue-600 to-indigo-600',
+      'bg-gradient-to-r from-sky-500 to-cyan-500',
+      'bg-gradient-to-r from-indigo-500 to-purple-600',
+      'bg-gradient-to-r from-amber-500 to-orange-500',
+      'bg-gradient-to-r from-emerald-500 to-teal-600',
+      'bg-gradient-to-r from-rose-500 to-pink-600',
+      'bg-gradient-to-r from-violet-600 to-fuchsia-600'
+    ];
+
+    if (!planSprints || planSprints.length === 0) {
+      // Fallback: If no plan sprints exist, check if tasks have any sprintPhase
+      const phaseMap = new Map();
+      combinedTasks.forEach(t => {
+        if (t.sprintPhase) {
+          const ph = String(t.sprintPhase).trim();
+          if (!phaseMap.has(ph)) phaseMap.set(ph, []);
+          phaseMap.get(ph).push(t);
+        }
+      });
+
+      if (phaseMap.size > 0) {
+        const list = Array.from(phaseMap.entries()).map(([phase, sTasks], idx) => {
+          const total = sTasks.length;
+          const done = sTasks.filter(t => String(t.status || '').toLowerCase() === 'done').length;
+          const pct = calculateWeightedCompletion(sTasks);
+          return {
+            id: `phase-${idx}`,
+            name: phase,
+            total,
+            done,
+            pct,
+            color: sprintColors[idx % sprintColors.length]
+          };
+        });
+        const avgTrackPct = list.length > 0
+          ? Math.round(list.reduce((sum, r) => sum + r.pct, 0) / list.length)
+          : 0;
+        return { list, avgTrackPct, totalSprints: list.length };
+      }
+
+      return { list: [], avgTrackPct: 0, totalSprints: 0 };
     }
 
-    const buckets = {
-      growth: { name: 'Marketing & Growth', tasks: [], color: 'bg-gradient-to-r from-blue-600 to-indigo-600' },
-      creative: { name: 'Creative & Visuals', tasks: [], color: 'bg-gradient-to-r from-sky-500 to-cyan-500' },
-      tech: { name: 'Engineering & API', tasks: [], color: 'bg-gradient-to-r from-indigo-500 to-purple-600' },
-      ops: { name: 'Operations & Finance', tasks: [], color: 'bg-gradient-to-r from-amber-500 to-orange-500' },
-    };
+    const list = planSprints.map((s, idx) => {
+      const sTasks = combinedTasks.filter(t => {
+        if (t.sprintPhase && s.phase && normalizePhase(t.sprintPhase) === normalizePhase(s.phase)) {
+          return true;
+        }
+        if (t.sprintId && String(t.sprintId) === String(s.id)) {
+          return true;
+        }
+        return false;
+      });
 
-    list.forEach((t, idx) => {
-      const nameLower = String(t.name || '').toLowerCase();
-      if (nameLower.includes('market') || nameLower.includes('seo') || nameLower.includes('social') || nameLower.includes('growth') || nameLower.includes('campaign')) {
-        buckets.growth.tasks.push(t);
-      } else if (nameLower.includes('design') || nameLower.includes('ui') || nameLower.includes('ux') || nameLower.includes('visual') || nameLower.includes('brand') || nameLower.includes('art')) {
-        buckets.creative.tasks.push(t);
-      } else if (nameLower.includes('api') || nameLower.includes('backend') || nameLower.includes('dev') || nameLower.includes('code') || nameLower.includes('tech') || nameLower.includes('db')) {
-        buckets.tech.tasks.push(t);
-      } else if (nameLower.includes('finance') || nameLower.includes('tax') || nameLower.includes('ops') || nameLower.includes('legal') || nameLower.includes('client') || nameLower.includes('review')) {
-        buckets.ops.tasks.push(t);
-      } else {
-        const keys = ['growth', 'creative', 'tech', 'ops'];
-        buckets[keys[idx % 4]].tasks.push(t);
+      const total = sTasks.length;
+      const done = sTasks.filter(t => String(t.status || '').toLowerCase() === 'done').length;
+      const pct = calculateWeightedCompletion(sTasks);
+
+      const nameParts = [];
+      if (s.code) {
+        const rawCode = String(s.code).trim();
+        const codeLabel = rawCode.toLowerCase().startsWith('sprint')
+          ? rawCode
+          : (/^\d+$/.test(rawCode) ? `Sprint ${rawCode}` : rawCode);
+        nameParts.push(codeLabel);
       }
-    });
+      if (s.name && s.name !== s.code && (!s.code || !String(s.name).toLowerCase().includes(String(s.code).toLowerCase()))) {
+        nameParts.push(s.name);
+      } else if (s.phase) {
+        nameParts.push(s.phase);
+      }
+      const displayName = nameParts.length > 0 ? nameParts.join(' • ') : (s.phase || `Sprint ${idx + 1}`);
 
-    const result = Object.values(buckets).map(b => {
-      const bTotal = b.tasks.length;
-      const bDone = b.tasks.filter(t => String(t.status || '').toLowerCase() === 'done').length;
-      const pct = bTotal > 0 ? Math.round((bDone / bTotal) * 100) : 0;
       return {
-        name: b.name,
-        total: bTotal,
-        done: bDone,
+        id: s.id,
+        name: displayName,
+        total,
+        done,
         pct,
-        color: b.color,
+        color: sprintColors[idx % sprintColors.length]
       };
     });
 
-    const avgTrackPct = Math.round(result.reduce((sum, r) => sum + r.pct, 0) / result.length);
-    return { list: result, avgTrackPct };
-  }, [tasks]);
+    const avgTrackPct = list.length > 0
+      ? Math.round(list.reduce((sum, r) => sum + r.pct, 0) / list.length)
+      : 0;
+
+    return { list, avgTrackPct, totalSprints: list.length };
+  }, [planSprints, combinedTasks]);
 
   // Overall Pipeline Completion math
   const pipelineDoneWidth = metrics.completedPct;
@@ -246,11 +453,11 @@ export const ProjectKpiDisplay = ({
   const medStroke = (metrics.mediumPct / 100) * circumference;
   const lowStroke = (metrics.lowPct / 100) * circumference;
 
-  // Status SVG Donut segments
+  // Status SVG Donut segments (matches the 4 legend states: Completed, In Progress, In Review, Pending/Late)
   const statusDoneStroke = (metrics.completedPct / 100) * circumference;
   const statusActiveStroke = (metrics.inProgressPct / 100) * circumference;
   const statusReviewStroke = (metrics.inReviewPct / 100) * circumference;
-  const statusLateStroke = (metrics.overduePct / 100) * circumference;
+  const statusLateStroke = (metrics.pendingOrLatePct / 100) * circumference;
 
   if (!project) return null;
 
@@ -415,98 +622,7 @@ export const ProjectKpiDisplay = ({
         </div>
       </div>
 
-      {/* 2. ROW OF 6 KPI CARDS */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-        {/* Card 1: TOTAL TASKS */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">TOTAL TASKS</span>
-            <div className="w-7 h-7 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-600">
-              <span className="material-symbols-outlined text-[16px]">grid_view</span>
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 tracking-tight">{metrics.total}</span>
-            <span className="text-[11px] font-bold text-emerald-600">↑ 100%</span>
-          </div>
-        </div>
-
-        {/* Card 2: COMPLETED */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">COMPLETED</span>
-            <div className="w-7 h-7 rounded-lg bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600">
-              <span className="material-symbols-outlined text-[16px]">check_circle</span>
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 tracking-tight">{metrics.completed}</span>
-            <span className="text-[11px] font-bold text-slate-500">{metrics.completedPct}%</span>
-          </div>
-        </div>
-
-        {/* Card 3: IN PROGRESS */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">IN PROGRESS</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
-              <span className="material-symbols-outlined text-[16px]">timelapse</span>
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 tracking-tight">{metrics.inProgress}</span>
-            <span className="text-[11px] font-bold text-slate-500">{metrics.inProgressPct}%</span>
-          </div>
-        </div>
-
-        {/* Card 4: IN REVIEW */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">IN REVIEW</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
-              <span className="material-symbols-outlined text-[16px]">rate_review</span>
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 tracking-tight">{metrics.inReview}</span>
-            <span className="text-[11px] font-bold text-slate-500">{metrics.inReviewPct}%</span>
-          </div>
-        </div>
-
-        {/* Card 5: OVERDUE */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">OVERDUE</span>
-            <div className="w-7 h-7 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600">
-              <span className="material-symbols-outlined text-[16px]">warning</span>
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 tracking-tight">{metrics.overdue}</span>
-            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200">
-              CRITICAL
-            </span>
-          </div>
-        </div>
-
-        {/* Card 6: DUE <48H */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">DUE &lt;48H</span>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
-              <span className="material-symbols-outlined text-[16px]">schedule</span>
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 tracking-tight">{metrics.dueSoon}</span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-              Urgent
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. ROW OF 4 ANALYTICAL CARDS */}
+      {/* 2. ROW OF 4 ANALYTICAL CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: PRIORITY STATUS OVERVIEW */}
         <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 flex flex-col justify-between overflow-hidden">
@@ -632,7 +748,7 @@ export const ProjectKpiDisplay = ({
         </div>
 
         {/* Card 2: TASKS BY RESPONSIBLE */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 flex flex-col justify-between overflow-hidden">
+        <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 flex flex-col justify-between overflow-visible relative hover:z-30">
           <div className="p-4 sm:p-5">
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -645,28 +761,101 @@ export const ProjectKpiDisplay = ({
               </span>
             </div>
 
+            {/* Mini Legend for Completed vs In Progress */}
+            <div className="mt-2.5 flex items-center justify-end gap-3 text-[10px] font-semibold text-slate-500">
+              <span className="flex items-center gap-1">
+                <span className="w-2.5 h-2 rounded-xs bg-blue-600 shrink-0" />
+                <span>Completed</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2.5 h-2 rounded-xs bg-sky-400 shrink-0" />
+                <span>In Progress</span>
+              </span>
+            </div>
+
             {/* Bar Chart Columns */}
-            <div className="mt-4 h-24 flex items-end justify-between gap-1 sm:gap-1.5 pt-2">
+            <div className="mt-2 h-24 flex items-end justify-between gap-1.5 sm:gap-2.5 pt-2">
               {memberStats.length > 0 ? (
-                memberStats.slice(0, 9).map((m, idx) => (
-                  <div key={m.id || idx} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group">
-                    <div
-                      className="w-full max-w-[20px] rounded-t-md transition-all duration-300 relative shadow-2xs"
-                      style={{
-                        height: `${Math.max(14, (m.pct / 100) * 64)}px`,
-                        backgroundColor: idx % 2 === 0 ? '#0284c7' : '#38bdf8',
-                      }}
-                      title={`${m.fullName}: ${m.taskCount} tasks`}
-                    >
-                      <span className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition bg-slate-900 text-white text-[9px] px-1.5 py-0.5 rounded-md pointer-events-none whitespace-nowrap z-10 font-bold shadow-md">
-                        {m.taskCount}
+                memberStats.slice(0, 9).map((m, idx) => {
+                  const maxHeightPx = 68;
+                  const maxTasksCount = maxMemberTasks || 1;
+                  const barHeightPx = m.taskCount > 0
+                    ? Math.max(16, Math.round((m.taskCount / maxTasksCount) * maxHeightPx))
+                    : 0;
+
+                  // Compute segment heights inside the bar
+                  let cHeight = m.taskCount > 0 ? Math.round((m.completed / m.taskCount) * barHeightPx) : 0;
+                  let ipHeight = m.taskCount > 0 ? Math.round((m.inProgress / m.taskCount) * barHeightPx) : 0;
+                  let oHeight = Math.max(0, barHeightPx - cHeight - ipHeight);
+
+                  if (m.completed > 0 && cHeight === 0) cHeight = 3;
+                  if (m.inProgress > 0 && ipHeight === 0) ipHeight = 3;
+
+                  return (
+                    <div key={m.id || idx} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group min-w-0">
+                      {/* Bar */}
+                      <div className="w-full flex justify-center items-end relative">
+                        {/* Tooltip on Hover - Extends outside the box fully without clipping */}
+                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50">
+                          <div className="bg-slate-900/95 backdrop-blur-xs text-white text-[11px] px-2.5 py-1 rounded-lg shadow-2xl border border-slate-700/60 font-medium flex items-center gap-1.5">
+                            <span className="font-bold">{m.fullName}:</span>
+                            <span className="text-blue-300 font-semibold">{m.completed} Done</span>
+                            <span>•</span>
+                            <span className="text-sky-300 font-semibold">{m.inProgress} Active</span>
+                            {m.other > 0 && (
+                              <>
+                                <span>•</span>
+                                <span className="text-slate-300">{m.other} Other</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {m.taskCount > 0 ? (
+                          <div
+                            className="w-full max-w-[34px] sm:max-w-[42px] rounded-t-md overflow-hidden flex flex-col justify-end transition-all duration-300 shadow-2xs group-hover:shadow-md cursor-pointer"
+                            style={{ height: `${barHeightPx}px` }}
+                          >
+                            {/* Other / Pending (top) */}
+                            {oHeight > 0 && (
+                              <div
+                                style={{ height: `${oHeight}px` }}
+                                className="w-full bg-slate-200 transition-all duration-300"
+                                title={`Pending: ${m.other}`}
+                              />
+                            )}
+                            {/* In Progress (middle) */}
+                            {ipHeight > 0 && (
+                              <div
+                                style={{ height: `${ipHeight}px` }}
+                                className="w-full bg-sky-400 transition-all duration-300"
+                                title={`In Progress: ${m.inProgress}`}
+                              />
+                            )}
+                            {/* Completed (bottom) */}
+                            {cHeight > 0 && (
+                              <div
+                                style={{ height: `${cHeight}px` }}
+                                className="w-full bg-blue-600 transition-all duration-300"
+                                title={`Completed: ${m.completed}`}
+                              />
+                            )}
+                          </div>
+                        ) : (
+                          <div
+                            className="w-full max-w-[34px] sm:max-w-[42px] h-[3px] rounded-full bg-slate-200"
+                            title={`${m.fullName}: 0 tasks`}
+                          />
+                        )}
+                      </div>
+
+                      {/* Name */}
+                      <span className="text-[10px] text-slate-500 font-semibold truncate max-w-[42px] sm:max-w-[52px] text-center" title={m.fullName}>
+                        {m.shortName}
                       </span>
                     </div>
-                    <span className="text-[9px] text-slate-500 font-semibold truncate max-w-[28px] text-center">
-                      {m.shortName}
-                    </span>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-xs text-slate-400 font-medium">
                   No member assignments
@@ -676,7 +865,7 @@ export const ProjectKpiDisplay = ({
           </div>
 
           {/* Footer Bar */}
-          <div className="bg-slate-50/90 border-t border-slate-100 px-4 py-2 text-[11px] text-slate-600 flex items-center justify-between">
+          <div className="bg-slate-50/90 border-t border-slate-100 px-4 py-2 text-[11px] text-slate-600 flex items-center justify-between rounded-b-2xl">
             <span className="font-semibold text-slate-600">Balanced load</span>
             <span className="font-bold text-slate-800">Avg {avgTasksPerMember} tasks/lead</span>
           </div>
@@ -829,22 +1018,33 @@ export const ProjectKpiDisplay = ({
               </span>
             </div>
 
-            {/* Track Progress Bars */}
-            <div className="mt-3.5 space-y-2.5">
-              {tracks.list.map(t => (
-                <div key={t.name} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-700 font-medium truncate">{t.name}</span>
-                    <span className="font-bold text-slate-800 tabular-nums ml-2">{t.pct}%</span>
-                  </div>
-                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                    <div
-                      className={`h-full ${t.color} rounded-full transition-all duration-500`}
-                      style={{ width: `${t.pct}%` }}
-                    />
-                  </div>
+            {/* Track Progress Bars - Scrollable List */}
+            <div className="mt-3 max-h-[140px] overflow-y-auto pr-1 space-y-2.5 custom-scrollbar">
+              {tracks.list.length === 0 ? (
+                <div className="py-6 text-center text-xs text-slate-400">
+                  No sprints configured for this project yet.
                 </div>
-              ))}
+              ) : (
+                tracks.list.map(t => (
+                  <div key={t.id || t.name} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-slate-700 font-medium truncate" title={t.name}>{t.name}</span>
+                        {t.total > 0 && (
+                          <span className="text-[10px] text-slate-400 font-normal shrink-0">({t.done}/{t.total})</span>
+                        )}
+                      </div>
+                      <span className="font-bold text-slate-800 tabular-nums ml-2 shrink-0">{t.pct}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                      <div
+                        className={`h-full ${t.color} rounded-full transition-all duration-500`}
+                        style={{ width: `${t.pct}%` }}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -852,18 +1052,31 @@ export const ProjectKpiDisplay = ({
           <div className="bg-slate-50/90 border-t border-slate-100 px-4 py-2 text-[11px] text-slate-600 flex items-center justify-between">
             <button
               type="button"
-              onClick={() => {
-                const el = document.getElementById('tasks-tracker-anchor');
-                if (el) el.scrollIntoView({ behavior: 'smooth' });
-              }}
+              onClick={() => setIsGanttModalOpen(true)}
               className="text-blue-600 hover:text-blue-800 font-bold inline-flex items-center gap-1 cursor-pointer hover:underline"
+              title="Open Interactive Gantt Chart & Milestone Roadmap"
             >
               <span>View Milestone Roadmap</span>
               <span className="material-symbols-outlined text-[13px]">arrow_forward</span>
             </button>
+            {tracks.totalSprints > 0 && (
+              <span className="text-slate-500 font-medium">{tracks.totalSprints} {tracks.totalSprints === 1 ? 'Sprint' : 'Sprints'}</span>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Interactive Gantt Roadmap Modal */}
+      {isGanttModalOpen && (
+        <GanttRoadmapModal
+          isOpen={isGanttModalOpen}
+          onClose={() => setIsGanttModalOpen(false)}
+          project={project}
+          tasks={combinedTasks}
+          sprints={planSprints}
+          employees={employees}
+        />
+      )}
     </div>
   );
 };

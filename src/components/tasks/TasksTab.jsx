@@ -7,10 +7,12 @@ import { Avatar } from '../widgets/Avatar';
 import { StatusSelect } from '../widgets/StatusSelect';
 import { PriorityPill } from '../widgets/PriorityPill';
 import { TaskForm } from '../forms/TaskForm';
+import { SearchableEmployeeSelect } from '../widgets/SearchableEmployeeSelect';
 import { GanttRoadmapModal } from './GanttRoadmapModal';
 import { sortTasks } from '../../utils/taskSort';
 import { useTableFlipAnimation } from '../../utils/useTableFlipAnimation';
 import { downloadTaskTemplateExcel, parseTaskExcelFile } from '../../utils/excelTaskImport';
+import { formatTaskCode } from '../../utils/taskCode';
 
 const STATUSES = ['In progress', 'Not started', 'Done'];
 const PRIORITIES = ['Low', 'Medium', 'High'];
@@ -100,8 +102,6 @@ export const TasksTab = ({
   const [quickDeadline, setQuickDeadline] = useState(getLocalDateString());
   const [quickPriority, setQuickPriority] = useState('Medium');
   const [quickAssigneeIds, setQuickAssigneeIds] = useState([]);
-  const [showQuickAssigneeDropdown, setShowQuickAssigneeDropdown] = useState(false);
-  const quickAssigneeRef = useRef(null);
 
   // Excel import/export state
   const excelFileInputRef = useRef(null);
@@ -143,9 +143,6 @@ export const TasksTab = ({
     const handleClickOutside = (e) => {
       if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target)) {
         setIsProjectDropdownOpen(false);
-      }
-      if (quickAssigneeRef.current && !quickAssigneeRef.current.contains(e.target)) {
-        setShowQuickAssigneeDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -1149,47 +1146,17 @@ export const TasksTab = ({
 
             {/* Assignees */}
             {canAssignAnyone ? (
-              <div className="sm:col-span-2 relative" ref={quickAssigneeRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowQuickAssigneeDropdown(prev => !prev)}
-                  className="w-full h-9.5 px-3 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 text-left text-xs flex items-center justify-between text-slate-700 shadow-2xs transition cursor-pointer"
-                >
-                  <span className="truncate font-semibold">
-                    {quickAssigneeIds.length === 0
-                      ? 'Assign team (0)'
-                      : `${quickAssigneeIds.length} assigned`}
-                  </span>
-                  <span className="material-symbols-outlined text-[16px] text-slate-400">expand_more</span>
-                </button>
-
-                {showQuickAssigneeDropdown && (
-                  <div className="absolute left-0 top-11 w-60 bg-white border border-slate-200 rounded-xl shadow-xl p-2 z-40 max-h-52 overflow-y-auto">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
-                      Select Assignees
-                    </div>
-                    {employees.map(emp => {
-                      const isSel = quickAssigneeIds.includes(emp.id);
-                      return (
-                        <div
-                          key={emp.id}
-                          onClick={() => {
-                            setQuickAssigneeIds(prev =>
-                              prev.includes(emp.id) ? prev.filter(id => id !== emp.id) : [...prev, emp.id]
-                            );
-                          }}
-                          className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer text-xs transition ${
-                            isSel ? 'bg-blue-50 text-blue-700 font-bold' : 'hover:bg-slate-50 text-slate-700 font-medium'
-                          }`}
-                        >
-                          <Avatar src={emp.avatar} alt={emp.fullName} className="h-5 w-5 ring-1 ring-slate-200" />
-                          <span className="truncate flex-1">{emp.fullName}</span>
-                          {isSel && <span className="text-blue-600 font-bold">✓</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+              <div className="sm:col-span-2">
+                <SearchableEmployeeSelect
+                  compact={true}
+                  employees={employees}
+                  selectedIds={quickAssigneeIds}
+                  onChange={setQuickAssigneeIds}
+                  placeholder="Assign team (0)"
+                  searchPlaceholder="Search employees..."
+                  accentColor="blue"
+                  showChips={false}
+                />
               </div>
             ) : (
               <div className="sm:col-span-2 flex items-center h-9.5 px-3 text-xs text-slate-600 bg-slate-100/80 border border-slate-200 rounded-xl font-medium">
@@ -1405,7 +1372,7 @@ export const TasksTab = ({
                       const taskTags = getTaskTags(t);
                       const subInfo = subtasksMap.get(String(t.id));
                       const dueMeta = getDueMeta(t.dueDate, t.status);
-                      const taskIdCode = t.taskCode || t.code || `TSK-${String(idx + 1).padStart(2, '0')}`;
+                      const taskIdCode = formatTaskCode(t) || `TSK-${String(idx + 1).padStart(2, '0')}`;
                       const isSelected = selectedTaskIds.has(t.id);
                       const isMoving = movingTaskInfo?.id === String(t.id);
                       const moveDir = isMoving ? movingTaskInfo?.direction : null;

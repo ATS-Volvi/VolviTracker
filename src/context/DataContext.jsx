@@ -691,6 +691,20 @@ export const DataProvider = ({ children }) => {
       item.completedDate = todayStr;
     }
 
+    if (!item.taskCode && item.projectId) {
+      const projTasks = (data.tasks || []).filter(t => String(t.projectId) === String(item.projectId));
+      let maxNum = 0;
+      projTasks.forEach(t => {
+        const match = (t.taskCode || t.code || '').match(/\d+/);
+        if (match) {
+          const num = parseInt(match[0], 10);
+          if (num > maxNum) maxNum = num;
+        }
+      });
+      item.taskCode = `TSK-${String(maxNum + 1).padStart(2, '0')}`;
+      item.code = item.taskCode;
+    }
+
     // If this is a subtask or sub-subtask and assignees are not specified, inherit from parent
     if (item.parentId && (!item.assigneeIds || item.assigneeIds.length === 0)) {
       const parent = data.tasks.find(t => String(t.id) === String(item.parentId));

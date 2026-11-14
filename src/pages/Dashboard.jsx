@@ -6,7 +6,6 @@ import { useToast } from '../context/ToastContext';
 import ProjectsTable from '../components/projects/ProjectsTable';
 import MeetingCalendar from '../components/meetings/MeetingCalendar';
 import MeetingList from '../components/meetings/MeetingList';
-import EmployeesGrid from '../components/employees/EmployeesGrid';
 import EditEmployeeModal from '../components/employees/EditEmployeeModal';
 import StatusPieChart from '../components/widgets/StatusPieChart';
 import Avatar from '../components/widgets/Avatar';
@@ -558,17 +557,11 @@ export const Dashboard = () => {
             <ProjectsTable projects={filteredProjects} title={isProjectManager ? 'Managed Projects' : 'Projects'} />
           </section>
 
-          {/* Secondary Dashboard Modules (Meetings, Employees) */}
+          {/* Secondary Dashboard Modules (Meetings) */}
           <div className="pt-6 border-t border-gray-200/70 space-y-6 w-full">
             <div id="meetings-calendar-section" className="scroll-mt-24 w-full">
               <MeetingCalendar meetings={isAdmin ? allMeetings : myMeetings} />
             </div>
-
-            {isAdmin && (
-              <div className="pt-6 border-t border-gray-200/70 w-full">
-                <EmployeesGrid employees={allEmployees} />
-              </div>
-            )}
           </div>
         </div>
       )}

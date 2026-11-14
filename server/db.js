@@ -305,6 +305,8 @@ export const toProjectDto = (row) => row ? ({
 export const toTaskDto = (row) => row ? ({
   id: String(row.id),
   name: row.name,
+  taskCode: row.task_code || '',
+  code: row.task_code || '',
   projectId: row.project_id ? String(row.project_id) : '',
   parentId: row.parent_id ? String(row.parent_id) : null,
   sprintPhase: row.sprint_phase || '',
@@ -515,7 +517,9 @@ export async function initDb() {
     await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sprint_phase TEXT DEFAULT '';`;
     await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sprint_id VARCHAR(100);`;
     await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS gate_id VARCHAR(100);`;
+    await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_code VARCHAR(50) DEFAULT '';`;
     await sql`CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id);`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_tasks_task_code ON tasks(project_id, task_code);`;
 
     // 4. Meetings Table
     await sql`
@@ -1277,12 +1281,28 @@ export async function createTaskRecord(task) {
     }
   }
 
+  let taskCode = (task.taskCode || task.code || task.task_code || '').trim();
+  if (!taskCode && projectId) {
+    try {
+      const existingCodes = await sql`SELECT task_code FROM tasks WHERE project_id = ${projectId} AND task_code != ''`;
+      let maxNum = 0;
+      existingCodes.forEach(r => {
+        const match = (r.task_code || '').match(/\d+/);
+        if (match) {
+          const num = parseInt(match[0], 10);
+          if (num > maxNum) maxNum = num;
+        }
+      });
+      taskCode = `TSK-${String(maxNum + 1).padStart(2, '0')}`;
+    } catch {}
+  }
+
   await sql`
     INSERT INTO tasks (
-      id, name, project_id, parent_id, sprint_phase, sprint_id, gate_id, status, due_date, priority, description, assignee_ids, assignee_id, completed_date
+      id, name, project_id, parent_id, sprint_phase, sprint_id, gate_id, status, due_date, priority, description, assignee_ids, assignee_id, completed_date, task_code
     ) VALUES (
       ${id}, ${taskName}, ${projectId}, ${parentId}, ${sprintPhase}, ${sprintId}, ${gateId}, ${status}, ${task.dueDate || ''},
-      ${task.priority || 'Medium'}, ${task.description || ''}, ${assigneeIdsJson}::jsonb, ${assigneeId}, ${task.completedDate || (status === 'Done' ? (task.dueDate || new Date().toISOString().slice(0, 10)) : '')}
+      ${task.priority || 'Medium'}, ${task.description || ''}, ${assigneeIdsJson}::jsonb, ${assigneeId}, ${task.completedDate || (status === 'Done' ? (task.dueDate || new Date().toISOString().slice(0, 10)) : '')}, ${taskCode}
     )
     ON CONFLICT (id) DO UPDATE SET
       name = EXCLUDED.name,
@@ -1297,7 +1317,8 @@ export async function createTaskRecord(task) {
       description = EXCLUDED.description,
       assignee_ids = EXCLUDED.assignee_ids,
       assignee_id = EXCLUDED.assignee_id,
-      completed_date = EXCLUDED.completed_date;
+      completed_date = EXCLUDED.completed_date,
+      task_code = COALESCE(NULLIF(EXCLUDED.task_code, ''), tasks.task_code);
   `;
 
   // Sync to project_sprint_tasks
@@ -1310,8 +1331,9 @@ export async function createTaskRecord(task) {
           sprint_id = ${sprintId || null},
           gate_id = ${gateId || null},
           title = ${taskName},
+          task_code = COALESCE(NULLIF(${taskCode}, ''), task_code),
           updated_at = NOW()
-        WHERE project_id = ${projectId} AND (id = ${id} OR id = ${pstId1} OR id = ${pstId2});
+        WHERE project_id = ${projectId} AND (id = ${id} OR id = ${pstId1} OR id = ${pstId2} OR title = ${taskName});
       `;
     } catch (e) {
       console.error('[DB] Error syncing project_sprint_tasks in create:', e);
@@ -1377,6 +1399,7 @@ export async function updateTaskRecord(id, updates) {
   const assigneeIds = updates.assigneeIds !== undefined ? updates.assigneeIds : (current.assignee_ids || []);
   const assigneeIdsJson = JSON.stringify(Array.isArray(assigneeIds) ? assigneeIds : []);
   const assigneeId = updates.assigneeId !== undefined ? updates.assigneeId : ((assigneeIds && assigneeIds[0]) || current.assignee_id || '');
+  const taskCode = updates.taskCode !== undefined ? updates.taskCode : (updates.code !== undefined ? updates.code : (current.task_code || ''));
 
   await sql`
     UPDATE tasks SET
@@ -1392,7 +1415,8 @@ export async function updateTaskRecord(id, updates) {
       priority = ${priority},
       description = ${description},
       assignee_ids = ${assigneeIdsJson}::jsonb,
-      assignee_id = ${assigneeId}
+      assignee_id = ${assigneeId},
+      task_code = ${taskCode}
     WHERE id = ${id};
   `;
 
@@ -1407,6 +1431,7 @@ export async function updateTaskRecord(id, updates) {
           sprint_id = ${sprintId || null},
           gate_id = ${gateId || null},
           title = ${name},
+          task_code = COALESCE(NULLIF(${taskCode}, ''), task_code),
           percent_complete = ${isDone ? 100 : (status === 'In progress' ? 50 : 0)},
           actual_completion_date = ${isDone ? (completedDate || new Date().toISOString().slice(0, 10)) : null},
           updated_at = NOW()

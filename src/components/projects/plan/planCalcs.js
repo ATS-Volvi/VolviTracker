@@ -131,7 +131,11 @@ export function calculateWeightedCompletion(tasks = []) {
 
   for (const t of tasks) {
     const w = Math.max(0, Number(t.weight ?? 1));
-    const pct = Math.min(100, Math.max(0, Number(t.percentComplete ?? t.percent_complete ?? 0)));
+    const isDone = String(t.status || '').toLowerCase() === 'done';
+    const rawPct = t.percentComplete ?? t.percent_complete;
+    const pct = rawPct !== undefined && rawPct !== null && rawPct !== ''
+      ? Math.min(100, Math.max(0, Number(rawPct)))
+      : (isDone ? 100 : 0);
     totalWeight += w;
     weightedPctSum += w * pct;
   }
