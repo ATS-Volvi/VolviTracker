@@ -15,7 +15,7 @@ export default function MasterDataHeader({
           <span className="material-symbols-outlined text-[14px]">chevron_right</span>
           <span className="text-blue-600 font-bold">
             {activeSegment === 'EMPLOYEES'
-              ? 'Team & Users Directory'
+              ? 'User Management'
               : activeSegment === 'VAULT'
               ? 'Document Vault'
               : activeSegment === 'POS'

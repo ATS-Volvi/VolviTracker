@@ -51,7 +51,7 @@ export default function MasterDataKpis({
                 type="button"
                 onClick={() => handleSelectSegment('EMPLOYEES')}
                 className="flex items-center gap-1 hover:text-purple-600 transition cursor-pointer"
-                title="View Team & Users"
+                title="View User Management"
               >
                 <span className="w-2 h-2 rounded-full bg-purple-600"></span>
                 <span><strong>{employeeCount}</strong> Users</span>

@@ -61,7 +61,7 @@ export default function MasterDataTabs({
         }`}
       >
         <span className="material-symbols-outlined text-[16px]">badge</span>
-        <span>Team & Users</span>
+        <span>User Management</span>
         {employeeCount !== undefined && (
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
             activeSegment === 'EMPLOYEES'

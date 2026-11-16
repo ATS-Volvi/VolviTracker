@@ -93,7 +93,7 @@ export const EmployeesGrid = () => {
         {/* Header with Title and Create User CTA */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-gray-100">
           <div className="flex items-center gap-2.5">
-            <h2 className="text-lg font-bold text-gray-900">Team & Users Directory</h2>
+            <h2 className="text-lg font-bold text-gray-900">User Management</h2>
             <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full border border-purple-200">
               <span className="material-symbols-outlined text-[13px] text-purple-600">verified_user</span>
               Admin Control
@@ -141,7 +141,7 @@ export const EmployeesGrid = () => {
               }`}
             >
               <span className="material-symbols-outlined text-[14px]">apartment</span>
-              <span>Internal Staff</span>
+              <span>Employee Master</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
                 activeFilter === 'INTERNAL' ? 'bg-blue-700 text-white' : 'bg-blue-100 text-blue-800'
               }`}>
@@ -159,7 +159,7 @@ export const EmployeesGrid = () => {
               }`}
             >
               <span className="material-symbols-outlined text-[14px]">handshake</span>
-              <span>Clients</span>
+              <span>Client Master</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
                 activeFilter === 'CLIENT' ? 'bg-emerald-700 text-white' : 'bg-emerald-100 text-emerald-800'
               }`}>
@@ -177,7 +177,7 @@ export const EmployeesGrid = () => {
               }`}
             >
               <span className="material-symbols-outlined text-[14px]">inventory_2</span>
-              <span>Suppliers</span>
+              <span>Supplier Master</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
                 activeFilter === 'SUPPLIER' ? 'bg-amber-700 text-white' : 'bg-amber-100 text-amber-800'
               }`}>
