@@ -5,6 +5,7 @@ import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../widgets/Modal';
 import { SearchableEmployeeSelect } from '../widgets/SearchableEmployeeSelect';
+import { SearchableCombobox } from '../common/SearchableCombobox';
 import { TasksTab } from '../tasks/TasksTab';
 import { loadFinanceData } from '../../pages/finance/financeData';
 
@@ -515,12 +516,18 @@ export const ProjectForm = ({ isOpen, onClose, initial = null, isPage = false, h
                 <label className="mb-1.5 block text-xs font-semibold text-gray-700">
                   Client Name
                 </label>
-                <input
-                  type="text"
-                  className="input-field text-sm"
+                <SearchableCombobox
                   value={form.clientName || ''}
-                  onChange={set('clientName')}
+                  onChange={(val, item) => {
+                    if (item) {
+                      handleSelectClient(item);
+                    } else {
+                      setForm(prev => ({ ...prev, clientName: val }));
+                    }
+                  }}
+                  options={clientsList}
                   placeholder="e.g. Acme Corp / Sarah Jenkins"
+                  inputClassName="input-field text-sm h-10"
                 />
               </div>
               <div>

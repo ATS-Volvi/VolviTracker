@@ -242,7 +242,7 @@ export const DocFormModal = ({ isOpen, onClose, initialDoc = null, onSave }) => 
       onClick={onClose}
     >
       <div
-        className="card w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-gray-200/90 overflow-hidden my-auto max-h-[92vh] flex flex-col animate-slide-up"
+        className="card w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-200/90 overflow-hidden my-auto max-h-[92vh] flex flex-col animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}

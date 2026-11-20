@@ -221,7 +221,7 @@ const FinanceDataRelationships = ({
                       <div className="text-[10px] text-gray-400">Client Master · Domestic / International</div>
                     </div>
                   </div>
-                  <Link to="/master-data" className="text-blue-600 hover:text-blue-800 text-[11px] font-bold">
+                  <Link to="/master-data/clients" className="text-blue-600 hover:text-blue-800 text-[11px] font-bold">
                     View Master ↗
                   </Link>
                 </div>
@@ -324,7 +324,7 @@ const FinanceDataRelationships = ({
                       <div className="text-[10px] text-gray-400">Supplier Master · Domestic / International</div>
                     </div>
                   </div>
-                  <Link to="/master-data" className="text-emerald-700 hover:text-emerald-900 text-[11px] font-bold">
+                  <Link to="/master-data/suppliers" className="text-emerald-700 hover:text-emerald-900 text-[11px] font-bold">
                     View Master ↗
                   </Link>
                 </div>

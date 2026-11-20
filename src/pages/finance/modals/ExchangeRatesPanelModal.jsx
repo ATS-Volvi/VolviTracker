@@ -142,7 +142,7 @@ export default function ExchangeRatesPanelModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fade-in text-left">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden border border-gray-100 animate-slide-up flex flex-col max-h-[92vh]">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-100 animate-slide-up flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-emerald-50/70 via-gray-50/50 to-white">
           <div className="flex items-center gap-2.5">

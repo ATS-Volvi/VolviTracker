@@ -215,7 +215,7 @@ export const CreateUserModal = ({ isOpen, onClose, onCreated }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-xs animate-fade-in overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 max-w-xl w-full p-6 animate-slide-up text-left my-8 max-h-[92vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 max-w-lg w-full p-6 animate-slide-up text-left my-8 max-h-[92vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-3">

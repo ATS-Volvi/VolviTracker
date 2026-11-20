@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useContext } from 'react';
 import { loadFinanceData } from '../financeData';
 import { convertToUsd, getExchangeRate, DEFAULT_EXCHANGE_RATES } from '../financeCalcs';
+import { DataContext } from '../../../context/DataContext';
+import { SearchableCombobox } from '../../../components/common/SearchableCombobox';
 
 const getLocalDateString = (d = new Date()) => {
   const year = d.getFullYear();
@@ -46,6 +48,7 @@ const RegisterClientPOModal = ({
 }) => {
   const fileInputRef = useRef(null);
   const locationDropdownRef = useRef(null);
+  const clientDropdownRef = useRef(null);
 
   // Fallbacks if data is not passed via props
   const fallbackData = useMemo(() => {
@@ -62,15 +65,73 @@ const RegisterClientPOModal = ({
     }
   }, [isOpen]);
 
+  // Access live tracker projects from DataContext
+  const dataCtx = useContext(DataContext);
+  const liveTrackerProjects = dataCtx?.projects || [];
+
+  // All tracker projects (e.g. CRM, ATS, TMS 365, VolviTracker, Client Portal Modernization, etc.)
+  const projectsList = useMemo(() => {
+    const pool = (Array.isArray(projects) && projects.length > 0)
+      ? projects
+      : ((Array.isArray(liveTrackerProjects) && liveTrackerProjects.length > 0)
+        ? liveTrackerProjects
+        : (fallbackData.projects || []));
+
+    const seen = new Set();
+    const result = [];
+    for (const p of pool) {
+      if (!p) continue;
+      const key = String(p.id || p.name || p.projectName);
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(p);
+      }
+    }
+    return result;
+  }, [projects, liveTrackerProjects, fallbackData.projects]);
+
   const clientsList = clients && clients.length > 0 ? clients : fallbackData.clients;
-  const projectsList = projects && projects.length > 0 ? projects : fallbackData.projects;
   const rates = Object.keys(exchangeRates).length > 0 ? exchangeRates : fallbackData.exchangeRates;
+
+  // Searchable project dropdown states
+  const projectDropdownRef = useRef(null);
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
+  const [projectSearchQuery, setProjectSearchQuery] = useState('');
+
+  const filteredProjectsList = useMemo(() => {
+    const q = projectSearchQuery.trim().toLowerCase();
+    if (!q) return projectsList;
+    return projectsList.filter(p => {
+      const name = String(p.name || p.projectName || '').toLowerCase();
+      const client = String(p.clientName || '').toLowerCase();
+      const code = String(p.projectCode || p.id || '').toLowerCase();
+      return name.includes(q) || client.includes(q) || code.includes(q);
+    });
+  }, [projectsList, projectSearchQuery]);
+
+  const handleSelectProject = (proj) => {
+    if (!proj || proj === 'No project') {
+      setLinkedProject('No project');
+      setProjectSearchQuery('');
+      setProjectDropdownOpen(false);
+      return;
+    }
+    const projTitle = typeof proj === 'string' ? proj : (proj.name || proj.projectName || proj.id);
+    setLinkedProject(projTitle);
+    setProjectSearchQuery('');
+    setProjectDropdownOpen(false);
+    const matched = typeof proj === 'object' ? proj : projectsList.find(p => (p.name || p.projectName || p.id) === projTitle);
+    if (matched && matched.clientName && !clientName) {
+      setClientName(matched.clientName);
+    }
+  };
 
   // Form states matching the exact layout & fields
   const [clientName, setClientName] = useState('');
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [poNumber, setPoNumber] = useState('');
   const [poDate, setPoDate] = useState(getLocalDateString());
-  const [poValue, setPoValue] = useState(0);
+  const [poValue, setPoValue] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [status, setStatus] = useState('Open');
   const [location, setLocation] = useState('');
@@ -82,16 +143,92 @@ const RegisterClientPOModal = ({
   const [milestones, setMilestones] = useState([]);
   const [attachedFiles, setAttachedFiles] = useState([]);
 
-  // Close location dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (locationDropdownRef.current && !locationDropdownRef.current.contains(e.target)) {
         setLocationOpen(false);
       }
+      if (clientDropdownRef.current && !clientDropdownRef.current.contains(e.target)) {
+        setClientDropdownOpen(false);
+      }
+      if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target)) {
+        setProjectDropdownOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Available unique clients for searchable dropdown
+  const availableClients = useMemo(() => {
+    const map = new Map();
+    clientsList.forEach(c => {
+      const name = c.name?.trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), {
+          id: c.id || name,
+          name: name,
+          country: c.country || '',
+          currency: c.currency || '',
+          classification: c.classification || '',
+          contactPerson: c.contactPerson || ''
+        });
+      }
+    });
+    (existingPos || []).forEach(po => {
+      const name = po.clientName?.trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), {
+          id: name,
+          name: name,
+          country: po.location || '',
+          currency: po.currency || '',
+          classification: po.importExport || '',
+          contactPerson: ''
+        });
+      }
+    });
+    (projectsList || []).forEach(pr => {
+      const name = pr.clientName?.trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), {
+          id: `prj-${name}`,
+          name: name,
+          country: '',
+          currency: '',
+          classification: pr.name ? `Project: ${pr.name}` : '',
+          contactPerson: pr.pocName || ''
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [clientsList, existingPos, projectsList]);
+
+  // Filtered clients for searchable dropdown
+  const filteredClients = useMemo(() => {
+    if (!clientName || !clientName.trim()) return availableClients;
+    const q = clientName.toLowerCase().trim();
+    return availableClients.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.country && c.country.toLowerCase().includes(q)) ||
+      (c.contactPerson && c.contactPerson.toLowerCase().includes(q))
+    );
+  }, [clientName, availableClients]);
+
+  const handleSelectClient = (selectedClient) => {
+    setClientName(selectedClient.name);
+    if (selectedClient.country) {
+      setLocation(selectedClient.country);
+    }
+    if (selectedClient.currency) {
+      setCurrency(selectedClient.currency);
+    }
+    if (selectedClient.classification) {
+      setImportExport(selectedClient.classification === 'Domestic' ? 'Domestic' : 'Export');
+    }
+    setClientDropdownOpen(false);
+  };
 
   // Filtered locations for dropdown combobox
   const availableLocations = useMemo(() => {
@@ -117,26 +254,24 @@ const RegisterClientPOModal = ({
     );
   }, [location, availableLocations]);
 
-  // Initialize and reset on modal open
+  // Initialize and reset on modal open: input boxes empty by default
   useEffect(() => {
     if (isOpen) {
-      const currentYear = new Date().getFullYear();
-      const seq = existingPos && existingPos.length > 0
-        ? String(existingPos.length + 1).padStart(3, '0')
-        : '001';
-      setPoNumber(`VOL-CPO-${currentYear}${seq}`);
-      setClientName(clientsList[0]?.name || '');
+      setPoNumber('');
+      setClientName('');
       setPoDate(getLocalDateString());
-      setPoValue(0);
+      setPoValue('');
       setCurrency('USD');
       setStatus('Open');
-      setLocation(clientsList[0]?.country || 'Dubai, UAE');
+      setLocation('');
       setImportExport('Export');
       setExpectedCompletion(getOneMonthLaterString());
       setLinkedProject('No project');
       setNotes('');
       setMilestones([]);
       setAttachedFiles([]);
+      setClientDropdownOpen(false);
+      setLocationOpen(false);
     }
   }, [isOpen]);
 
@@ -217,8 +352,8 @@ const RegisterClientPOModal = ({
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    const selectedProj = projectsList.find(p => p.id === linkedProject);
-    const projectName = selectedProj ? (selectedProj.projectName || selectedProj.name) : '';
+    const selectedProj = projectsList.find(p => p.id === linkedProject || p.name === linkedProject || p.projectName === linkedProject);
+    const projectName = selectedProj ? (selectedProj.projectName || selectedProj.name) : (linkedProject !== 'No project' ? linkedProject : '');
 
     const rate = getExchangeRate(currency, rates);
     const totalValUsd = convertToUsd(numPoValue, currency, rates);
@@ -288,25 +423,21 @@ const RegisterClientPOModal = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 sm:p-6 animate-fade-in text-left">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-gray-100 animate-slide-up">
-        {/* Header - Spacious & Uncongested */}
-        <div className="px-7 sm:px-8 py-5 sm:py-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/70 shrink-0">
-          <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100/80 shadow-2xs">
-              <span className="material-symbols-outlined text-[24px]">post_add</span>
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-fade-in text-left">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden border border-gray-100 animate-slide-up">
+        {/* Header - Matches standard compact modal styling */}
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/80 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <span className="material-symbols-outlined text-blue-600 text-[22px]">post_add</span>
             <div>
-              <h3 className="text-lg font-bold text-gray-900 font-display tracking-tight">New Client PO</h3>
-              <p className="text-xs text-gray-500 mt-1 leading-normal">
-                Invoices can be mapped to this order from the invoice form.
-              </p>
+              <h3 className="text-base font-bold text-gray-900 font-display">New Client PO</h3>
+              <p className="text-xs text-gray-500">Invoices can be mapped to this order from the invoice form.</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer"
+            className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer"
             title="Close"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
@@ -314,32 +445,30 @@ const RegisterClientPOModal = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-7 sm:px-8 py-7 space-y-6 text-xs scrollbar-thin">
-          {/* Main 2-Column Grid - Spacious Layout */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs scrollbar-thin">
+          {/* Main 2-Column Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3.5">
             {/* Row 1: Client Name & PO Number */}
             <div>
-              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-2">
+              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
                 CLIENT NAME
               </label>
-              <input
-                type="text"
-                required
-                list="registered-clients-list"
+              <SearchableCombobox
                 value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
+                onChange={(val, item) => {
+                  setClientName(val);
+                  if (item) {
+                    handleSelectClient(item);
+                  }
+                }}
+                options={availableClients}
                 placeholder="Select or enter client name"
-                className="w-full h-11 px-4 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
+                required
               />
-              <datalist id="registered-clients-list">
-                {clientsList.map(c => (
-                  <option key={c.id || c.name} value={c.name} />
-                ))}
-              </datalist>
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-2">
+              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
                 PO NUMBER
               </label>
               <input
@@ -347,14 +476,14 @@ const RegisterClientPOModal = ({
                 required
                 value={poNumber}
                 onChange={(e) => setPoNumber(e.target.value)}
-                placeholder="VOL-CPO-2026001"
-                className="w-full h-11 px-4 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs font-mono font-medium"
+                placeholder="e.g. VOL-CPO-2026001"
+                className="w-full h-10 px-3 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs font-mono font-medium"
               />
             </div>
 
             {/* Row 2: PO Date & PO Value */}
             <div>
-              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-2">
+              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
                 PO DATE
               </label>
               <input
@@ -362,12 +491,12 @@ const RegisterClientPOModal = ({
                 required
                 value={poDate}
                 onChange={(e) => setPoDate(e.target.value)}
-                className="w-full h-11 px-4 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
+                className="w-full h-10 px-3 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-2">
+              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
                 PO VALUE
               </label>
               <input
@@ -377,20 +506,20 @@ const RegisterClientPOModal = ({
                 required
                 value={poValue}
                 onChange={(e) => setPoValue(e.target.value)}
-                placeholder="0"
-                className="w-full h-11 px-4 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs font-mono font-bold"
+                placeholder="0.00"
+                className="w-full h-10 px-3 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs font-mono font-bold"
               />
             </div>
 
             {/* Row 3: Currency & Status */}
             <div>
-              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-2">
+              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
                 CURRENCY
               </label>
               <select
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
-                className="w-full h-11 px-4 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
+                className="w-full h-10 px-3 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
               >
                 <option value="USD">USD</option>
                 <option value="AED">AED</option>
@@ -402,13 +531,13 @@ const RegisterClientPOModal = ({
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-2">
+              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
                 STATUS
               </label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
-                className="w-full h-11 px-4 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
+                className="w-full h-10 px-3 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
               >
                 <option value="Open">Open</option>
                 <option value="In Progress">In Progress</option>
@@ -419,9 +548,9 @@ const RegisterClientPOModal = ({
               </select>
             </div>
 
-            {/* Row 4: Location (Text Input + Dropdown Combobox) & Import / Export */}
+            {/* Row 4: Location & Import / Export */}
             <div className="relative" ref={locationDropdownRef}>
-              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-2">
+              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
                 LOCATION
               </label>
               <div className="relative">
@@ -434,15 +563,15 @@ const RegisterClientPOModal = ({
                   }}
                   onFocus={() => setLocationOpen(true)}
                   placeholder="Select or enter location"
-                  className="w-full h-11 pl-4 pr-11 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
+                  className="w-full h-10 pl-3 pr-9 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
                 />
                 <button
                   type="button"
                   onClick={() => setLocationOpen(prev => !prev)}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition cursor-pointer"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition cursor-pointer"
                   title="Toggle location options"
                 >
-                  <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 block ${locationOpen ? 'rotate-180' : ''}`}>
+                  <span className={`material-symbols-outlined text-[16px] transition-transform duration-200 block ${locationOpen ? 'rotate-180' : ''}`}>
                     expand_more
                   </span>
                 </button>
@@ -450,7 +579,7 @@ const RegisterClientPOModal = ({
 
               {/* Dropdown Menu */}
               {locationOpen && (
-                <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 max-h-56 overflow-y-auto p-1.5 scrollbar-thin animate-fadeIn">
+                <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto p-1 scrollbar-thin animate-fadeIn">
                   {filteredLocations.length > 0 ? (
                     filteredLocations.map((loc) => {
                       const isSelected = location.trim().toLowerCase() === loc.value.toLowerCase();
@@ -462,29 +591,29 @@ const RegisterClientPOModal = ({
                             setLocation(loc.value);
                             setLocationOpen(false);
                           }}
-                          className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs flex items-center justify-between transition cursor-pointer ${
+                          className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center justify-between transition cursor-pointer ${
                             isSelected
                               ? 'bg-blue-50 text-blue-700 font-bold'
                               : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
                           }`}
                         >
-                          <div className="flex items-center gap-2.5">
-                            <span className="text-base leading-none">{loc.flag}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm leading-none">{loc.flag}</span>
                             <span>{loc.label}</span>
                           </div>
                           {isSelected && (
-                            <span className="material-symbols-outlined text-[16px] text-blue-600">check</span>
+                            <span className="material-symbols-outlined text-[14px] text-blue-600">check</span>
                           )}
                         </button>
                       );
                     })
                   ) : (
-                    <div className="p-3 text-center">
-                      <p className="text-xs text-gray-400 mb-2">No matching preset</p>
+                    <div className="p-2.5 text-center">
+                      <p className="text-xs text-gray-400 mb-1.5">No matching preset</p>
                       <button
                         type="button"
                         onClick={() => setLocationOpen(false)}
-                        className="px-3.5 py-1.5 bg-blue-50 text-blue-700 rounded-xl text-xs font-semibold hover:bg-blue-100 transition cursor-pointer"
+                        className="px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-100 transition cursor-pointer"
                       >
                         Keep custom "{location}"
                       </button>
@@ -495,13 +624,13 @@ const RegisterClientPOModal = ({
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-2">
+              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
                 IMPORT / EXPORT
               </label>
               <select
                 value={importExport}
                 onChange={(e) => setImportExport(e.target.value)}
-                className="w-full h-11 px-4 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
+                className="w-full h-10 px-3 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
               >
                 <option value="Export">Export</option>
                 <option value="Import">Import</option>
@@ -511,38 +640,121 @@ const RegisterClientPOModal = ({
 
             {/* Row 5: Expected Completion & Project */}
             <div>
-              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-2">
+              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
                 EXPECTED COMPLETION
               </label>
               <input
                 type="date"
                 value={expectedCompletion}
                 onChange={(e) => setExpectedCompletion(e.target.value)}
-                className="w-full h-11 px-4 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
+                className="w-full h-10 px-3 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
               />
             </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-2">
+            <div className="relative" ref={projectDropdownRef}>
+              <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
                 PROJECT
               </label>
-              <select
-                value={linkedProject}
-                onChange={(e) => setLinkedProject(e.target.value)}
-                className="w-full h-11 px-4 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs"
-              >
-                <option value="No project">No project</option>
-                {projectsList.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.projectName || p.name || p.id}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={projectDropdownOpen ? projectSearchQuery : (linkedProject === 'No project' ? '' : linkedProject)}
+                  onChange={(e) => {
+                    setProjectSearchQuery(e.target.value);
+                    setProjectDropdownOpen(true);
+                  }}
+                  onFocus={() => setProjectDropdownOpen(true)}
+                  placeholder={linkedProject !== 'No project' ? linkedProject : "Search or select project..."}
+                  className="w-full h-10 pl-3 pr-8 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition shadow-2xs font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={() => setProjectDropdownOpen(prev => !prev)}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition cursor-pointer"
+                  title="Toggle project list"
+                >
+                  <span className={`material-symbols-outlined text-[16px] transition-transform duration-200 block ${projectDropdownOpen ? 'rotate-180' : ''}`}>
+                    expand_more
+                  </span>
+                </button>
+              </div>
+
+              {/* Searchable Dropdown Menu */}
+              {projectDropdownOpen && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto p-1 scrollbar-thin animate-fadeIn">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectProject('No project')}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center justify-between transition cursor-pointer ${
+                      linkedProject === 'No project'
+                        ? 'bg-gray-100 text-gray-900 font-bold'
+                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[14px] text-gray-400">block</span>
+                      <span>No project</span>
+                    </div>
+                    {linkedProject === 'No project' && (
+                      <span className="material-symbols-outlined text-[14px] text-gray-600">check</span>
+                    )}
+                  </button>
+
+                  <div className="h-px bg-gray-100 my-1" />
+
+                  {filteredProjectsList.length > 0 ? (
+                    filteredProjectsList.map((pr) => {
+                      const projTitle = pr.name || pr.projectName || pr.id;
+                      const isSelected = linkedProject === projTitle;
+                      return (
+                        <button
+                          key={pr.id || projTitle}
+                          type="button"
+                          onClick={() => handleSelectProject(pr)}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center justify-between transition cursor-pointer ${
+                            isSelected
+                              ? 'bg-blue-50 text-blue-700 font-bold'
+                              : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                          }`}
+                        >
+                          <div className="flex flex-col min-w-0 pr-2">
+                            <span className="truncate font-semibold">{projTitle}</span>
+                            {(pr.clientName || pr.status) && (
+                              <span className="text-[10px] text-gray-400 truncate mt-0.5">
+                                {[pr.clientName ? `Client: ${pr.clientName}` : null, pr.status ? `Status: ${pr.status}` : null].filter(Boolean).join(' · ')}
+                              </span>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <span className="material-symbols-outlined text-[14px] text-blue-600 shrink-0">check</span>
+                          )}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="p-3 text-center">
+                      <p className="text-xs text-gray-500 mb-1">No matching project found</p>
+                      {projectSearchQuery.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLinkedProject(projectSearchQuery.trim());
+                            setProjectDropdownOpen(false);
+                          }}
+                          className="text-[11px] font-semibold text-blue-600 hover:underline cursor-pointer"
+                        >
+                          Use "{projectSearchQuery.trim()}"
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Section: Payment Milestones - Spacious, Uncongested & Well-Padded */}
-          <div className="p-6 bg-gray-50/70 border border-gray-200/80 rounded-2xl space-y-4 my-2">
+          {/* Section: Payment Milestones */}
+          <div className="p-4 bg-gray-50/70 border border-gray-200/80 rounded-xl space-y-3 my-1">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h4 className="text-sm font-bold text-gray-900 font-display tracking-tight">
@@ -707,12 +919,12 @@ const RegisterClientPOModal = ({
           </div>
 
           {/* Section: Attach PO document */}
-          <div className="p-6 bg-gray-50/70 border border-gray-200/80 rounded-2xl space-y-3.5 my-2">
+          <div className="p-4 bg-gray-50/70 border border-gray-200/80 rounded-xl space-y-2.5 my-1">
             <div>
               <h4 className="text-sm font-bold text-gray-900 font-display tracking-tight">
                 Attach PO Document
               </h4>
-              <p className="text-xs text-gray-500 mt-1 leading-normal">
+              <p className="text-xs text-gray-500 mt-0.5 leading-normal">
                 Optional · PDF or image up to 10 MB each. Files upload when you save.
               </p>
             </div>
@@ -730,7 +942,7 @@ const RegisterClientPOModal = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-2 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 hover:text-gray-900 rounded-xl text-xs font-semibold shadow-2xs transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                className="px-3.5 py-1.5 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 hover:text-gray-900 rounded-xl text-xs font-semibold shadow-2xs transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[16px] text-gray-500">upload_file</span>
                 <span>Choose Files</span>
@@ -741,11 +953,11 @@ const RegisterClientPOModal = ({
             </div>
 
             {attachedFiles.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-1.5">
+              <div className="flex flex-wrap gap-2 pt-1">
                 {attachedFiles.map((f, i) => (
                   <span
                     key={i}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-gray-200 text-xs text-gray-800 font-medium shadow-2xs"
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white border border-gray-200 text-xs text-gray-800 font-medium shadow-2xs"
                   >
                     <span className="material-symbols-outlined text-[15px] text-blue-600">attach_file</span>
                     <span className="max-w-[200px] truncate">{f.name}</span>
@@ -764,20 +976,20 @@ const RegisterClientPOModal = ({
         </form>
 
         {/* Footer Actions */}
-        <div className="px-7 sm:px-8 py-5 border-t border-gray-100 bg-gray-50/70 flex items-center justify-end gap-3 shrink-0">
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/80 flex items-center justify-end gap-3 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4.5 py-2.5 text-xs font-semibold text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition cursor-pointer"
+            className="px-4 py-2 border border-gray-200 text-gray-600 rounded-xl text-xs font-semibold hover:bg-gray-100 transition cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="submit"
             onClick={handleSubmit}
-            className="px-6 py-2.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs transition flex items-center gap-2 active:scale-95 cursor-pointer"
+            className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[17px]">check</span>
+            <span className="material-symbols-outlined text-[16px]">check</span>
             <span>Save Purchase Order</span>
           </button>
         </div>

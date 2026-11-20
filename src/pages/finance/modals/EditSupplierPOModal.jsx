@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { isDateInLockedPeriod } from '../financeCalcs';
+import { SearchableCombobox } from '../../../components/common/SearchableCombobox';
+import { loadFinanceData } from '../financeData';
 
 export const EditSupplierPOModal = ({
   isOpen,
@@ -19,6 +21,32 @@ export const EditSupplierPOModal = ({
   const [status, setStatus] = useState('Open');
   const [issueDate, setIssueDate] = useState('');
   const [error, setError] = useState('');
+
+  const availableSuppliers = useMemo(() => {
+    const map = new Map();
+    try {
+      const stored = loadFinanceData();
+      (stored.masterDirectory || []).filter(d => d.category === 'Supplier').forEach(s => {
+        if (s?.name) {
+          map.set(s.name.trim().toLowerCase(), {
+            id: s.id || s.name,
+            name: s.name.trim(),
+            subtitle: [s.country, s.classification].filter(Boolean).join(' · ')
+          });
+        }
+      });
+      (stored.supplierPos || []).forEach(spo => {
+        if (spo?.supplierName && !map.has(spo.supplierName.trim().toLowerCase())) {
+          map.set(spo.supplierName.trim().toLowerCase(), {
+            id: spo.supplierName,
+            name: spo.supplierName.trim(),
+            subtitle: spo.poNumber ? `PO: ${spo.poNumber}` : ''
+          });
+        }
+      });
+    } catch {}
+    return Array.from(map.values());
+  }, []);
 
   useEffect(() => {
     if (isOpen && supplierPo) {
@@ -142,12 +170,13 @@ export const EditSupplierPOModal = ({
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Supplier Name <span className="text-rose-500">*</span>
             </label>
-            <input
-              type="text"
-              required
+            <SearchableCombobox
               value={supplierName}
-              onChange={(e) => setSupplierName(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+              onChange={(val) => setSupplierName(val)}
+              options={availableSuppliers}
+              placeholder="Search or enter supplier name"
+              required
+              inputClassName="py-2 text-sm border-slate-300 focus:ring-purple-500/20 focus:border-purple-500"
             />
           </div>
 

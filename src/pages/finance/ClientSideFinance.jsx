@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, Navigate, Link, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate, Navigate, Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useData } from '../../context/DataContext';
 import {
   loadFinanceData,
   saveFinanceData,
@@ -28,6 +29,7 @@ import {
 } from './financeCalcs';
 
 import FinanceClientPOs from './tabs/FinanceClientPOs';
+import ReceiptsPage from './ReceiptsPage';
 
 // Modals
 import RegisterClientPOModal from './modals/RegisterClientPOModal';
@@ -38,29 +40,61 @@ import { EditClientPOModal } from './modals/EditClientPOModal';
 import { EditInvoiceModal } from './modals/EditInvoiceModal';
 import { VoidEntityModal } from './modals/VoidEntityModal';
 
-export const ClientSideFinance = () => {
+export const ClientSideFinance = ({ fixedTab }) => {
   const { user, canManageFinance, loading } = useAuth();
   const { addToast } = useToast();
+  const { projects: allTrackerProjects = [] } = useData();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Map URL tab to sub-tab identifier
-  const tabParam = (searchParams.get('tab') || 'pos').toUpperCase();
-  const activeSubTab = 
-    tabParam === 'INVOICES' || tabParam === 'INVOICE' ? 'INVOICES' :
-    tabParam === 'PAYMENTS' || tabParam === 'RECEIPTS' || tabParam === 'PAYMENT' ? 'PAYMENTS' :
-    tabParam === 'AGEING' || tabParam === 'AGING' ? 'AGEING' :
-    tabParam === 'STATEMENTS' || tabParam === 'STATEMENT' ? 'STATEMENTS' :
-    'POS';
+  // Determine active sub-tab from fixedTab prop, location.pathname, or query param
+  const activeSubTab = useMemo(() => {
+    if (fixedTab) return fixedTab;
+
+    const path = location.pathname.toLowerCase();
+    if (path.includes('/client-invoices') || path.includes('/invoices')) return 'INVOICES';
+    if (path.includes('/receipts')) return 'PAYMENTS';
+    if (path.includes('/ar-ageing') || path.includes('/ageing')) return 'AGEING';
+    if (path.includes('/client-statements') || path.includes('/statements')) return 'STATEMENTS';
+    if (path.includes('/client-pos') || path.includes('/sales')) return 'POS';
+
+    const tabParam = (searchParams.get('tab') || '').toUpperCase();
+    if (tabParam === 'INVOICES' || tabParam === 'INVOICE') return 'INVOICES';
+    if (tabParam === 'PAYMENTS' || tabParam === 'RECEIPTS' || tabParam === 'PAYMENT') return 'PAYMENTS';
+    if (tabParam === 'AGEING' || tabParam === 'AGING') return 'AGEING';
+    if (tabParam === 'STATEMENTS' || tabParam === 'STATEMENT') return 'STATEMENTS';
+
+    return 'POS';
+  }, [fixedTab, location.pathname, searchParams]);
 
   const handleTabChange = (newTab) => {
-    setSearchParams({ tab: newTab.toLowerCase() });
+    const map = {
+      pos: '/sales/client-pos',
+      invoices: '/finance/client-invoices',
+      payments: '/finance/receipts',
+      ageing: '/finance/ar-ageing',
+      statements: '/finance/client-statements'
+    };
+    const target = map[newTab.toLowerCase()];
+    if (target) {
+      navigate(target);
+    } else {
+      setSearchParams({ tab: newTab.toLowerCase() });
+    }
   };
 
   // State loaded from API or memory cache
   const [data, setData] = useState(() => loadFinanceData());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Synchronize projects from DataContext
+  const trackerProjects = useMemo(() => {
+    return Array.isArray(allTrackerProjects) && allTrackerProjects.length > 0
+      ? allTrackerProjects
+      : (data.projects || []);
+  }, [allTrackerProjects, data.projects]);
 
   const loadData = async () => {
     try {
@@ -411,6 +445,10 @@ export const ClientSideFinance = () => {
     return <Navigate to="/login" replace />;
   }
 
+  if (activeSubTab === 'PAYMENTS') {
+    return <ReceiptsPage />;
+  }
+
   return (
     <div className="w-full min-h-screen bg-[#FBFBFC] px-4 sm:px-8 py-6 space-y-6 text-left">
       {/* Top Banner & Header Bar */}
@@ -427,41 +465,6 @@ export const ClientSideFinance = () => {
           <p className="text-xs text-gray-500 mt-1">
             {pageDescription}
           </p>
-        </div>
-
-        {/* Global Action Buttons */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Link
-            to="/master-data"
-            className="px-3.5 py-2 text-xs font-semibold bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl transition shadow-xs flex items-center gap-1.5 active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[16px] text-gray-500">storefront</span>
-            <span>Client Master</span>
-          </Link>
-
-          <button
-            onClick={() => setRegisterClientPoOpen(true)}
-            className="px-3.5 py-2 text-xs font-semibold bg-white border border-gray-200 hover:bg-gray-50 text-gray-800 rounded-xl transition shadow-xs flex items-center gap-1.5 active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[16px] text-blue-600">add_task</span>
-            <span>+ Client PO</span>
-          </button>
-
-          <button
-            onClick={() => setGenerateInvoiceOpen(true)}
-            className="px-3.5 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition shadow-xs flex items-center gap-1.5 active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[16px]">flash_on</span>
-            <span>Auto-Gen Invoice</span>
-          </button>
-
-          <button
-            onClick={() => setRecordClientPaymentOpen(true)}
-            className="px-3.5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition shadow-xs flex items-center gap-1.5 active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[16px]">payments</span>
-            <span>+ Record Payment</span>
-          </button>
         </div>
       </div>
 
@@ -548,7 +551,7 @@ export const ClientSideFinance = () => {
             setSearchParams(nextParams, { replace: true });
           }
         }}
-        projects={data.projects}
+        projects={trackerProjects}
         exchangeRates={data.exchangeRates}
         clients={data.masterDirectory?.filter(d => d.category === 'Client') || []}
         existingPos={data.clientPos || []}
@@ -559,7 +562,7 @@ export const ClientSideFinance = () => {
         isOpen={generateInvoiceOpen}
         onClose={() => setGenerateInvoiceOpen(false)}
         clientPos={data.clientPos || []}
-        projects={data.projects || []}
+        projects={trackerProjects}
         clients={data.masterDirectory?.filter(d => d.category === 'Client') || []}
         exchangeRates={data.exchangeRates || {}}
         existingInvoices={data.invoices || []}

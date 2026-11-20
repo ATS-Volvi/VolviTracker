@@ -5,9 +5,7 @@ export default function MasterDataTabs({
   handleSelectSegment,
   clientCount,
   supplierCount,
-  employeeCount,
-  vaultDocsCount,
-  totalPoCount
+  employeeCount
 }) {
   return (
     <div className="inline-flex p-1 bg-gray-200/80 rounded-xl gap-1 flex-wrap">
@@ -71,46 +69,6 @@ export default function MasterDataTabs({
             {employeeCount}
           </span>
         )}
-      </button>
-
-      <button
-        type="button"
-        onClick={() => handleSelectSegment('VAULT')}
-        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-          activeSegment === 'VAULT'
-            ? 'bg-white text-indigo-600 shadow-xs'
-            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/60'
-        }`}
-      >
-        <span className="material-symbols-outlined text-[16px]">folder_zip</span>
-        <span>Document Vault</span>
-        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-          activeSegment === 'VAULT'
-            ? 'bg-indigo-100 text-indigo-700'
-            : 'bg-gray-300 text-gray-700'
-        }`}>
-          {vaultDocsCount}
-        </span>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => handleSelectSegment('POS')}
-        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-          activeSegment === 'POS'
-            ? 'bg-white text-purple-600 shadow-xs'
-            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/60'
-        }`}
-      >
-        <span className="material-symbols-outlined text-[16px]">receipt_long</span>
-        <span>PO Master List</span>
-        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-          activeSegment === 'POS'
-            ? 'bg-purple-100 text-purple-700'
-            : 'bg-gray-300 text-gray-700'
-        }`}>
-          {totalPoCount}
-        </span>
       </button>
     </div>
   );

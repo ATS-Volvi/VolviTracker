@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useData } from '../../context/DataContext';
 import {
   loadFinanceData,
   saveFinanceData,
@@ -55,6 +56,7 @@ import { PeriodLockModal } from './modals/PeriodLockModal';
 export const Finance = () => {
   const { user, isAdmin, loading, canManageFinance } = useAuth();
   const { addToast } = useToast();
+  const { projects: allTrackerProjects = [] } = useData();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -62,6 +64,13 @@ export const Finance = () => {
   const [data, setData] = useState(() => loadFinanceData());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Synchronize projects from DataContext
+  const trackerProjects = useMemo(() => {
+    return Array.isArray(allTrackerProjects) && allTrackerProjects.length > 0
+      ? allTrackerProjects
+      : (data.projects || []);
+  }, [allTrackerProjects, data.projects]);
 
   const loadData = async () => {
     try {
@@ -664,7 +673,7 @@ export const Finance = () => {
         onClose={() => setRegisterClientPoOpen(false)}
         onSave={handleSaveClientPo}
         clients={data.masterDirectory?.filter(d => d.category === 'Client') || []}
-        projects={data.projects || []}
+        projects={trackerProjects}
         exchangeRates={data.exchangeRates || {}}
         existingPos={data.clientPos || []}
       />
@@ -673,7 +682,7 @@ export const Finance = () => {
         isOpen={issueSupplierPoOpen}
         onClose={() => setIssueSupplierPoOpen(false)}
         onSave={handleSaveSupplierPo}
-        projects={data.projects || []}
+        projects={trackerProjects}
         vendors={data.masterDirectory?.filter(d => d.category === 'Supplier') || []}
         clientPos={data.clientPos || []}
         exchangeRates={data.exchangeRates || {}}
@@ -684,7 +693,7 @@ export const Finance = () => {
         isOpen={generateInvoiceOpen}
         onClose={() => setGenerateInvoiceOpen(false)}
         clientPos={data.clientPos || []}
-        projects={data.projects || []}
+        projects={trackerProjects}
         clients={data.masterDirectory?.filter(d => d.category === 'Client') || []}
         exchangeRates={data.exchangeRates || {}}
         existingInvoices={data.invoices || []}

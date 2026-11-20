@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { convertFromUsd, getExchangeRate } from '../financeCalcs';
+import { SearchableCombobox } from '../../../components/common/SearchableCombobox';
 
 const CreateProjectModal = ({
   isOpen,
@@ -93,15 +94,14 @@ const CreateProjectModal = ({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-gray-700 font-semibold mb-1">Select Client (From Master) *</label>
-              <select
+              <SearchableCombobox
                 value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
-              >
-                {clients.map(c => (
-                  <option key={c.id} value={c.name}>{c.name}</option>
-                ))}
-              </select>
+                onChange={(val) => setClientName(val)}
+                options={clients}
+                placeholder="Search or enter client..."
+                required
+                inputClassName="py-2"
+              />
             </div>
 
             <div>

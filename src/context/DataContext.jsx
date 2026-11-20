@@ -22,7 +22,7 @@ import {
   apiDeleteDoc
 } from '../services/api';
 
-const DataContext = createContext(null);
+export const DataContext = createContext(null);
 
 // Generate deterministic unique ID
 const generateId = () => {

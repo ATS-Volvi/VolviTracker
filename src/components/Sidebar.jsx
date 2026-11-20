@@ -55,16 +55,16 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
     (location.pathname === '/' && canManageProjects) || 
     Boolean(user && !canManageProjects && location.pathname === `/employee/${user?.id}`);
 
-  const isClientPosActive = (location.pathname === '/finance/client' || location.pathname === '/sales/client-pos') && (!currentTab || currentTab === 'pos');
+  const isClientPosActive = (location.pathname === '/finance/client' || location.pathname === '/finance/client-pos' || location.pathname === '/sales/client-pos') && (!currentTab || currentTab === 'pos');
 
   const isSupplierPosActive = (location.pathname === '/finance/supplier' || location.pathname === '/purchases/supplier-pos') && (!currentTab || currentTab === 'pos');
 
   // Accounts Receivable subpages
-  const isClientInvoicesActive = location.pathname === '/finance/client' && ['invoices', 'invoice'].includes(currentTab);
-  const isReceiptsActive = location.pathname === '/finance/client' && ['receipts', 'receipt', 'payments', 'payment'].includes(currentTab);
-  const isArAgeingActive = location.pathname === '/finance/client' && ['ageing', 'aging'].includes(currentTab);
-  const isClientStatementsActive = location.pathname === '/finance/client' && ['statements', 'statement'].includes(currentTab);
-  const isArActive = location.pathname === '/finance/client' && currentTab && currentTab !== 'pos';
+  const isClientInvoicesActive = location.pathname === '/finance/client-invoices' || location.pathname === '/finance/invoices' || (location.pathname === '/finance/client' && ['invoices', 'invoice'].includes(currentTab));
+  const isReceiptsActive = location.pathname === '/finance/receipts' || (location.pathname === '/finance/client' && ['receipts', 'receipt', 'payments', 'payment'].includes(currentTab));
+  const isArAgeingActive = location.pathname === '/finance/ar-ageing' || (location.pathname === '/finance/client' && ['ageing', 'aging'].includes(currentTab));
+  const isClientStatementsActive = location.pathname === '/finance/client-statements' || (location.pathname === '/finance/client' && ['statements', 'statement'].includes(currentTab));
+  const isArActive = isClientInvoicesActive || isReceiptsActive || isArAgeingActive || isClientStatementsActive || (location.pathname === '/finance/client' && currentTab && currentTab !== 'pos');
 
   // Accounts Payable subpages
   const isSupplierInvoicesActive = location.pathname === '/finance/supplier' && ['invoices', 'invoice', 'bills', 'bill'].includes(currentTab);
@@ -82,16 +82,21 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
   const isTaxActive = location.pathname.startsWith('/finance/tax');
   const isCashFlowActive = location.pathname.startsWith('/finance/cash-flow');
 
+  // Master Data subpages
+  const isClientsActive = location.pathname === '/master-data/clients' || (location.pathname === '/master-data' && (!currentTab || currentTab === 'clients'));
+  const isSuppliersActive = location.pathname === '/master-data/suppliers' || (location.pathname === '/master-data' && ['suppliers', 'supplier'].includes(currentTab));
+  const isUserManagementActive = location.pathname === '/master-data/user-management' || location.pathname === '/master-data/users' || location.pathname === '/master-data/employees' || (location.pathname === '/master-data' && ['employees', 'employee', 'users', 'user'].includes(currentTab));
   const isMasterDataActive = location.pathname.startsWith('/master-data');
 
   // Accordion open states
   const [arOpen, setArOpen] = useState(false);
   const [apOpen, setApOpen] = useState(false);
   const [cashBookOpen, setCashBookOpen] = useState(false);
+  const [masterDataOpen, setMasterDataOpen] = useState(false);
 
   // Auto-expand accordion if navigating into its subpages
   useEffect(() => {
-    if (location.pathname.startsWith('/finance/client') && currentTab && currentTab !== 'pos') {
+    if (isArActive || (location.pathname.startsWith('/finance/client') && currentTab && currentTab !== 'pos')) {
       setArOpen(true);
     }
     if (location.pathname.startsWith('/finance/supplier') && currentTab && currentTab !== 'pos') {
@@ -100,7 +105,10 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
     if (location.pathname.startsWith('/finance/cash-book')) {
       setCashBookOpen(true);
     }
-  }, [location.pathname, currentTab]);
+    if (isMasterDataActive) {
+      setMasterDataOpen(true);
+    }
+  }, [location.pathname, currentTab, isArActive, isMasterDataActive]);
 
   const renderSidebarContent = (collapsed = false) => (
     <div className="flex flex-col h-full justify-between bg-white border-r border-gray-200/80 transition-all duration-300 relative">
@@ -233,7 +241,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                   </div>
                   <div className="py-1 space-y-0.5">
                     <Link
-                      to="/finance/client?tab=invoices"
+                      to="/finance/client-invoices"
                       className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-xl font-semibold transition ${
                         isClientInvoicesActive ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-700 hover:bg-gray-50'
                       }`}
@@ -242,7 +250,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                       <span>Client Invoices</span>
                     </Link>
                     <Link
-                      to="/finance/client?tab=receipts"
+                      to="/finance/receipts"
                       className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-xl font-semibold transition ${
                         isReceiptsActive ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-700 hover:bg-gray-50'
                       }`}
@@ -251,7 +259,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                       <span>Receipts</span>
                     </Link>
                     <Link
-                      to="/finance/client?tab=ageing"
+                      to="/finance/ar-ageing"
                       className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-xl font-semibold transition ${
                         isArAgeingActive ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-700 hover:bg-gray-50'
                       }`}
@@ -260,7 +268,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                       <span>AR Ageing</span>
                     </Link>
                     <Link
-                      to="/finance/client?tab=statements"
+                      to="/finance/client-statements"
                       className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-xl font-semibold transition ${
                         isClientStatementsActive ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-700 hover:bg-gray-50'
                       }`}
@@ -419,7 +427,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
               {/* Master Data Collapsed */}
               <div className="relative group pt-2 border-t border-gray-100">
                 <Link
-                  to="/master-data"
+                  to="/master-data/clients"
                   className={`flex items-center justify-center p-3 rounded-xl transition-all duration-150 ${
                     isMasterDataActive ? 'bg-blue-50 text-blue-600 shadow-2xs' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                   }`}
@@ -531,7 +539,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                   {arOpen && (
                     <div className="ml-5 pl-3 border-l border-gray-200/90 space-y-0.5 py-1">
                       <Link
-                        to="/finance/client?tab=invoices"
+                        to="/finance/client-invoices"
                         className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
                           isClientInvoicesActive
                             ? 'bg-blue-50 text-blue-600 font-bold'
@@ -543,7 +551,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                         {isClientInvoicesActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />}
                       </Link>
                       <Link
-                        to="/finance/client?tab=receipts"
+                        to="/finance/receipts"
                         className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
                           isReceiptsActive
                             ? 'bg-blue-50 text-blue-600 font-bold'
@@ -555,7 +563,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                         {isReceiptsActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />}
                       </Link>
                       <Link
-                        to="/finance/client?tab=ageing"
+                        to="/finance/ar-ageing"
                         className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
                           isArAgeingActive
                             ? 'bg-blue-50 text-blue-600 font-bold'
@@ -567,7 +575,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                         {isArAgeingActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />}
                       </Link>
                       <Link
-                        to="/finance/client?tab=statements"
+                        to="/finance/client-statements"
                         className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
                           isClientStatementsActive
                             ? 'bg-blue-50 text-blue-600 font-bold'
@@ -774,20 +782,68 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse }) => {
                 <div className="px-3 text-[11px] font-semibold text-gray-400 tracking-wider">
                   Database
                 </div>
-                <Link
-                  to="/master-data"
-                  className={`group flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-150 ${
-                    isMasterDataActive
-                      ? 'bg-blue-50 text-blue-600 font-bold shadow-2xs'
-                      : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className={`material-symbols-outlined text-[19px] ${isMasterDataActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`}>
-                    apartment
-                  </span>
-                  <span>Master Data</span>
-                  {isMasterDataActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />}
-                </Link>
+                <div className="space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setMasterDataOpen(prev => !prev)}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-150 ${
+                      isMasterDataActive
+                        ? 'bg-blue-50/70 text-blue-600 font-bold'
+                        : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className={`material-symbols-outlined text-[19px] ${isMasterDataActive ? 'text-blue-600' : 'text-gray-400'}`}>
+                        apartment
+                      </span>
+                      <span>Master Data</span>
+                    </div>
+                    <span className={`material-symbols-outlined text-[18px] text-gray-400 transition-transform duration-200 ${masterDataOpen ? 'rotate-180' : ''}`}>
+                      expand_more
+                    </span>
+                  </button>
+
+                  {masterDataOpen && (
+                    <div className="ml-5 pl-3 border-l border-gray-200/90 space-y-0.5 py-1">
+                      <Link
+                        to="/master-data/clients"
+                        className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                          isClientsActive
+                            ? 'bg-blue-50 text-blue-600 font-bold'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[16px] text-blue-600">person</span>
+                        <span>Clients</span>
+                        {isClientsActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />}
+                      </Link>
+                      <Link
+                        to="/master-data/suppliers"
+                        className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                          isSuppliersActive
+                            ? 'bg-blue-50 text-blue-600 font-bold'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[16px] text-emerald-600">local_shipping</span>
+                        <span>Suppliers</span>
+                        {isSuppliersActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />}
+                      </Link>
+                      <Link
+                        to="/master-data/user-management"
+                        className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                          isUserManagementActive
+                            ? 'bg-blue-50 text-blue-600 font-bold'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[16px] text-purple-600">badge</span>
+                        <span>User Management</span>
+                        {isUserManagementActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />}
+                      </Link>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

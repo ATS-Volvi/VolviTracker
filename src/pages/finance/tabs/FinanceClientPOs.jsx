@@ -94,51 +94,54 @@ const FinanceClientPOs = ({
 
   return (
     <div className="space-y-6 text-left">
-      {/* Top Action & Sub-tab Bar */}
+      {/* Top Action Bar */}
       <div className="bg-white p-4.5 rounded-2xl border border-gray-100 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center bg-gray-100 p-0.5 rounded-xl font-semibold text-xs overflow-x-auto">
-            <button
-              onClick={() => setActiveSubTab('POS')}
-              className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap ${
-                activeSubTab === 'POS' ? 'bg-white text-blue-600 shadow-xs font-bold' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Client POs ({clientPos.length})
-            </button>
-            <button
-              onClick={() => setActiveSubTab('INVOICES')}
-              className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap ${
-                activeSubTab === 'INVOICES' ? 'bg-white text-blue-600 shadow-xs font-bold' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Client Invoices ({invoices.length})
-            </button>
-            <button
-              onClick={() => setActiveSubTab('PAYMENTS')}
-              className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap ${
-                activeSubTab === 'PAYMENTS' ? 'bg-white text-emerald-600 shadow-xs font-bold' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Receipts ({paymentsReceived.length})
-            </button>
-            <button
-              onClick={() => setActiveSubTab('AGEING')}
-              className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap ${
-                activeSubTab === 'AGEING' ? 'bg-white text-purple-600 shadow-xs font-bold' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              AR Ageing
-            </button>
-            <button
-              onClick={() => setActiveSubTab('STATEMENTS')}
-              className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap ${
-                activeSubTab === 'STATEMENTS' ? 'bg-white text-amber-600 shadow-xs font-bold' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Client Statements
-            </button>
-          </div>
+        <div className="flex items-center gap-2.5">
+          {activeSubTab === 'POS' && (
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-blue-600 text-[20px]">shopping_cart</span>
+              <span className="text-sm font-bold text-gray-900 font-display">Client Purchase Orders</span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                {clientPos.length} {clientPos.length === 1 ? 'Record' : 'Records'}
+              </span>
+            </div>
+          )}
+          {activeSubTab === 'INVOICES' && (
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-blue-600 text-[20px]">description</span>
+              <span className="text-sm font-bold text-gray-900 font-display">Client Tax Invoices</span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                {invoices.length} {invoices.length === 1 ? 'Invoice' : 'Invoices'}
+              </span>
+            </div>
+          )}
+          {activeSubTab === 'PAYMENTS' && (
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-emerald-600 text-[20px]">monetization_on</span>
+              <span className="text-sm font-bold text-gray-900 font-display">Receipts & Payment Intake</span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">
+                {paymentsReceived.length} {paymentsReceived.length === 1 ? 'Receipt' : 'Receipts'}
+              </span>
+            </div>
+          )}
+          {activeSubTab === 'AGEING' && (
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-purple-600 text-[20px]">calendar_month</span>
+              <span className="text-sm font-bold text-gray-900 font-display">Accounts Receivable Ageing</span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-100">
+                Overdue Analysis
+              </span>
+            </div>
+          )}
+          {activeSubTab === 'STATEMENTS' && (
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-amber-600 text-[20px]">summarize</span>
+              <span className="text-sm font-bold text-gray-900 font-display">Client Statements of Account</span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+                Remittance Ledger
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -172,39 +175,6 @@ const FinanceClientPOs = ({
               .CSV
             </button>
           </div>
-
-          {canManageFinance ? (
-            <>
-              <button
-                onClick={onOpenRecordPayment}
-                className="px-3.5 py-2 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl transition border border-emerald-200 flex items-center gap-1.5 shadow-xs active:scale-95"
-              >
-                <span className="material-symbols-outlined text-[16px]">payments</span>
-                <span>Record Payment</span>
-              </button>
-
-              <button
-                onClick={onOpenGenerateInvoice}
-                className="px-3.5 py-2 text-xs font-bold bg-white hover:bg-gray-50 text-gray-800 rounded-xl transition border border-gray-200 flex items-center gap-1.5 shadow-xs active:scale-95"
-              >
-                <span className="material-symbols-outlined text-[16px] text-blue-600">flash_on</span>
-                <span>Auto-Gen Invoice</span>
-              </button>
-
-              <button
-                onClick={onOpenRegisterClientPo}
-                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition shadow-xs flex items-center gap-1.5 active:scale-95"
-              >
-                <span className="material-symbols-outlined text-[16px]">add_task</span>
-                <span>+ Register Client PO</span>
-              </button>
-            </>
-          ) : (
-            <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 font-semibold text-xs flex items-center gap-1.5 border border-slate-200">
-              <span className="material-symbols-outlined text-[16px] text-slate-400">visibility</span>
-              <span>Read-Only Access</span>
-            </span>
-          )}
         </div>
       </div>
 
@@ -216,9 +186,20 @@ const FinanceClientPOs = ({
               <h3 className="text-sm font-bold text-gray-900 font-display">Client Purchase Order Master Registry</h3>
               <p className="text-xs text-gray-400 mt-0.5">Authoritative SOW caps, currency schedules, and real-time drawdown utilization</p>
             </div>
-            <span className="text-[11px] text-gray-500">
-              Click row to expand milestone drawdown schedule
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-gray-500 hidden sm:inline">
+                Click row to expand milestone drawdown schedule
+              </span>
+              {canManageFinance && (
+                <button
+                  onClick={onOpenRegisterClientPo}
+                  className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition flex items-center gap-1 shadow-xs"
+                >
+                  <span className="material-symbols-outlined text-[16px]">add_task</span>
+                  <span>+ Register Client PO</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -306,17 +287,6 @@ const FinanceClientPOs = ({
                           <div className="flex items-center justify-center gap-1">
                             {canManageFinance && cpo.status !== 'Void' && !cpo.isVoid && (
                               <>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onOpenGenerateInvoice && onOpenGenerateInvoice();
-                                  }}
-                                  className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[10px] transition"
-                                  title="Generate Invoice for this PO"
-                                >
-                                  + Invoice
-                                </button>
                                 {onEditClientPo && (
                                   <button
                                     type="button"

@@ -15,7 +15,11 @@ export default function EntityInspector({
       {selectedEntity ? (
         <>
           {/* Header Banner */}
-          <div className="p-5 bg-gradient-to-br from-blue-50/60 to-indigo-50/40 border-b border-gray-100 relative">
+          <div className={`p-5 border-b border-gray-100 relative ${
+            selectedEntity.category === 'Supplier'
+              ? 'bg-gradient-to-br from-emerald-50/70 to-teal-50/50'
+              : 'bg-gradient-to-br from-blue-50/60 to-indigo-50/40'
+          }`}>
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg text-white shadow-xs ${
@@ -45,14 +49,20 @@ export default function EntityInspector({
             {/* 3 Quick Micro-KPIs */}
             <div className="grid grid-cols-3 gap-2 mt-4">
               <div className="p-2.5 rounded-xl bg-white shadow-2xs border border-gray-100">
-                <div className="text-[10px] uppercase font-bold text-gray-400">Lifetime Billed</div>
+                <div className="text-[10px] uppercase font-bold text-gray-400">
+                  {selectedEntity.category === 'Supplier' ? 'Lifetime Paid' : 'Lifetime Billed'}
+                </div>
                 <div className="text-sm font-extrabold text-gray-900 mt-0.5">{selectedEntity.lifetimeBilled || '$1.2M'}</div>
                 <div className="text-[10px] text-emerald-600 font-medium">100% Reconciled</div>
               </div>
 
               <div className="p-2.5 rounded-xl bg-white shadow-2xs border border-gray-100">
-                <div className="text-[10px] uppercase font-bold text-gray-400">Credit Cap</div>
-                <div className="text-sm font-extrabold text-blue-600 mt-0.5">{selectedEntity.creditLimit || '$250k'}</div>
+                <div className="text-[10px] uppercase font-bold text-gray-400">
+                  {selectedEntity.category === 'Supplier' ? 'Credit Line' : 'Credit Cap'}
+                </div>
+                <div className={`text-sm font-extrabold mt-0.5 ${selectedEntity.category === 'Supplier' ? 'text-emerald-600' : 'text-blue-600'}`}>
+                  {selectedEntity.creditLimit || '$250k'}
+                </div>
                 <div className="text-[10px] text-gray-400 font-medium">Terms: {selectedEntity.creditTerms}</div>
               </div>
 
@@ -70,7 +80,9 @@ export default function EntityInspector({
               onClick={() => setInspectorTab('OVERVIEW')}
               className={`py-2.5 px-3 border-b-2 transition ${
                 inspectorTab === 'OVERVIEW'
-                  ? 'border-blue-600 text-blue-600 bg-white'
+                  ? selectedEntity.category === 'Supplier'
+                    ? 'border-emerald-600 text-emerald-600 bg-white'
+                    : 'border-blue-600 text-blue-600 bg-white'
                   : 'border-transparent text-gray-500 hover:text-gray-900'
               }`}
             >
@@ -80,7 +92,9 @@ export default function EntityInspector({
               onClick={() => setInspectorTab('VAULT')}
               className={`py-2.5 px-3 border-b-2 transition flex items-center gap-1 ${
                 inspectorTab === 'VAULT'
-                  ? 'border-blue-600 text-blue-600 bg-white'
+                  ? selectedEntity.category === 'Supplier'
+                    ? 'border-emerald-600 text-emerald-600 bg-white'
+                    : 'border-blue-600 text-blue-600 bg-white'
                   : 'border-transparent text-gray-500 hover:text-gray-900'
               }`}
             >
@@ -303,7 +317,11 @@ export default function EntityInspector({
             <button
               type="button"
               onClick={() => onOpenCompanyDossier(selectedEntity.id)}
-              className="flex-1 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 font-bold text-white flex items-center justify-center gap-1.5 shadow-xs transition text-xs"
+              className={`flex-1 py-2 px-3 rounded-xl font-bold text-white flex items-center justify-center gap-1.5 shadow-xs transition text-xs cursor-pointer ${
+                selectedEntity.category === 'Supplier'
+                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                  : 'bg-blue-600 hover:bg-blue-700'
+              }`}
               title={`Open full dedicated dossier for ${selectedEntity.name}`}
             >
               <span className="material-symbols-outlined text-[16px]">folder_shared</span>

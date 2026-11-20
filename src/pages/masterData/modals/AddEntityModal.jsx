@@ -933,18 +933,18 @@ const AddEntityModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fade-in overflow-y-auto">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col border border-gray-100 animate-slide-up my-auto overflow-hidden isolate">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col border border-gray-100 animate-slide-up my-auto overflow-hidden isolate">
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
           {/* Header */}
-          <div className="px-7 py-5.5 sm:px-8 sm:py-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/90 shrink-0 rounded-t-3xl">
-            <div className="flex items-center gap-4">
-              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white shadow-xs ${category === 'Client' ? 'bg-blue-600' : 'bg-emerald-600'}`}>
-                <span className="material-symbols-outlined text-[24px]">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/90 shrink-0 rounded-t-2xl">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-xs ${category === 'Client' ? 'bg-blue-600' : 'bg-emerald-600'}`}>
+                <span className="material-symbols-outlined text-[22px]">
                   {category === 'Client' ? 'person_add' : 'domain_add'}
                 </span>
               </div>
               <div>
-                <h2 className="text-lg sm:text-xl font-bold text-gray-900 font-display tracking-tight leading-snug">
+                <h2 className="text-base font-bold text-gray-900 font-display tracking-tight">
                   Register new {category === 'Client' ? 'Client' : 'Supplier'}
                 </h2>
               </div>
@@ -952,14 +952,14 @@ const AddEntityModal = ({
             <button
               type="button"
               onClick={onClose}
-              className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-200/70 transition"
+              className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer"
             >
-              <span className="material-symbols-outlined text-[22px]">close</span>
+              <span className="material-symbols-outlined text-[20px]">close</span>
             </button>
           </div>
 
           {/* Scrollable Form Body */}
-          <div className="p-7 sm:p-8 overflow-y-auto flex-1 space-y-6 text-left text-xs modal-scrollbar">
+          <div className="p-6 overflow-y-auto flex-1 space-y-4 text-left text-xs modal-scrollbar">
             {/* Entity Type & Classification Toggle */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 bg-gray-50/70 rounded-2xl border border-gray-200/70">
               <div>
@@ -1704,7 +1704,7 @@ const AddEntityModal = ({
           </div>
 
           {/* Pinned Form Actions Footer */}
-          <div className="px-7 py-4 sm:px-8 sm:py-4.5 border-t border-gray-100 flex items-center justify-end gap-2.5 bg-gray-50/90 shrink-0 rounded-b-3xl">
+          <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-2.5 bg-gray-50/90 shrink-0 rounded-b-2xl">
             <button
               type="button"
               onClick={onClose}

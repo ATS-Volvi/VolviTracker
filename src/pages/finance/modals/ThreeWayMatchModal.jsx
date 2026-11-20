@@ -38,7 +38,7 @@ const ThreeWayMatchModal = ({ isOpen, onClose, supplierPo = null, onVerify }) =>
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto animate-fade-in text-left">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full my-8 border border-gray-100 overflow-hidden animate-slide-up">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full my-8 border border-gray-100 overflow-hidden animate-slide-up">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-indigo-50/50">
           <div className="flex items-center gap-2.5">

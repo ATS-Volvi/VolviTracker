@@ -4,15 +4,12 @@ import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { Avatar } from '../../../components/widgets/Avatar';
-import MasterDataTabs from './MasterDataTabs';
 import CreateUserModal from '../../../components/employees/CreateUserModal';
 import EditEmployeeModal from '../../../components/employees/EditEmployeeModal';
 
 export default function EmployeesTab({
   clientCount,
   supplierCount,
-  vaultDocsCount,
-  totalPoCount,
   handleSelectSegment
 }) {
   const { employees = [], updateEmployee, removeEmployee } = useData();
@@ -127,25 +124,7 @@ export default function EmployeesTab({
 
   return (
     <div id="employees-section" className="bg-white rounded-2xl border border-gray-100 shadow-xs p-5 sm:p-6 space-y-5 animate-fade-in text-left">
-      {/* 1. Master Data Tabs Navigation */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-4">
-        <MasterDataTabs
-          activeSegment="EMPLOYEES"
-          handleSelectSegment={handleSelectSegment}
-          clientCount={clientCount}
-          supplierCount={supplierCount}
-          employeeCount={counts.all}
-          vaultDocsCount={vaultDocsCount}
-          totalPoCount={totalPoCount}
-        />
-
-        <div className="flex items-center gap-1.5 text-gray-400 text-[11px] font-medium pr-1">
-          <span className="material-symbols-outlined text-[15px]">badge</span>
-          <span>Role-Based Access Control & Directory</span>
-        </div>
-      </div>
-
-      {/* 2. Header with Title and Create User CTA */}
+      {/* Header with Title and Create User CTA */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
         <div>
           <div className="flex items-center gap-2.5">

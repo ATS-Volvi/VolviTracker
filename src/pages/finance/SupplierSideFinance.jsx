@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Navigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useData } from '../../context/DataContext';
 import {
   loadFinanceData,
   saveFinanceData,
@@ -38,6 +39,7 @@ import { VoidEntityModal } from './modals/VoidEntityModal';
 export const SupplierSideFinance = () => {
   const { user, loading, canManageFinance } = useAuth();
   const { addToast } = useToast();
+  const { projects: allTrackerProjects = [] } = useData();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -58,6 +60,13 @@ export const SupplierSideFinance = () => {
   const [data, setData] = useState(() => loadFinanceData());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Synchronize projects from DataContext
+  const trackerProjects = useMemo(() => {
+    return Array.isArray(allTrackerProjects) && allTrackerProjects.length > 0
+      ? allTrackerProjects
+      : (data.projects || []);
+  }, [allTrackerProjects, data.projects]);
 
   const loadData = async () => {
     try {
@@ -355,7 +364,7 @@ export const SupplierSideFinance = () => {
         {/* Global Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           <Link
-            to="/master-data"
+            to="/master-data/suppliers"
             className="px-3.5 py-2 text-xs font-semibold bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl transition shadow-xs flex items-center gap-1.5 active:scale-95"
           >
             <span className="material-symbols-outlined text-[16px] text-gray-500">storefront</span>
@@ -464,7 +473,7 @@ export const SupplierSideFinance = () => {
       <IssueSupplierPOModal
         isOpen={issueSupplierPoOpen}
         onClose={() => setIssueSupplierPoOpen(false)}
-        projects={data.projects || []}
+        projects={trackerProjects}
         vendors={data.masterDirectory?.filter(d => d.category === 'Supplier') || []}
         clientPos={data.clientPos || []}
         exchangeRates={data.exchangeRates || {}}
